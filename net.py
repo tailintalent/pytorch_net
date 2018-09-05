@@ -19,6 +19,31 @@ from modules import get_Layer, load_layer_dict
 from util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
 
 
+# In[ ]:
+
+
+def load_model_dict_net(model_dict, is_cuda = False):
+    net_type = model_dict["type"]
+    if net_type == "Net":
+        return Net(input_size = model_dict["input_size"],
+                   struct_param = model_dict["struct_param"],
+                   W_init_list = model_dict["weights"],
+                   b_init_list = model_dict["bias"],
+                   settings = model_dict["settings"],
+                   is_cuda = is_cuda,
+                  )
+    elif net_type == "ConvNet":
+        return ConvNet(input_channels = model_dict["input_channels"],
+                       struct_param = model_dict["struct_param"],
+                       W_init_list = model_dict["weights"],
+                       b_init_list = model_dict["bias"],
+                       settings = model_dict["settings"],
+                       is_cuda = is_cuda,
+                      )
+    else:
+        raise Exception("net_type {0} not recognized!".format(net_type))
+
+
 # ## Model_Ensemble:
 
 # In[2]:
@@ -466,4 +491,161 @@ class LSTM(RNNCellBase):
     def get_loss(self, input, target, criterion, hx = None):
         y_pred = self(input, hx = hx)
         return criterion(y_pred, target)
+
+
+# ## CNN:
+
+# In[ ]:
+
+
+class ConvNet(nn.Module):
+    def __init__(
+        self,
+        input_channels,
+        struct_param,
+        W_init_list = None,
+        b_init_list = None,
+        settings = {},
+        is_cuda = False,
+        ):
+        super(ConvNet, self).__init__()
+        self.input_channels = input_channels
+        self.struct_param = struct_param
+        self.W_init_list = W_init_list
+        self.b_init_list = b_init_list
+        self.settings = settings
+        self.num_layers = len(struct_param)
+        self.is_cuda = is_cuda
+        for i in range(len(self.struct_param)):
+            if i > 0:
+                if "Pool" not in self.struct_param[i - 1][1] and "Unpool" not in self.struct_param[i - 1][1] and "Upsample" not in self.struct_param[i - 1][1]:
+                    num_channels_prev = self.struct_param[i - 1][0]
+                else: 
+                    num_channels_prev = self.struct_param[i - 2][0]
+            else:
+                num_channels_prev = input_channels
+            num_channels = self.struct_param[i][0]
+            layer_type = self.struct_param[i][1]
+            layer_settings = self.struct_param[i][2]
+            if layer_type == "Conv2d":
+                layer = nn.Conv2d(num_channels_prev, 
+                                  num_channels,
+                                  kernel_size = layer_settings["kernel_size"],
+                                  stride = layer_settings["stride"],
+                                  padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                 )
+            elif layer_type == "ConvTranspose2d":
+                layer = nn.ConvTranspose2d(num_channels_prev,
+                                           num_channels,
+                                           kernel_size = layer_settings["kernel_size"],
+                                           stride = layer_settings["stride"],
+                                           padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                          )
+            elif layer_type == "MaxPool2d":
+                layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
+                                     stride = layer_settings["stride"] if "stride" in layer_settings else None,
+                                     padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                     return_indices = layer_settings["return_indices"] if "return_indices" in layer_settings else False,
+                                    )
+            elif layer_type == "MaxUnpool2d":
+                layer = nn.MaxUnpool2d(kernel_size = layer_settings["kernel_size"],
+                                       stride = layer_settings["stride"] if "stride" in layer_settings else None,
+                                       padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                      )
+            elif layer_type == "Upsample":
+                layer = nn.Upsample(scale_factor = layer_settings["scale_factor"],
+                                    mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
+                                   )
+            else:
+                raise Exception("layer_type {0} not recognized!".format(layer_type))
+            
+            # Initialize using provided initial values:
+            if self.W_init_list is not None and self.W_init_list[i] is not None:
+                layer.weight.data = torch.FloatTensor(self.W_init_list[i])
+                layer.bias.data = torch.FloatTensor(self.b_init_list[i])
+            
+            setattr(self, "layer_{0}".format(i), layer)
+        if self.is_cuda:
+            self.cuda()
+
+
+    def forward(self, input, indices_list = None):
+        output = input
+        if indices_list is None:
+            indices_list = []
+        for i in range(len(self.struct_param)):
+            if "Unpool" in self.struct_param[i][1]:
+                output_tentative = getattr(self, "layer_{0}".format(i))(output, indices_list.pop(-1))
+            else:
+                output_tentative = getattr(self, "layer_{0}".format(i))(output)
+            if isinstance(output_tentative, tuple):
+                output, indices = output_tentative
+                indices_list.append(indices)
+            else:
+                output = output_tentative
+            if "activation" in self.struct_param[i][2]:
+                activation = self.struct_param[i][2]["activation"]
+            else:
+                if "activation" in self.settings:
+                    activation = self.settings["activation"]
+                else:
+                    activation = "relu"
+                if "Pool" in self.struct_param[i - 1][1] or "Unpool" in self.struct_param[i - 1][1] or "Upsample" in self.struct_param[i - 1][1]:
+                    activation = "linear"
+            output = get_activation(activation)(output)
+        return output, indices_list
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        for k in range(self.num_layers):
+            layer = getattr(self, "layer_{0}".format(k))
+            for source_ele in source:
+                if source_ele == "weight":
+                    item = layer.weight
+                elif source_ele == "bias":
+                    item = layer.bias
+                if mode == "L1":
+                    reg = reg + item.abs().sum()
+                elif mode == "L2":
+                    reg = reg + (item ** 2).sum()
+                else:
+                    raise Exception("mode {0} not recognized!".format(mode))
+        return reg
+
+
+    def get_weights_bias(self, W_source = "core", b_source = "core"):
+        W_list = []
+        b_list = []
+        weight_available = ["Conv2d", "ConvTranspose2d"]
+        for k in range(self.num_layers):
+            if self.struct_param[k][1] in weight_available:
+                layer = getattr(self, "layer_{0}".format(k))
+                if W_source == "core":
+                    W_list.append(to_np_array(layer.weight))
+                if b_source == "core":
+                    b_list.append(to_np_array(layer.bias))
+            else:
+                if W_source == "core":
+                    W_list.append(None)
+                if b_source == "core":
+                    b_list.append(None)
+        return W_list, b_list
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "ConvNet"}
+        model_dict["input_channels"] = self.input_channels
+        model_dict["struct_param"] = self.struct_param
+        model_dict["settings"] = self.settings
+        model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
+        return model_dict
+    
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
 
