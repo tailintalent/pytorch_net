@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -12,7 +12,9 @@ import torch.nn as nn
 from torch.autograd import Variable
 from copy import deepcopy
 
-from util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias
+import sys, os
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
 

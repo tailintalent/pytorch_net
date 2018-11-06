@@ -113,8 +113,11 @@ def to_np_array(*arrays):
         if isinstance(array, Variable):
             if array.is_cuda:
                 array = array.cpu()
-            array = array.detach().data
-        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
+            array = array.data
+        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor) or \
+           isinstance(array, torch.cuda.FloatTensor) or isinstance(array, torch.cuda.LongTensor) or isinstance(array, torch.cuda.ByteTensor):
+            if array.is_cuda:
+                array = array.cpu()
             array = array.numpy()
         array_list.append(array)
     if len(array_list) == 1:
@@ -125,6 +128,8 @@ def to_np_array(*arrays):
 def to_Variable(*arrays, is_cuda = False, requires_grad = False):
     array_list = []
     for array in arrays:
+        if isinstance(array, list):
+            array = np.array(array)
         if isinstance(array, np.ndarray):
             array = torch.Tensor(array)
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):

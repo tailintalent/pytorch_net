@@ -13,13 +13,121 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
-
-from modules import get_Layer, load_layer_dict
-from util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
+import sys, os
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+from pytorch_net.modules import get_Layer, load_layer_dict
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable
 
 
 # In[ ]:
+
+
+def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
+    """minimal version of training. "model" can be a single model or a ordered list of models"""
+    def get_regularization(model, **kwargs):
+        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
+        reg = to_Variable([0], is_cuda = X.is_cuda)
+        for reg_type, reg_coeff in reg_dict.items():
+            reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
+        return reg
+    epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
+    lr = kwargs["lr"] if "lr" in kwargs else 5e-3
+    optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
+    optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
+    early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
+    patience = kwargs["patience"] if "patience" in kwargs else 20
+    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
+    scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+    data_record = {key: [] for key in record_keys}
+    if patience is not None:
+        early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
+    
+    if validation_data is not None:
+        X_valid, y_valid = validation_data
+    else:
+        X_valid, y_valid = X, y
+    
+    # Get original loss:
+    loss_original = model.get_loss(X_valid, y_valid, criterion).item()
+    if "loss" in record_keys:
+        record_data(data_record, [-1, model.get_loss(X_valid, y_valid, criterion).item()], ["iter", "loss"])
+    if "param" in record_keys:
+        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+    if "param_grad" in record_keys:
+        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+
+    # Setting up optimizer:
+    parameters = model.parameters()
+    num_params = len(list(model.parameters()))
+    if num_params == 0:
+        print("No parameters to optimize!")
+        loss_value = model.get_loss(X_valid, y_valid, criterion).item()
+        if "loss" in record_keys:
+            record_data(data_record, [0, model.get_loss(X_valid, y_valid, criterion).item()], ["iter", "loss"])
+        if "param" in record_keys:
+            record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+        if "param_grad" in record_keys:
+            record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+        return loss_original, loss_value, data_record
+    optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
+    
+    # Set up learning rate scheduler:
+    if scheduler_type is not None:
+        if scheduler_type == "ReduceLROnPlateau":
+            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 10
+            scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
+            scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
+            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
+        elif scheduler_type == "LambdaLR":
+            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
+            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
+        else:
+            raise
+
+    # Training:
+    to_stop = False
+    for i in range(epochs + 1):
+        if optim_type != "LBFGS":
+            optimizer.zero_grad()
+            reg = get_regularization(model, **kwargs)
+            loss = model.get_loss(X, y, criterion, **kwargs) + reg
+            loss.backward()
+            optimizer.step()
+        else:
+            # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
+            def closure():
+                optimizer.zero_grad()
+                reg = get_regularization(model, **kwargs)
+                loss = model.get_loss(X, y, criterion, **kwargs) + reg
+                loss.backward()
+                return loss
+            optimizer.step(closure)
+        if i % inspect_interval == 0:
+            loss_value = model.get_loss(X_valid, y_valid, criterion).item()
+            if scheduler_type is not None:
+                if scheduler_type == "ReduceLROnPlateau":
+                    scheduler.step(loss_value)
+                else:
+                    scheduler.step()
+            if "loss" in record_keys:
+                record_data(data_record, [i, model.get_loss(X_valid, y_valid, criterion).item()], ["iter", "loss"])
+            if "param" in record_keys:
+                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+            if "param_grad" in record_keys:
+                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+            if patience is not None:
+                to_stop = early_stopping.monitor(loss_value)
+        if to_stop:
+            break
+
+    loss_value = model.get_loss(X_valid, y_valid, criterion).item()
+    if isplot:
+        import matplotlib.pylab as plt
+        plt.semilogy(data_record["iter"], data_record["loss"])
+        plt.show()
+    return loss_original, loss_value, data_record
 
 
 def load_model_dict_net(model_dict, is_cuda = False):
