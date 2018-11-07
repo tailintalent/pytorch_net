@@ -125,7 +125,10 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
     loss_value = model.get_loss(X_valid, y_valid, criterion).item()
     if isplot:
         import matplotlib.pylab as plt
+        plt.figure(figsize = (8,6))
         plt.semilogy(data_record["iter"], data_record["loss"])
+        plt.xlabel("epoch")
+        plt.ylabel("loss")
         plt.show()
     return loss_original, loss_value, data_record
 
@@ -321,7 +324,7 @@ class MLP(nn.Module):
         return output
 
 
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
         reg = Variable(torch.FloatTensor([0]), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
@@ -456,7 +459,7 @@ class MLP(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
-    def get_loss(self, input, target, criterion):
+    def get_loss(self, input, target, criterion, **kwargs):
         y_pred = self(input)
         return criterion(y_pred, target)
 
@@ -548,7 +551,7 @@ class LSTM(RNNCellBase):
         output = self.output_net(hhx)
         return output
 
-    def get_regularization(self, source, mode = "L1"):
+    def get_regularization(self, source, mode = "L1", **kwargs):
         if not isinstance(source, list):
             source = [source]
         reg = self.output_net.get_regularization(source = source, mode = mode)
@@ -596,7 +599,7 @@ class LSTM(RNNCellBase):
                 plot_matrices(b_o)
         return W_dict, b_dict
     
-    def get_loss(self, input, target, criterion, hx = None):
+    def get_loss(self, input, target, criterion, hx = None, **kwargs):
         y_pred = self(input, hx = hx)
         return criterion(y_pred, target)
 
@@ -641,6 +644,7 @@ class ConvNet(nn.Module):
                                   kernel_size = layer_settings["kernel_size"],
                                   stride = layer_settings["stride"],
                                   padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                  dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                  )
             elif layer_type == "ConvTranspose2d":
                 layer = nn.ConvTranspose2d(num_channels_prev,
@@ -648,7 +652,17 @@ class ConvNet(nn.Module):
                                            kernel_size = layer_settings["kernel_size"],
                                            stride = layer_settings["stride"],
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                           dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
+            elif layer_type == "Simple_Layer":
+                layer = get_Layer(layer_type = layer_type,
+                              input_size = layer_settings["layer_input_size"],
+                              output_size = num_channels,
+                              W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
+                              b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
+                              settings = layer_settings,
+                              is_cuda = self.is_cuda,
+                             )
             elif layer_type == "MaxPool2d":
                 layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
                                      stride = layer_settings["stride"] if "stride" in layer_settings else None,
@@ -664,11 +678,13 @@ class ConvNet(nn.Module):
                 layer = nn.Upsample(scale_factor = layer_settings["scale_factor"],
                                     mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
                                    )
+            elif layer_type == "BatchNorm2d":
+                layer = nn.BatchNorm2d(num_features = num_channels)
             else:
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
             
             # Initialize using provided initial values:
-            if self.W_init_list is not None and self.W_init_list[i] is not None:
+            if self.W_init_list is not None and self.W_init_list[i] is not None and layer_type not in ["Simple_Layer"]:
                 layer.weight.data = torch.FloatTensor(self.W_init_list[i])
                 layer.bias.data = torch.FloatTensor(self.b_init_list[i])
             
@@ -677,13 +693,22 @@ class ConvNet(nn.Module):
             self.cuda()
 
 
-    def forward(self, input, indices_list = None):
+    def forward(self, input, indices_list = None, **kwargs):
+        return self.inspect_operation(input, operation_between = (0, self.num_layers), indices_list = indices_list)
+    
+    
+    def inspect_operation(self, input, operation_between, indices_list = None):
         output = input
         if indices_list is None:
             indices_list = []
-        for i in range(len(self.struct_param)):
+        start_layer, end_layer = operation_between
+        if end_layer < 0:
+            end_layer += self.num_layers
+        for i in range(start_layer, end_layer):
             if "Unpool" in self.struct_param[i][1]:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output, indices_list.pop(-1))
+            elif self.struct_param[i][1] == "Simple_Layer":
+                output_tentative = getattr(self, "layer_{0}".format(i))(flatten(output))
             else:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output)
             if isinstance(output_tentative, tuple):
@@ -697,14 +722,21 @@ class ConvNet(nn.Module):
                 if "activation" in self.settings:
                     activation = self.settings["activation"]
                 else:
-                    activation = "relu"
-                if "Pool" in self.struct_param[i - 1][1] or "Unpool" in self.struct_param[i - 1][1] or "Upsample" in self.struct_param[i - 1][1]:
+                    activation = "linear"
+                if "Pool" in self.struct_param[i][1] or "Unpool" in self.struct_param[i][1] or "Upsample" in self.struct_param[i][1]:
                     activation = "linear"
             output = get_activation(activation)(output)
         return output, indices_list
 
 
+    def get_loss(self, input, target, criterion, **kwargs):
+        y_pred, _ = self(input, **kwargs)
+        return criterion(y_pred, target)
+
+
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        if not isinstance(source, list):
+            source = [source]
         reg = Variable(torch.FloatTensor([0]), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
@@ -727,14 +759,20 @@ class ConvNet(nn.Module):
     def get_weights_bias(self, W_source = "core", b_source = "core"):
         W_list = []
         b_list = []
-        weight_available = ["Conv2d", "ConvTranspose2d"]
+        param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d"]
         for k in range(self.num_layers):
-            if self.struct_param[k][1] in weight_available:
+            if self.struct_param[k][1] in param_available:
                 layer = getattr(self, "layer_{0}".format(k))
                 if W_source == "core":
                     W_list.append(to_np_array(layer.weight))
                 if b_source == "core":
                     b_list.append(to_np_array(layer.bias))
+            elif self.struct_param[k][1] == "Simple_Layer":
+                layer = getattr(self, "layer_{0}".format(k))
+                if W_source == "core":
+                    W_list.append(to_np_array(layer.W_core))
+                if b_source == "core":
+                    b_list.append(to_np_array(layer.b_core))
             else:
                 if W_source == "core":
                     W_list.append(None)
