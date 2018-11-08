@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -449,7 +449,7 @@ class MLP(nn.Module):
         model_dict["input_size"] = self.input_size
         model_dict["struct_param"] = get_full_struct_param(self.struct_param, self.settings)
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
-        model_dict["settings"] = self.synchronize_settings()
+        model_dict["settings"] = deepcopy(self.settings)
         model_dict["net_type"] = "MLP"
         return model_dict
 
