@@ -40,6 +40,8 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
     patience = kwargs["patience"] if "patience" in kwargs else 20
     record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+    inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
+    inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
     data_record = {key: [] for key in record_keys}
     if patience is not None:
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
@@ -119,6 +121,12 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
                 record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
             if patience is not None:
                 to_stop = early_stopping.monitor(loss_value)
+            if inspect_items is not None:
+                if i % inspect_items_interval == 0:
+                    print("{0}: loss {1}".format(i, loss_value), end = "")
+                    for item in inspect_items:
+                        print("\t{0}: {1:.4f}".format(item, model.loss_dict[item]), end = "")
+                    print()
         if to_stop:
             break
 
