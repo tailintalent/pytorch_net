@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[ ]:
@@ -271,6 +271,10 @@ class Model_Ensemble(nn.Module):
         return W_list_dict, b_list_dict
 
 
+    def prepare_inspection(self, X, y):
+        pass
+
+
 def load_model_dict_MLP(model_dict, is_cuda = False):
     net_type = model_dict["type"]
     if net_type == "MLP":
@@ -484,6 +488,9 @@ class MLP(nn.Module):
     def get_loss(self, input, target, criterion, **kwargs):
         y_pred = self(input)
         return criterion(y_pred, target)
+    
+    def prepare_inspection(self, X, y):
+        pass
 
 
 # ## RNN:
@@ -624,6 +631,9 @@ class LSTM(RNNCellBase):
     def get_loss(self, input, target, criterion, hx = None, **kwargs):
         y_pred = self(input, hx = hx)
         return criterion(y_pred, target)
+    
+    def prepare_inspection(self, X, y):
+        pass
 
 
 # ## CNN:
@@ -816,4 +826,8 @@ class ConvNet(nn.Module):
     def load_model_dict(self, model_dict):
         new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(new_net.__dict__)
+
+
+    def prepare_inspection(self, X, y):
+        pass
 
