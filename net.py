@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 from __future__ import print_function
@@ -42,6 +42,7 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
+    inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     data_record = {key: [] for key in record_keys}
     if patience is not None:
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
@@ -78,7 +79,7 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
     # Set up learning rate scheduler:
     if scheduler_type is not None:
         if scheduler_type == "ReduceLROnPlateau":
-            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 10
+            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 40
             scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
             scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
             scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
@@ -123,9 +124,10 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
                 to_stop = early_stopping.monitor(loss_value)
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
-                    print("{0}: loss {1}".format(i, loss_value), end = "")
+                    print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
+                    print("\tlr: {0}".format(optimizer.param_groups[0]["lr"]), end = "")
                     for item in inspect_items:
-                        print("\t{0}: {1:.4f}".format(item, model.loss_dict[item]), end = "")
+                        print("\t{0}: {1:.{2}f}".format(item, model.loss_dict[item], inspect_loss_precision), end = "")
                     print()
         if to_stop:
             break
