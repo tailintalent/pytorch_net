@@ -60,6 +60,15 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+    if inspect_items is not None:
+        print("{0}: loss {1:.{2}f}".format(-1, loss_original, inspect_loss_precision), end = "")
+        print("\tlr: {0}".format(lr), end = "")
+        model.prepare_inspection(X_valid, y_valid)
+        for item in inspect_items:
+            print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+            if item in record_keys:
+                record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+        print()
 
     # Setting up optimizer:
     parameters = model.parameters()
@@ -114,20 +123,23 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
                     scheduler.step(loss_value)
                 else:
                     scheduler.step()
-            if "loss" in record_keys:
-                record_data(data_record, [i, model.get_loss(X_valid, y_valid, criterion).item()], ["iter", "loss"])
-            if "param" in record_keys:
-                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
-            if "param_grad" in record_keys:
-                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
             if patience is not None:
                 to_stop = early_stopping.monitor(loss_value)
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
                     print("\tlr: {0}".format(optimizer.param_groups[0]["lr"]), end = "")
+                    model.prepare_inspection(X_valid, y_valid)
                     for item in inspect_items:
-                        print("\t{0}: {1:.{2}f}".format(item, model.loss_dict[item], inspect_loss_precision), end = "")
+                        print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                        if item in record_keys:
+                            record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                    if "loss" in record_keys:
+                        record_data(data_record, [i, loss_value], ["iter", "loss"])
+                    if "param" in record_keys:
+                        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+                    if "param_grad" in record_keys:
+                        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
                     print()
         if to_stop:
             break
