@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, flatten
 
 
 # In[ ]:
@@ -64,10 +64,11 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
         print("{0}: loss {1:.{2}f}".format(-1, loss_original, inspect_loss_precision), end = "")
         print("\tlr: {0}".format(lr), end = "")
         model.prepare_inspection(X_valid, y_valid)
-        for item in inspect_items:
-            print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-            if item in record_keys:
-                record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+        if hasattr(model, "info_dict"):
+            for item in inspect_items:
+                print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                if item in record_keys:
+                    record_data(data_record, [to_np_array(model.info_dict[item])], [item])
         print()
 
     # Setting up optimizer:
@@ -130,10 +131,11 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
                     print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
                     print("\tlr: {0:.3e}".format(optimizer.param_groups[0]["lr"]), end = "")
                     model.prepare_inspection(X_valid, y_valid)
-                    for item in inspect_items:
-                        print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-                        if item in record_keys:
-                            record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                    if hasattr(model, "info_dict"):
+                        for item in inspect_items:
+                            print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                            if item in record_keys:
+                                record_data(data_record, [to_np_array(model.info_dict[item])], [item])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "param" in record_keys:
@@ -766,7 +768,7 @@ class ConvNet(nn.Module):
         return criterion(y_pred, target)
 
 
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
         if not isinstance(source, list):
             source = [source]
         reg = Variable(torch.FloatTensor([0]), requires_grad = False)
@@ -776,9 +778,15 @@ class ConvNet(nn.Module):
             layer = getattr(self, "layer_{0}".format(k))
             for source_ele in source:
                 if source_ele == "weight":
-                    item = layer.weight
+                    if self.struct_param[k][1] not in ["Simple_Layer"]:
+                        item = layer.weight
+                    else:
+                        item = layer.W_core
                 elif source_ele == "bias":
-                    item = layer.bias
+                    if self.struct_param[k][1] not in ["Simple_Layer"]:
+                        item = layer.bias
+                    else:
+                        item = layer.b_core
                 if mode == "L1":
                     reg = reg + item.abs().sum()
                 elif mode == "L2":

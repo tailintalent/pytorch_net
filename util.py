@@ -33,6 +33,7 @@ def plot_matrices(
     if title is not None:
         fig.suptitle(title, fontsize = 18, horizontalalignment = 'left', x=0.1)
     
+    matrix_list = np.array([to_np_array(matrix_list[i]) for i in range(len(matrix_list))])
     num_matrixs = len(matrix_list)
     rows = np.ceil(num_matrixs / float(images_per_row))
     try:
@@ -341,6 +342,10 @@ class Early_Stopping(object):
                         self.wait += 1
         return to_stop
 
+    
+def flatten(tensor):
+    return tensor.view(tensor.size(0), -1)
+
 
 def to_one_hot(idx, num):
     if len(idx.size()) == 1:
@@ -358,9 +363,6 @@ def to_one_hot(idx, num):
 
 def train_test_split(X, y, test_size = 0.1):
     import torch
-    if len(X.shape) == 4:
-        X = X.view(-1, *X.shape[2:])
-        y = y.view(-1, *y.shape[2:])
     num_examples = len(X)
     if test_size is not None:
         num_test = int(num_examples * test_size)
