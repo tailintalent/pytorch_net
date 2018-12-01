@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[ ]:
@@ -128,7 +128,7 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
-                    print("\tlr: {0}".format(optimizer.param_groups[0]["lr"]), end = "")
+                    print("\tlr: {0:.3e}".format(optimizer.param_groups[0]["lr"]), end = "")
                     model.prepare_inspection(X_valid, y_valid)
                     for item in inspect_items:
                         print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
@@ -158,7 +158,7 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
 def load_model_dict_net(model_dict, is_cuda = False):
     net_type = model_dict["type"]
     if net_type == "Net":
-        return Net(input_size = model_dict["input_size"],
+        return MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
                    W_init_list = model_dict["weights"],
                    b_init_list = model_dict["bias"],
@@ -278,7 +278,7 @@ class Model_Ensemble(nn.Module):
 def load_model_dict_MLP(model_dict, is_cuda = False):
     net_type = model_dict["type"]
     if net_type == "MLP":
-        return Net(input_size = model_dict["input_size"],
+        return MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
                    W_init_list = model_dict["weights"],
                    b_init_list = model_dict["bias"],
