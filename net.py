@@ -775,6 +775,9 @@ class ConvNet(nn.Module):
         if self.is_cuda:
             reg = reg.cuda()
         for k in range(self.num_layers):
+            param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
+            if self.struct_param[k][1] not in param_available:
+                continue
             layer = getattr(self, "layer_{0}".format(k))
             for source_ele in source:
                 if source_ele == "weight":
