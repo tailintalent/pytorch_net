@@ -380,3 +380,16 @@ def train_test_split(X, y, test_size = 0.1):
         X_train, X_test = X, X
         y_train, y_test = y, y
     return (X_train, y_train), (X_test, y_test)
+
+
+def make_dir(filename):
+    import os
+    import errno
+    if not os.path.exists(os.path.dirname(filename)):
+        print("directory {0} does not exist, created.".format(os.path.dirname(filename)))
+        try:
+            os.makedirs(os.path.dirname(filename))
+        except OSError as exc: # Guard against race condition
+            if exc.errno != errno.EEXIST:
+                print(exc)
+            raise
