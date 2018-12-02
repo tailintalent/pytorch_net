@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, flatten
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, get_accuracy, flatten
 
 
 # In[ ]:
@@ -660,6 +660,7 @@ class ConvNet(nn.Module):
         self.b_init_list = b_init_list
         self.settings = settings
         self.num_layers = len(struct_param)
+        self.info_dict = {}
         self.is_cuda = is_cuda
         for i in range(len(self.struct_param)):
             if i > 0:
@@ -840,5 +841,7 @@ class ConvNet(nn.Module):
 
 
     def prepare_inspection(self, X, y):
-        pass
+        pred_prob, _ = self(X)
+        pred = pred_prob.max(1)[0]
+        self.info_dict["accuracy"] = get_accuracy(pred, y)
 

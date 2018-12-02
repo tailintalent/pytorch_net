@@ -393,3 +393,11 @@ def make_dir(filename):
             if exc.errno != errno.EEXIST:
                 print(exc)
             raise
+
+            
+def get_accuracy(pred, target):
+    assert len(pred.shape) == len(target.shape) == 1
+    assert len(pred) == len(target)
+    pred, target = to_np_array(pred, target)
+    accuracy = ((pred == target).sum().astype(float) / len(pred))
+    return accuracy
