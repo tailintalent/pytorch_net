@@ -105,6 +105,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     # Training:
     to_stop = False
     for i in range(epochs + 1):
+        model.train()
         if X is not None and y is not None:
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
@@ -139,6 +140,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     optimizer.step(closure)
 
         if i % inspect_interval == 0:
+            model.eval()
             loss_value = model.get_loss(X_valid, y_valid, criterion).item()
             if scheduler_type is not None:
                 if scheduler_type == "ReduceLROnPlateau":
@@ -865,6 +867,6 @@ class ConvNet(nn.Module):
 
     def prepare_inspection(self, X, y):
         pred_prob, _ = self(X)
-        pred = pred_prob.max(1)[0]
+        pred = pred_prob.max(1)[1]
         self.info_dict["accuracy"] = get_accuracy(pred, y)
 
