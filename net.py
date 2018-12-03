@@ -16,7 +16,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
 import sys, os
-sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
 from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, get_accuracy, flatten
 
