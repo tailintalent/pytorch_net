@@ -109,6 +109,7 @@ def record_data(data_record_dict, data_list, key_list, nolist = False):
 
 
 def to_np_array(*arrays):
+    """Transform torch tensors/Variables into numpy arrays"""
     array_list = []
     for array in arrays:
         if isinstance(array, Variable):
@@ -127,6 +128,7 @@ def to_np_array(*arrays):
 
 
 def to_Variable(*arrays, is_cuda = False, requires_grad = False):
+    """Transform numpy arrays into torch tensors/Variables"""
     array_list = []
     for array in arrays:
         if isinstance(array, list):
@@ -141,20 +143,6 @@ def to_Variable(*arrays, is_cuda = False, requires_grad = False):
     if len(array_list) == 1:
         array_list = array_list[0]
     return array_list
-
-
-def make_dir(filename):
-    import os
-    import errno
-    if not os.path.exists(os.path.dirname(filename)):
-        print("directory {0} does not exist, created.".format(os.path.dirname(filename)))
-        try:
-            os.makedirs(os.path.dirname(filename))
-        except OSError as exc: # Guard against race condition
-            if exc.errno != errno.EEXIST:
-                print(exc)
-                raise
-
 
 
 def init_module_weights(module_list, init_weights_mode = "glorot-normal"):
@@ -182,6 +170,7 @@ def init_module_bias(module_list, init_bias_mode = "zeros"):
 
 
 def init_weight(weight_list, init):
+    """Initialize the weights"""
     if not isinstance(weight_list, list):
         weight_list = [weight_list]
     for weight in weight_list:
@@ -202,7 +191,9 @@ def init_weight(weight_list, init):
             else:
                 raise Exception("init '{0}' not recognized!".format(init))
 
+
 def init_bias(bias_list, init):
+    """Initialize the bias"""
     if not isinstance(bias_list, list):
         bias_list = [bias_list]
     for bias in bias_list:
@@ -218,6 +209,7 @@ def init_bias(bias_list, init):
 
 
 def get_activation(activation):
+    """Get activation"""
     if activation == "linear":
         f = lambda x: x
     elif activation == "relu":
@@ -246,6 +238,7 @@ def get_activation(activation):
 
 
 class MAELoss(_Loss):
+    """Mean absolute loss"""
     def __init__(self, size_average=True, reduce=True):
         super(MAELoss, self).__init__(size_average)
         self.reduce = reduce
@@ -264,6 +257,7 @@ class MAELoss(_Loss):
 
 
 def get_criterion(loss_type, reduce = True, **kwargs):
+    """Get loss function"""
     if loss_type == "huber":
         criterion = nn.SmoothL1Loss(reduce = reduce)
     elif loss_type == "mse":
@@ -280,6 +274,7 @@ def get_criterion(loss_type, reduce = True, **kwargs):
 
 
 def get_optimizer(optim_type, lr, parameters):
+    """Get optimizer"""
     if optim_type == "adam":
         optimizer = optim.Adam(parameters, lr = lr)
     elif optim_type == "RMSprop":
@@ -317,6 +312,7 @@ def get_full_struct_param(struct_param, settings):
 
 
 class Early_Stopping(object):
+    """Class for monitoring and suggesting early stopping"""
     def __init__(self, patience = 100, epsilon = 0, mode = "min"):
         self.patience = patience
         self.epsilon = epsilon
@@ -344,10 +340,12 @@ class Early_Stopping(object):
 
     
 def flatten(tensor):
+    """Flatten the tensor except the first dimension"""
     return tensor.view(tensor.size(0), -1)
 
 
 def to_one_hot(idx, num):
+    """Transform a 1D vector into a one-hot vector with num classes"""
     if len(idx.size()) == 1:
         idx = idx.unsqueeze(-1)
     if not isinstance(idx, Variable):
@@ -362,6 +360,7 @@ def to_one_hot(idx, num):
 
 
 def train_test_split(X, y, test_size = 0.1):
+    """Split the dataset into training and testing sets"""
     import torch
     num_examples = len(X)
     if test_size is not None:
@@ -383,6 +382,7 @@ def train_test_split(X, y, test_size = 0.1):
 
 
 def make_dir(filename):
+    """Make directory using filename if the directory does not exist"""
     import os
     import errno
     if not os.path.exists(os.path.dirname(filename)):
@@ -396,6 +396,7 @@ def make_dir(filename):
 
             
 def get_accuracy(pred, target):
+    """Get accuracy from prediction and target"""
     assert len(pred.shape) == len(target.shape) == 1
     assert len(pred) == len(target)
     pred, target = to_np_array(pred, target)
@@ -417,3 +418,43 @@ def normalize_tensor(X, new_range = None, mean = None, std = None):
         X_normalized = (X - X_mean) / X_std
         X_normalized = X_normalized * std + mean
     return X_normalized
+
+
+def get_args(arg, arg_id = 1, type = "str"):
+    """get sys arguments from either command line or Jupyter"""
+    try:
+        get_ipython().run_line_magic('matplotlib', 'inline')
+        arg_return = arg
+    except:
+        import sys
+        try:
+            arg_return = sys.argv[arg_id]
+            if type == "int":
+                arg_return = int(arg_return)
+            elif type == "float":
+                arg_return = float(arg_return)
+            elif type == "bool":
+                arg_return = eval(arg_return)
+            elif type == "eval":
+                arg_return = eval(arg_return)
+            elif type == "tuple":
+                if arg_return[0] not in ["(", "["]:
+                    arg_return = eval(arg_return)
+                else:
+                    splitted = arg_return[1:-1].split(",")
+                    List = []
+                    for item in splitted:
+                        try:
+                            item = eval(item)
+                        except:
+                            pass
+                        List.append(item)
+                    arg_return = tuple(List)
+            elif type == "str":
+                pass
+            else:
+                raise Exception("type {0} not recognized!".format(type))
+        except:
+#             raise
+            arg_return = arg
+    return arg_return
