@@ -24,14 +24,17 @@ from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_f
 # In[ ]:
 
 
-def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
+def train(model, X = None, y = None, train_loader = None, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
     """minimal version of training. "model" can be a single model or a ordered list of models"""
     def get_regularization(model, **kwargs):
         reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
-        reg = to_Variable([0], is_cuda = X.is_cuda)
+        reg = to_Variable([0], is_cuda = is_cuda)
         for reg_type, reg_coeff in reg_dict.items():
             reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
         return reg
+    if X is None and y is None:
+        assert train_loader is not None
+    is_cuda = X.is_cuda if X is not None else torch.cuda.is_available()
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
@@ -102,21 +105,39 @@ def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect
     # Training:
     to_stop = False
     for i in range(epochs + 1):
-        if optim_type != "LBFGS":
-            optimizer.zero_grad()
-            reg = get_regularization(model, **kwargs)
-            loss = model.get_loss(X, y, criterion, **kwargs) + reg
-            loss.backward()
-            optimizer.step()
-        else:
-            # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
-            def closure():
+        if X is not None and y is not None:
+            if optim_type != "LBFGS":
                 optimizer.zero_grad()
                 reg = get_regularization(model, **kwargs)
                 loss = model.get_loss(X, y, criterion, **kwargs) + reg
                 loss.backward()
-                return loss
-            optimizer.step(closure)
+                optimizer.step()
+            else:
+                # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
+                def closure():
+                    optimizer.zero_grad()
+                    reg = get_regularization(model, **kwargs)
+                    loss = model.get_loss(X, y, criterion, **kwargs) + reg
+                    loss.backward()
+                    return loss
+                optimizer.step(closure)
+        else:
+            for _, (X_batch, y_batch) in enumerate(train_loader):
+                if optim_type != "LBFGS":
+                    optimizer.zero_grad()
+                    reg = get_regularization(model, **kwargs)
+                    loss = model.get_loss(X_batch, y_batch, criterion, **kwargs) + reg
+                    loss.backward()
+                    optimizer.step()
+                else:
+                    def closure():
+                        optimizer.zero_grad()
+                        reg = get_regularization(model, **kwargs)
+                        loss = model.get_loss(X_batch, y_batch, criterion, **kwargs) + reg
+                        loss.backward()
+                        return loss
+                    optimizer.step(closure)
+
         if i % inspect_interval == 0:
             loss_value = model.get_loss(X_valid, y_valid, criterion).item()
             if scheduler_type is not None:
@@ -664,10 +685,10 @@ class ConvNet(nn.Module):
         self.is_cuda = is_cuda
         for i in range(len(self.struct_param)):
             if i > 0:
-                if "Pool" not in self.struct_param[i - 1][1] and "Unpool" not in self.struct_param[i - 1][1] and "Upsample" not in self.struct_param[i - 1][1]:
-                    num_channels_prev = self.struct_param[i - 1][0]
-                else: 
-                    num_channels_prev = self.struct_param[i - 2][0]
+                k = 1
+                while self.struct_param[i - k][0] is None:
+                    k += 1
+                num_channels_prev = self.struct_param[i - k][0]
             else:
                 num_channels_prev = input_channels
             num_channels = self.struct_param[i][0]
@@ -715,6 +736,8 @@ class ConvNet(nn.Module):
                                    )
             elif layer_type == "BatchNorm2d":
                 layer = nn.BatchNorm2d(num_features = num_channels)
+            elif layer_type == "Dropout2d":
+                layer = nn.Dropout2d(p = 0.5)
             else:
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
             

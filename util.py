@@ -401,3 +401,19 @@ def get_accuracy(pred, target):
     pred, target = to_np_array(pred, target)
     accuracy = ((pred == target).sum().astype(float) / len(pred))
     return accuracy
+
+
+def normalize_tensor(X, new_range = None, mean = None, std = None):
+    """Normalize the tensor's value range to new_range"""
+    X = X.float()
+    if new_range is not None:
+        assert mean is None and std is None
+        X_min, X_max = X.min().item(), X.max().item()
+        X_normalized = (X - X_min) / float(X_max - X_min)
+        X_normalized = X_normalized * (new_range[1] - new_range[0]) + new_range[0]
+    else:
+        X_mean = X.mean().item()
+        X_std = X.std().item()
+        X_normalized = (X - X_mean) / X_std
+        X_normalized = X_normalized * std + mean
+    return X_normalized
