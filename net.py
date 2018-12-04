@@ -69,9 +69,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         model.prepare_inspection(X_valid, y_valid)
         if hasattr(model, "info_dict"):
             for item in inspect_items:
-                print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-                if item in record_keys:
-                    record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                if item in model.info_dict:
+                    print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                    if item in record_keys:
+                        record_data(data_record, [to_np_array(model.info_dict[item])], [item])
         print()
 
     # Setting up optimizer:
@@ -156,9 +157,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     model.prepare_inspection(X_valid, y_valid)
                     if hasattr(model, "info_dict"):
                         for item in inspect_items:
-                            print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-                            if item in record_keys:
-                                record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                            if item in model.info_dict:
+                                print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                                if item in record_keys:
+                                    record_data(data_record, [to_np_array(model.info_dict[item])], [item])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "param" in record_keys:
