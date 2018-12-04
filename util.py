@@ -339,9 +339,14 @@ class Early_Stopping(object):
         return to_stop
 
     
-def flatten(tensor):
+def flatten(*tensors):
     """Flatten the tensor except the first dimension"""
-    return tensor.view(tensor.size(0), -1)
+    new_tensors = []
+    for tensor in tensors:
+        new_tensors.append(tensor.view(tensor.size(0), -1))
+    if len(new_tensors) == 1:
+        new_tensors = new_tensors[0]
+    return new_tensors
 
 
 def to_one_hot(idx, num):
