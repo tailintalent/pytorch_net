@@ -198,6 +198,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
                        W_init_list = model_dict["weights"],
                        b_init_list = model_dict["bias"],
                        settings = model_dict["settings"],
+                       return_indices = model_dict["return_indices"],
                        is_cuda = is_cuda,
                       )
     else:
@@ -676,6 +677,7 @@ class ConvNet(nn.Module):
         W_init_list = None,
         b_init_list = None,
         settings = {},
+        return_indices = False,
         is_cuda = False,
         ):
         super(ConvNet, self).__init__()
@@ -687,6 +689,8 @@ class ConvNet(nn.Module):
         self.num_layers = len(struct_param)
         self.info_dict = {}
         self.is_cuda = is_cuda
+        self.param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
+        self.return_indices = return_indices
         for i in range(len(self.struct_param)):
             if i > 0:
                 k = 1
@@ -702,7 +706,7 @@ class ConvNet(nn.Module):
                 layer = nn.Conv2d(num_channels_prev, 
                                   num_channels,
                                   kernel_size = layer_settings["kernel_size"],
-                                  stride = layer_settings["stride"],
+                                  stride = layer_settings["stride"] if "stride" in layer_settings else 1,
                                   padding = layer_settings["padding"] if "padding" in layer_settings else 0,
                                   dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                  )
@@ -710,7 +714,7 @@ class ConvNet(nn.Module):
                 layer = nn.ConvTranspose2d(num_channels_prev,
                                            num_channels,
                                            kernel_size = layer_settings["kernel_size"],
-                                           stride = layer_settings["stride"],
+                                           stride = layer_settings["stride"] if "stride" in layer_settings else 1,
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
                                            dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
@@ -742,6 +746,8 @@ class ConvNet(nn.Module):
                 layer = nn.BatchNorm2d(num_features = num_channels)
             elif layer_type == "Dropout2d":
                 layer = nn.Dropout2d(p = 0.5)
+            elif layer_type == "Flatten":
+                layer = Flatten()
             else:
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
             
@@ -788,7 +794,10 @@ class ConvNet(nn.Module):
                 if "Pool" in self.struct_param[i][1] or "Unpool" in self.struct_param[i][1] or "Upsample" in self.struct_param[i][1]:
                     activation = "linear"
             output = get_activation(activation)(output)
-        return output, indices_list
+        if self.return_indices:
+            return output, indices_list
+        else:
+            return output
 
 
     def get_loss(self, input, target, criterion, **kwargs):
@@ -803,8 +812,7 @@ class ConvNet(nn.Module):
         if self.is_cuda:
             reg = reg.cuda()
         for k in range(self.num_layers):
-            param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
-            if self.struct_param[k][1] not in param_available:
+            if self.struct_param[k][1] not in self.param_available:
                 continue
             layer = getattr(self, "layer_{0}".format(k))
             for source_ele in source:
@@ -830,20 +838,19 @@ class ConvNet(nn.Module):
     def get_weights_bias(self, W_source = "core", b_source = "core"):
         W_list = []
         b_list = []
-        param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d"]
         for k in range(self.num_layers):
-            if self.struct_param[k][1] in param_available:
-                layer = getattr(self, "layer_{0}".format(k))
-                if W_source == "core":
-                    W_list.append(to_np_array(layer.weight))
-                if b_source == "core":
-                    b_list.append(to_np_array(layer.bias))
-            elif self.struct_param[k][1] == "Simple_Layer":
+            if self.struct_param[k][1] == "Simple_Layer":
                 layer = getattr(self, "layer_{0}".format(k))
                 if W_source == "core":
                     W_list.append(to_np_array(layer.W_core))
                 if b_source == "core":
                     b_list.append(to_np_array(layer.b_core))
+            elif self.struct_param[k][1] in self.param_available:
+                layer = getattr(self, "layer_{0}".format(k))
+                if W_source == "core":
+                    W_list.append(to_np_array(layer.weight))
+                if b_source == "core":
+                    b_list.append(to_np_array(layer.bias))
             else:
                 if W_source == "core":
                     W_list.append(None)
@@ -859,6 +866,7 @@ class ConvNet(nn.Module):
         model_dict["struct_param"] = self.struct_param
         model_dict["settings"] = self.settings
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
+        model_dict["return_indices"] = self.return_indices
         return model_dict
     
 
@@ -871,4 +879,12 @@ class ConvNet(nn.Module):
         pred_prob, _ = self(X)
         pred = pred_prob.max(1)[1]
         self.info_dict["accuracy"] = get_accuracy(pred, y)
+
+
+class Flatten(nn.Module):
+    def __init__(self):
+        super(Flatten, self).__init__()
+
+    def forward(self, x):
+        return x.view(x.size(0), -1)
 
