@@ -399,7 +399,8 @@ def make_dir(filename):
                 print(exc)
             raise
 
-            
+
+        
 def get_accuracy(pred, target):
     """Get accuracy from prediction and target"""
     assert len(pred.shape) == len(target.shape) == 1
@@ -463,3 +464,104 @@ def get_args(arg, arg_id = 1, type = "str"):
 #             raise
             arg_return = arg
     return arg_return
+
+
+class Loss_with_uncertainty(nn.Module):
+    def __init__(self, core = "mse", epsilon = 1e-6):
+        super(Loss_with_uncertainty, self).__init__()
+        self.name = "Loss_with_uncertainty"
+        self.core = core
+        self.epsilon = epsilon
+    
+    def forward(self, pred, target, log_std = None, std = None, sample_weights = None, is_mean = True):
+        if self.core == "mse":
+            loss_core = get_criterion(self.core, reduce = False)(pred, target) / 2
+        elif self.core == "mae":
+            loss_core = get_criterion(self.core, reduce = False)(pred, target)
+        elif self.core == "huber":
+            loss_core = get_criterion(self.core, reduce = False)(pred, target)
+        elif self.core == "mlse":
+            loss_core = torch.log((target - pred) ** 2 + 1e-10)
+        elif self.core == "mse+mlse":
+            loss_core = (target - pred) ** 2 / 2 + torch.log((target - pred) ** 2 + 1e-10)
+        else:
+            raise Exception("loss's core {0} not recognized!".format(self.core))
+        if std is not None:
+            assert log_std is None
+            loss = loss_core / (self.epsilon + std ** 2) + torch.log(std + 1e-7)
+        else:
+            loss = loss_core / (self.epsilon + torch.exp(2 * log_std)) + log_std
+        if sample_weights is not None:
+            sample_weights = sample_weights.view(loss.size())
+            loss = loss * sample_weights
+        if is_mean:
+            loss = loss.mean()
+        return loss
+
+
+def expand_tensor(tensor, dim, times):
+    """Repeat the value of a tensor locally along the given dimension"""
+    if isinstance(times, int) and times == 1:
+        return tensor
+    if dim < 0:
+        dim += len(tensor.size())
+    assert dim >= 0
+    size = list(tensor.size())
+    repeat_times = [1] * (len(size) + 1)
+    repeat_times[dim + 1] = times
+    size[dim] = size[dim] * times
+    return tensor.unsqueeze(dim + 1).repeat(repeat_times).view(*size)
+
+
+def shrink_boolean_tensor(tensor, dim, shrink_ratio, mode = "any"):
+    assert tensor.dtype == "bool"
+    shape = tuple(tensor.shape)
+    if dim < 0:
+        dim += len(tensor.shape)
+    assert shape[dim] % shrink_ratio == 0
+    new_dim = int(shape[dim] / shrink_ratio)
+    new_shape = shape[:dim] + (new_dim, shrink_ratio) + shape[dim+1:]
+    new_tensor = np.reshape(tensor, new_shape)
+    if mode == "any":
+        return new_tensor.any(dim + 1)
+    elif mode == "all":
+        return new_tensor.all(dim + 1)
+
+
+def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
+    from copy import deepcopy
+    assert dim != 0
+    device = torch.device("cuda" if X.is_cuda else "cpu")
+    if isinstance(idx, tuple) or isinstance(idx, list):
+        k, ll = idx
+        X_permute = X[:, k, ll * group_sizes: (ll + 1) * group_sizes]
+        num = X_permute.size(0)
+        if mode == "permute":
+            new_idx = torch.randperm(num).to(device)
+        elif mode == "resample":
+            new_idx = torch.randint(num, size = (num,)).long().to(device)
+        else:
+            raise
+        X_permute = X_permute.index_select(0, new_idx)
+        X_new = deepcopy(X)
+        X_new[:, k, ll * group_sizes: (ll + 1) * group_sizes] = X_permute
+    else:
+        X_permute = X.index_select(dim, torch.arange(idx * group_sizes, (idx + 1) * group_sizes).long().to(device))
+        num = X_permute.size(0)
+        if mode == "permute":
+            new_idx = torch.randperm(num).to(device)
+        elif mode == "resample":
+            new_idx = torch.randint(num, size = (num,)).long().to(device)
+        else:
+            raise
+        X_permute = X_permute.index_select(0, new_idx)
+        X_new = deepcopy(X)
+        if dim == 1:
+            X_new[:,idx*group_sizes: (idx+1)*group_sizes] = X_permute
+        elif dim == 2:
+            X_new[:,:,idx*group_sizes: (idx+1)*group_sizes] = X_permute
+        elif dim == 3:
+            X_new[:,:,:,idx*group_sizes: (idx+1)*group_sizes] = X_permute
+        else:
+            raise
+    return X_new

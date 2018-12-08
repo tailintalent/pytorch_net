@@ -18,10 +18,29 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, get_accuracy, flatten
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable
 
 
 # In[ ]:
+
+
+def get_accuracy(pred, target):
+    """Get accuracy from prediction and target"""
+    assert len(pred.shape) == len(target.shape) == 1
+    assert len(pred) == len(target)
+    pred, target = to_np_array(pred, target)
+    accuracy = ((pred == target).sum().astype(float) / len(pred))
+    return accuracy
+
+
+def flatten(*tensors):
+    """Flatten the tensor except the first dimension"""
+    new_tensors = []
+    for tensor in tensors:
+        new_tensors.append(tensor.view(tensor.size(0), -1))
+    if len(new_tensors) == 1:
+        new_tensors = new_tensors[0]
+    return new_tensors
 
 
 def train(model, X = None, y = None, train_loader = None, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
@@ -205,6 +224,50 @@ def load_model_dict_net(model_dict, is_cuda = False):
                       )
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
+        
+
+def load_model_dict(model_dict, is_cuda = False):
+    net_type = model_dict["type"]
+    if net_type == "MLP":
+        return MLP(input_size = model_dict["input_size"],
+                   struct_param = model_dict["struct_param"],
+                   W_init_list = model_dict["weights"],
+                   b_init_list = model_dict["bias"],
+                   settings = model_dict["settings"],
+                   is_cuda = is_cuda,
+                  )
+    elif net_type == "Model_Ensemble":
+        if model_dict["model_type"] == "MLP":
+            model_ensemble = Model_Ensemble(
+                num_models = model_dict["num_models"],
+                input_size = model_dict["input_size"],
+                model_type = model_dict["model_type"],
+                output_size = model_dict["output_size"],
+                is_cuda = is_cuda,
+                # Here we just create some placeholder network. The model will be overwritten in the next steps:
+                struct_param = [[1, "Simple_Layer", {}]],
+            )
+        elif model_dict["model_type"] == "LSTM":
+            model_ensemble = Model_Ensemble(
+                num_models = model_dict["num_models"],
+                input_size = model_dict["input_size"],
+                model_type = model_dict["model_type"],
+                output_size = model_dict["output_size"],
+                is_cuda = is_cuda,
+                # Here we just create some placeholder network. The model will be overwritten in the next steps:
+                hidden_size = 3,
+                output_struct_param = [[1, "Simple_Layer", {}]],
+            )
+        else:
+            raise
+        for k in range(model_ensemble.num_models):
+            setattr(model_ensemble, "model_{0}".format(k), load_model_dict(model_dict["model_{0}".format(k)], is_cuda = is_cuda))
+        return model_ensemble
+    elif net_type == "Model_with_Uncertainty":
+        return Model_with_Uncertainty(model_pred = load_model_dict(model_dict["model_pred"], is_cuda = is_cuda),
+                                      model_logstd = load_model_dict(model_dict["model_logstd"], is_cuda = is_cuda))
+    else:
+        raise Exception("net_type {0} not recognized!".format(net_type))
 
 
 # ## Model_Ensemble:
@@ -303,6 +366,39 @@ class Model_Ensemble(nn.Module):
 
     def prepare_inspection(self, X, y):
         pass
+    
+
+class Model_with_uncertainty(nn.Module):
+    def __init__(
+        self,
+        model_pred,
+        model_logstd,
+        ):
+        super(Model_with_uncertainty, self).__init__()
+        self.model_pred = model_pred
+        self.model_logstd = model_logstd
+        
+    def forward(self, input, noise_amp = None, **kwargs):
+        return self.model_pred(input, noise_amp = noise_amp, **kwargs), self.model_logstd(input, **kwargs)
+    
+    def get_loss(self, input, target, criterion, noise_amp = None, **kwargs):
+        pred, log_std = self(input, noise_amp = noise_amp, **kwargs)
+        return criterion(pred = pred, target = target, log_std = log_std)
+    
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        return self.model_pred.get_regularization(source = source, mode = mode, **kwargs) +                 self.model_logstd.get_regularization(source = source, mode = mode, **kwargs)
+    
+    @property
+    def model_dict(self):
+        model_dict = {}
+        model_dict["type"] = "Model_with_Uncertainty"
+        model_dict["model_pred"] = self.model_pred.model_dict
+        model_dict["model_logstd"] = self.model_logstd.model_dict
+        return model_dict
+
+    def set_cuda(self, is_cuda):
+        self.model_pred.set_cuda(is_cuda)
+        self.model_logstd.set_cuda(is_cuda)
 
 
 def load_model_dict_MLP(model_dict, is_cuda = False):
