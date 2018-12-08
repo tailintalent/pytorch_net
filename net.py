@@ -184,7 +184,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
 
 def load_model_dict_net(model_dict, is_cuda = False):
     net_type = model_dict["type"]
-    if net_type == "Net":
+    if net_type == "MLP":
         return MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
                    W_init_list = model_dict["weights"],
@@ -801,7 +801,9 @@ class ConvNet(nn.Module):
 
 
     def get_loss(self, input, target, criterion, **kwargs):
-        y_pred, _ = self(input, **kwargs)
+        y_pred = self(input, **kwargs)
+        if self.return_indices:
+            y_pred = y_pred[0]
         return criterion(y_pred, target)
 
 
@@ -876,7 +878,9 @@ class ConvNet(nn.Module):
 
 
     def prepare_inspection(self, X, y):
-        pred_prob, _ = self(X)
+        pred_prob = self(X)
+        if self.return_indices:
+            pred_prob = pred_prob[0]
         pred = pred_prob.max(1)[1]
         self.info_dict["accuracy"] = get_accuracy(pred, y)
 
