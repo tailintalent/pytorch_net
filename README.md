@@ -4,5 +4,5 @@ This repository provides classes for efficient construction of neural networks w
 
 
 ## Requirements:
-- [PyTorch >= 0.4.1](https://pytorch.org/)
+- [PyTorch](https://pytorch.org/) >= 0.4.1
 - scikit-learn
