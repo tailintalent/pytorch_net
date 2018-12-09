@@ -127,8 +127,10 @@ def to_np_array(*arrays):
     return array_list
 
 
-def to_Variable(*arrays, is_cuda = False, requires_grad = False):
+def to_Variable(*arrays, **kwargs):
     """Transform numpy arrays into torch tensors/Variables"""
+    is_cuda = kwargs["is_cuda"] if "is_cuda" in kwargs else False
+    requires_grad = kwargs["requires_grad"] if "requires_grad" in kwargs else False
     array_list = []
     for array in arrays:
         if isinstance(array, list):
