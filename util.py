@@ -133,10 +133,10 @@ def to_Variable(*arrays, **kwargs):
     requires_grad = kwargs["requires_grad"] if "requires_grad" in kwargs else False
     array_list = []
     for array in arrays:
-        if isinstance(array, list):
-            array = np.array(array)
-        if isinstance(array, np.ndarray):
-            array = torch.Tensor(array)
+        if isinstance(array, int):
+            array = [array]
+        if isinstance(array, np.ndarray) or isinstance(array, list):
+            array = torch.tensor(array)
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
             array = Variable(array, requires_grad = requires_grad)
         if is_cuda:
