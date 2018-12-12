@@ -345,10 +345,27 @@ def flatten(*tensors):
     """Flatten the tensor except the first dimension"""
     new_tensors = []
     for tensor in tensors:
-        new_tensors.append(tensor.view(tensor.size(0), -1))
+        if isinstance(tensor, torch.Tensor):
+            new_tensor = tensor.contiguous().view(tensor.shape[0], -1)
+        elif isinstance(tensor, np.ndarray):
+            new_tensor = tensor.reshape(tensor.shape[0], -1)
+        else:
+            print(new_tensor)
+            raise Exception("tensors must be either torch.Tensor or np.ndarray!")
+        new_tensors.append(new_tensor)
     if len(new_tensors) == 1:
         new_tensors = new_tensors[0]
     return new_tensors
+
+
+def expand_indices(vector, expand_size):
+    """Expand each element ele in the vector to range(ele * expand_size, (ele + 1) * expand_size)"""
+    assert isinstance(vector, torch.Tensor)
+    vector *= expand_size
+    vector_expand = [vector + i for i in range(expand_size)]
+    vector_expand = torch.stack(vector_expand, 0)
+    vector_expand = vector_expand.transpose(0, 1).contiguous().view(-1)
+    return vector_expand
 
 
 def to_one_hot(idx, num):
