@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[ ]:
@@ -7,6 +7,7 @@
 from __future__ import print_function
 import numpy as np
 from copy import deepcopy
+import pickle
 from collections import OrderedDict
 import itertools
 import torch
@@ -65,6 +66,8 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
+    filename = kwargs["filename"] if "filename" in kwargs else None
+    save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
     data_record = {key: [] for key in record_keys}
     if patience is not None:
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
@@ -189,6 +192,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     if "param_grad" in record_keys:
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
                     print()
+        if filename is not None and save_interval is not None:
+            if i % save_interval == 0:
+                pickle.dump(model.model_dict, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
         if to_stop:
             break
 
