@@ -59,7 +59,6 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
     optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
-    early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
     patience = kwargs["patience"] if "patience" in kwargs else 20
     record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
@@ -70,7 +69,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
     data_record = {key: [] for key in record_keys}
     if patience is not None:
-        early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
+        early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
+        early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
+        early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon, mode = "max" if early_stopping_monitor in ["accuracy"] else "min")
     
     if validation_data is not None:
         X_valid, y_valid = validation_data
@@ -92,7 +93,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             model.prepare_inspection(X_valid, y_valid)
         if hasattr(model, "info_dict"):
             for item in inspect_items:
-                if item in model.info_dict:
+                if item in model.info_dict and item != "loss":
                     print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
                     if item in record_keys:
                         record_data(data_record, [to_np_array(model.info_dict[item])], [item])
@@ -172,7 +173,11 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 else:
                     scheduler.step()
             if patience is not None:
-                to_stop = early_stopping.monitor(loss_value)
+                if early_stopping_monitor == "loss":
+                    to_stop = early_stopping.monitor(loss_value)
+                else:
+                    model.prepare_inspection(X_valid, y_valid)
+                    to_stop = early_stopping.monitor(model.info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
@@ -183,7 +188,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         for item in inspect_items:
                             if item in model.info_dict:
                                 print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-                                if item in record_keys:
+                                if item in record_keys and item != "loss":
                                     record_data(data_record, [to_np_array(model.info_dict[item])], [item])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])

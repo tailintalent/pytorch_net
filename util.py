@@ -318,7 +318,7 @@ class Early_Stopping(object):
     def __init__(self, patience = 100, epsilon = 0, mode = "min"):
         self.patience = patience
         self.epsilon = epsilon
-        self.mode = "min"
+        self.mode = mode
         self.best_value = None
         self.wait = 0
         
