@@ -87,15 +87,15 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     if "param_grad" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
     if inspect_items is not None:
-        print("{0}: loss {1:.{2}f}".format(-1, loss_original, inspect_loss_precision), end = "")
+        print("{0}:".format(-1), end = "")
         print("\tlr: {0}".format(lr), end = "")
         if hasattr(model, "prepare_inspection"):
             model.prepare_inspection(X_valid, y_valid)
         if hasattr(model, "info_dict"):
             for item in inspect_items:
-                if item in model.info_dict and item != "loss":
+                if item in model.info_dict:
                     print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
-                    if item in record_keys:
+                    if item in record_keys and item != "loss":
                         record_data(data_record, [to_np_array(model.info_dict[item])], [item])
         print()
 
@@ -180,7 +180,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     to_stop = early_stopping.monitor(model.info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
-                    print("{0}: loss {1:.{2}f}".format(i, loss_value, inspect_loss_precision), end = "")
+                    print("{0}:".format(i), end = "")
                     print("\tlr: {0:.3e}".format(optimizer.param_groups[0]["lr"]), end = "")
                     if hasattr(model, "prepare_inspection"):
                         model.prepare_inspection(X_valid, y_valid)
@@ -206,11 +206,22 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     loss_value = model.get_loss(X_valid, y_valid, criterion = criterion).item()
     if isplot:
         import matplotlib.pylab as plt
-        plt.figure(figsize = (8,6))
-        plt.semilogy(data_record["iter"], data_record["loss"])
-        plt.xlabel("epoch")
-        plt.ylabel("loss")
-        plt.show()
+        for key in data_record:
+            if key != "iter":
+                if key in ["accuracy"]:
+                    plt.figure(figsize = (8,6))
+                    plt.plot(data_record["iter"], data_record[key])
+                    plt.xlabel("epoch")
+                    plt.ylabel(key)
+                    plt.title(key)
+                    plt.show()
+                else:
+                    plt.figure(figsize = (8,6))
+                    plt.semilogy(data_record["iter"], data_record[key])
+                    plt.xlabel("epoch")
+                    plt.ylabel(key)
+                    plt.title(key)
+                    plt.show()
     return loss_original, loss_value, data_record
 
 
