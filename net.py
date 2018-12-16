@@ -373,6 +373,17 @@ class Model_Ensemble(nn.Module):
     def prepare_inspection(self, X, y):
         pass
     
+    
+    def set_cuda(self, is_cuda):
+        for k in range(self.num_models):
+            getattr(self, "model_{0}".format(k)).set_cuda(is_cuda)
+        self.is_cuda = is_cuda
+    
+    
+    def set_trainable(self, is_trainable):
+        for i in range(self.num_models):
+            getattr(self, "model_{0}".format(i)).set_trainable(is_trainable)
+    
 
 class Model_with_uncertainty(nn.Module):
     def __init__(
@@ -405,6 +416,10 @@ class Model_with_uncertainty(nn.Module):
     def set_cuda(self, is_cuda):
         self.model_pred.set_cuda(is_cuda)
         self.model_logstd.set_cuda(is_cuda)
+        
+    def set_trainable(self, is_trainable):
+        self.model_pred.set_trainable(is_trainable)
+        self.model_logstd.set_trainable(is_trainable)
 
 
 def load_model_dict_MLP(model_dict, is_cuda = False):
@@ -620,9 +635,21 @@ class MLP(nn.Module):
     def get_loss(self, input, target, criterion, **kwargs):
         y_pred = self(input)
         return criterion(y_pred, target)
-    
+
+
     def prepare_inspection(self, X, y):
         pass
+
+
+    def set_cuda(self, is_cuda):
+        for k in range(self.num_layers):
+            getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
+        self.is_cuda = is_cuda
+
+
+    def set_trainable(self, is_trainable):
+        for k in range(self.num_layers):
+            getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
 
 
 # ## RNN:
@@ -987,6 +1014,28 @@ class ConvNet(nn.Module):
             pred_prob = pred_prob[0]
         pred = pred_prob.max(1)[1]
         self.info_dict["accuracy"] = get_accuracy(pred, y)
+    
+    
+    def set_cuda(self, is_cuda):
+        for k in range(self.num_layers):
+            if self.struct_param[k][1] == "Simple_Layer":
+                getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
+            elif self.struct_param[k][1] in self.param_available:
+                if is_cuda is True:
+                    getattr(self, "layer_{0}".format(k)).cuda()
+                else:
+                    getattr(self, "layer_{0}".format(k)).cpu()
+        self.is_cuda = is_cuda
+
+
+    def set_trainable(self, is_trainable):
+        for k in range(self.num_layers):
+            layer = getattr(self, "layer_{0}".format(k))
+            if self.struct_param[k][1] == "Simple_Layer":
+                layer.set_trainable(is_trainable)
+            elif self.struct_param[k][1] in self.param_available:
+                for param in layer.parameters():
+                    param.requires_grad = is_trainable
 
 
 class Flatten(nn.Module):

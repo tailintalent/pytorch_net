@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -235,4 +235,21 @@ class Simple_Layer(nn.Module):
                 else:
                     raise Exception("mode '{0}' not recognized!".format(mode))
         return reg
+
+
+    def set_cuda(self, is_cuda):
+        if is_cuda:
+            self.cuda()
+        else:
+            self.cpu()
+        self.is_cuda = is_cuda
+
+
+    def set_trainable(self, is_trainable):
+        if is_trainable:
+            self.W_core.requires_grad = True
+            self.b_core.requires_grad = True
+        else:
+            self.W_core.requires_grad = False
+            self.b_core.requires_grad = False
 
