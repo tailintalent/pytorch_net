@@ -88,7 +88,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
-        print("\tlr: {0}".format(lr), end = "")
+        print("\tlr: {0}\t loss:{1:.{2}f}".format(lr, loss_original, inspect_loss_precision), end = "")
         if hasattr(model, "prepare_inspection"):
             model.prepare_inspection(X_valid, y_valid)
         if hasattr(model, "info_dict"):
@@ -181,7 +181,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}:".format(i), end = "")
-                    print("\tlr: {0:.3e}".format(optimizer.param_groups[0]["lr"]), end = "")
+                    print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
                     if hasattr(model, "prepare_inspection"):
                         model.prepare_inspection(X_valid, y_valid)
                     if hasattr(model, "info_dict"):
