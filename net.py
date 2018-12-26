@@ -244,6 +244,17 @@ def load_model_dict_net(model_dict, is_cuda = False):
                        return_indices = model_dict["return_indices"],
                        is_cuda = is_cuda,
                       )
+    elif net_type == "Conv_Autoencoder":
+        model = Conv_Autoencoder(input_channels_encoder = model_dict["input_channels_encoder"],
+                                 input_channels_decoder = model_dict["input_channels_decoder"],
+                                 struct_param_encoder = model_dict["struct_param_encoder"],
+                                 struct_param_decoder = model_dict["struct_param_decoder"],
+                                 settings = model_dict["settings"],
+                                 is_cuda = is_cuda,
+                                )
+        model.encoder.load_model_dict(model_dict["encoder"])
+        model.decoder.load_model_dict(model_dict["decoder"])
+        return model
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
         
@@ -1052,6 +1063,62 @@ class ConvNet(nn.Module):
             elif self.struct_param[k][1] in self.param_available:
                 for param in layer.parameters():
                     param.requires_grad = is_trainable
+
+
+class Conv_Autoencoder(nn.Module):
+    def __init__(
+        self,
+        input_channels_encoder,
+        input_channels_decoder,
+        struct_param_encoder,
+        struct_param_decoder,
+        latent_size = (1,2),
+        settings = {},
+        is_cuda = False,
+        ):
+        super(Conv_Autoencoder, self).__init__()
+        self.input_channels_encoder = input_channels_encoder
+        self.input_channels_decoder = input_channels_decoder
+        self.struct_param_encoder = struct_param_encoder
+        self.struct_param_decoder = struct_param_decoder
+        self.settings = settings
+        self.encoder = ConvNet(input_channels = input_channels_encoder, struct_param = struct_param_encoder, settings = settings, is_cuda = is_cuda)
+        self.decoder = ConvNet(input_channels = input_channels_decoder, struct_param = struct_param_decoder, settings = settings, is_cuda = is_cuda)
+        self.is_cuda = is_cuda
+    
+    def encode(self, input):
+        return self.encoder(input)
+    
+    def decode(self, latent):
+        return self.decoder(latent)
+    
+    def set_trainable(self, is_trainable):
+        self.encoder.set_trainable(is_trainable)
+        self.decoder.set_trainable(is_trainable)
+    
+    def forward(self, input):
+        return self.decode(self.encode(input))
+    
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        return self.encoder.get_regularization(source = source, mode = mode) +                self.decoder.get_regularization(source = source, mode = mode)
+    
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Conv_Autoencoder"}
+        model_dict["net_type"] = "Conv_Autoencoder"
+        model_dict["input_channels_encoder"] = self.input_channels_encoder
+        model_dict["input_channels_decoder"] = self.input_channels_decoder
+        model_dict["struct_param_encoder"] = self.struct_param_encoder
+        model_dict["struct_param_decoder"] = self.struct_param_decoder
+        model_dict["settings"] = self.settings
+        model_dict["encoder"] = self.encoder.model_dict
+        model_dict["decoder"] = self.decoder.model_dict
+        return model_dict
+    
+    def load_model_dict(self, model_dict):
+        model = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(model.__dict__)
+
 
 
 class Flatten(nn.Module):
