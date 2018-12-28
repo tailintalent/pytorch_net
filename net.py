@@ -1081,6 +1081,7 @@ class Conv_Autoencoder(nn.Module):
         struct_param_encoder,
         struct_param_decoder,
         latent_size = (1,2),
+        share_model_among_steps = False,
         settings = {},
         is_cuda = False,
         ):
@@ -1089,16 +1090,33 @@ class Conv_Autoencoder(nn.Module):
         self.input_channels_decoder = input_channels_decoder
         self.struct_param_encoder = struct_param_encoder
         self.struct_param_decoder = struct_param_decoder
+        self.share_model_among_steps = share_model_among_steps
         self.settings = settings
         self.encoder = ConvNet(input_channels = input_channels_encoder, struct_param = struct_param_encoder, settings = settings, is_cuda = is_cuda)
         self.decoder = ConvNet(input_channels = input_channels_decoder, struct_param = struct_param_decoder, settings = settings, is_cuda = is_cuda)
         self.is_cuda = is_cuda
     
     def encode(self, input):
-        return self.encoder(input)
+        if self.share_model_among_steps:
+            latent = []
+            for i in range(input.shape[1]):
+                latent_step = self.encoder(input[:, i:i+1])
+                latent.append(latent_step)
+            return torch.cat(latent, 1)
+        else:
+            return self.encoder(input)
     
     def decode(self, latent):
-        return self.decoder(latent)
+        if self.share_model_among_steps:
+            latent_size = self.struct_param_encoder[-1][0]
+            latent = latent.view(latent.size(0), -1, latent_size)
+            output = []
+            for i in range(latent.shape[1]):
+                output_step = self.decoder(latent[:, i].contiguous())
+                output.append(output_step)
+            return torch.cat(output, 1)
+        else:
+            return self.decoder(latent)
     
     def set_trainable(self, is_trainable):
         self.encoder.set_trainable(is_trainable)
@@ -1106,6 +1124,9 @@ class Conv_Autoencoder(nn.Module):
     
     def forward(self, input):
         return self.decode(self.encode(input))
+    
+    def get_loss(self, input, target, criterion, **kwargs):
+        return criterion(self(input), target)
     
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
         return self.encoder.get_regularization(source = source, mode = mode) +                self.decoder.get_regularization(source = source, mode = mode)
@@ -1118,6 +1139,7 @@ class Conv_Autoencoder(nn.Module):
         model_dict["input_channels_decoder"] = self.input_channels_decoder
         model_dict["struct_param_encoder"] = self.struct_param_encoder
         model_dict["struct_param_decoder"] = self.struct_param_decoder
+        model_dict["share_model_among_steps"] = self.share_model_among_steps
         model_dict["settings"] = self.settings
         model_dict["encoder"] = self.encoder.model_dict
         model_dict["decoder"] = self.decoder.model_dict
