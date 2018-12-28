@@ -108,8 +108,7 @@ def record_data(data_record_dict, data_list, key_list, nolist = False):
                 data_record_dict[key].append(data)
 
 
-def to_np_array(*arrays):
-    """Transform torch tensors/Variables into numpy arrays"""
+def to_np_array(*arrays, **kwargs):
     array_list = []
     for array in arrays:
         if isinstance(array, Variable):
@@ -121,6 +120,13 @@ def to_np_array(*arrays):
             if array.is_cuda:
                 array = array.cpu()
             array = array.numpy()
+        if array.shape == (1,):
+            if "full_reduce" in kwargs and kwargs["full_reduce"] is False:
+                pass
+            else:
+                array = array[0]
+        elif array.shape == ():
+            array = array.tolist()
         array_list.append(array)
     if len(array_list) == 1:
         array_list = array_list[0]
