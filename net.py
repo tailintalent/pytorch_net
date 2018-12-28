@@ -860,6 +860,8 @@ class ConvNet(nn.Module):
             num_channels = self.struct_param[i][0]
             layer_type = self.struct_param[i][1]
             layer_settings = self.struct_param[i][2]
+            if "layer_input_size" in layer_settings and isinstance(layer_settings["layer_input_size"], tuple):
+                num_channels_prev = layer_settings["layer_input_size"][0]
             if layer_type == "Conv2d":
                 layer = nn.Conv2d(num_channels_prev, 
                                   num_channels,
@@ -878,13 +880,13 @@ class ConvNet(nn.Module):
                                           )
             elif layer_type == "Simple_Layer":
                 layer = get_Layer(layer_type = layer_type,
-                              input_size = layer_settings["layer_input_size"],
-                              output_size = num_channels,
-                              W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
-                              b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
-                              settings = layer_settings,
-                              is_cuda = self.is_cuda,
-                             )
+                                  input_size = layer_settings["layer_input_size"],
+                                  output_size = num_channels,
+                                  W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
+                                  b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
+                                  settings = layer_settings,
+                                  is_cuda = self.is_cuda,
+                                 )
             elif layer_type == "MaxPool2d":
                 layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
                                      stride = layer_settings["stride"] if "stride" in layer_settings else None,
@@ -931,10 +933,15 @@ class ConvNet(nn.Module):
         if end_layer < 0:
             end_layer += self.num_layers
         for i in range(start_layer, end_layer):
+            if "layer_input_size" in self.struct_param[i][2]:
+                output_size_last = output.shape[0]
+                layer_input_size = self.struct_param[i][2]["layer_input_size"]
+                if not isinstance(layer_input_size, tuple):
+                    layer_input_size = (layer_input_size,)
+                output = output.view(-1, *layer_input_size)
+                assert output.shape[0] == output_size_last, "output_size reshaped to different length. Check shape!"
             if "Unpool" in self.struct_param[i][1]:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output, indices_list.pop(-1))
-            elif self.struct_param[i][1] == "Simple_Layer":
-                output_tentative = getattr(self, "layer_{0}".format(i))(flatten(output))
             else:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output)
             if isinstance(output_tentative, tuple):
@@ -1022,6 +1029,7 @@ class ConvNet(nn.Module):
     @property
     def model_dict(self):
         model_dict = {"type": "ConvNet"}
+        model_dict["net_type"] = "ConvNet"
         model_dict["input_channels"] = self.input_channels
         model_dict["struct_param"] = self.struct_param
         model_dict["settings"] = self.settings
