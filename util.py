@@ -590,3 +590,16 @@ def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
         else:
             raise
     return X_new
+
+
+def sort_two_lists(list1, list2, reverse = False):
+    """Sort two lists according to the first list."""
+    from operator import itemgetter
+    if reverse:
+        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=itemgetter(0), reverse=True))])
+    else:
+        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=itemgetter(0)))])
+    if len(List) == 0:
+        return [], []
+    else:
+        return List[0], List[1]
