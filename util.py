@@ -120,7 +120,9 @@ def to_np_array(*arrays, **kwargs):
             if array.is_cuda:
                 array = array.cpu()
             array = array.numpy()
-        if array.shape == (1,):
+        if isinstance(array, int) or isinstance(array, float):
+            pass
+        elif array.shape == (1,):
             if "full_reduce" in kwargs and kwargs["full_reduce"] is False:
                 pass
             else:
