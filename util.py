@@ -594,6 +594,31 @@ def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
     return X_new
 
 
+def fill_triangular(vec, dim, mode = "lower"):
+    """Fill an lower or upper triangular matrices with given vectors"""
+    num_examples, size = vec.shape
+    assert size == dim * (dim + 1) // 2
+    matrix = torch.zeros(num_examples, dim, dim)
+    idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
+    idx = idx.repeat(num_examples,1,1)
+    if mode == "lower":
+        matrix[idx] = vec.contiguous().view(-1)
+    elif mode == "upper":
+        matrix[idx] = vec.contiguous().view(-1)
+    else:
+        raise Exception("mode {0} not recognized!".format(mode))
+    return matrix
+
+
+def matrix_diag_transform(matrix, fun):
+    """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
+    num_examples = len(matrix)
+    idx = torch.eye(matrix.size(-1)).byte().unsqueeze(0)
+    idx = idx.repeat(num_examples, 1, 1)
+    matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
+    return matrix
+
+
 def sort_two_lists(list1, list2, reverse = False):
     """Sort two lists according to the first list."""
     from operator import itemgetter
