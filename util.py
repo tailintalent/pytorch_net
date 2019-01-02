@@ -599,6 +599,8 @@ def fill_triangular(vec, dim, mode = "lower"):
     num_examples, size = vec.shape
     assert size == dim * (dim + 1) // 2
     matrix = torch.zeros(num_examples, dim, dim)
+    if vec.is_cuda:
+        matrix = matrix.cuda()
     idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
     idx = idx.repeat(num_examples,1,1)
     if mode == "lower":
@@ -630,3 +632,19 @@ def sort_two_lists(list1, list2, reverse = False):
         return [], []
     else:
         return List[0], List[1]
+    
+
+def to_string(List, connect = "-", num_digits = None, num_strings = None):
+    """Turn a list into a string, with specified format"""
+    if List is None:
+        return None
+    if num_strings is None:
+        if num_digits is None:
+            return connect.join([str(element) for element in List])
+        else:
+            return connect.join(["{0:.{1}f}".format(element, num_digits) for element in List])
+    else:
+        if num_digits is None:
+            return connect.join([str(element)[:num_strings] for element in List])
+        else:
+            return connect.join(["{0:.{1}f}".format(element, num_digits)[:num_strings] for element in List])
