@@ -495,8 +495,12 @@ class MLP(nn.Module):
 
 
     def init_layers(self, struct_param):
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         for k, layer_struct_param in enumerate(struct_param):
-            num_neurons_prev = struct_param[k - 1][0] if k > 0 else self.input_size
+            if res_forward:
+                num_neurons_prev = struct_param[k - 1][0] + self.input_size if k > 0 else self.input_size
+            else:
+                num_neurons_prev = struct_param[k - 1][0] if k > 0 else self.input_size
             num_neurons = layer_struct_param[0]
             W_init = self.W_init_list[k] if self.W_init_list is not None else None
             b_init = self.b_init_list[k] if self.b_init_list is not None else None
@@ -519,8 +523,12 @@ class MLP(nn.Module):
 
     def forward(self, input):
         output = input
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         for k in range(len(self.struct_param)):
-            output = getattr(self, "layer_{0}".format(k))(output)
+            if res_forward and k > 0:
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], 1))
+            else:
+                output = getattr(self, "layer_{0}".format(k))(output)
         return output
 
 
