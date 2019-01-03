@@ -54,7 +54,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         return reg
     if X is None and y is None:
         assert train_loader is not None
-    is_cuda = X.is_cuda if X is not None else torch.cuda.is_available()
+        is_cuda = train_loader.dataset.tensors[0].is_cuda
+    else:
+        is_cuda = X.is_cuda
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
