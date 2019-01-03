@@ -147,6 +147,7 @@ class Simple_Layer(nn.Module):
         output = get_activation(self.activation)(output)
         if hasattr(self, "output_size_original"):
             output = output.view(*((-1,) + self.output_size_original))
+        assert output.size(0) == input.size(0), "output_size {0} must have same length as input_size {1}. Check shape!".format(output.size(0), input.size(0))
         return output
 
 
