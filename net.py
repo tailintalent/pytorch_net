@@ -237,6 +237,14 @@ def load_model_dict_net(model_dict, is_cuda = False):
                    settings = model_dict["settings"],
                    is_cuda = is_cuda,
                   )
+    elif net_type == "Multi_MLP":
+        return Multi_MLP(input_size = model_dict["input_size"],
+                   struct_param = model_dict["struct_param"],
+                   W_init_list = model_dict["weights"],
+                   b_init_list = model_dict["bias"],
+                   settings = model_dict["settings"],
+                   is_cuda = is_cuda,
+                  )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
@@ -263,14 +271,8 @@ def load_model_dict_net(model_dict, is_cuda = False):
 
 def load_model_dict(model_dict, is_cuda = False):
     net_type = model_dict["type"]
-    if net_type == "MLP":
-        return MLP(input_size = model_dict["input_size"],
-                   struct_param = model_dict["struct_param"],
-                   W_init_list = model_dict["weights"],
-                   b_init_list = model_dict["bias"],
-                   settings = model_dict["settings"],
-                   is_cuda = is_cuda,
-                  )
+    if net_type not in ["Model_Ensemble", "LSTM"]:
+        return load_model_dict_net(model_dict, is_cuda = is_cuda)
     elif net_type == "Model_Ensemble":
         if model_dict["model_type"] == "MLP":
             model_ensemble = Model_Ensemble(
@@ -451,18 +453,105 @@ class Model_with_uncertainty(nn.Module):
         self.model_logstd.set_trainable(is_trainable)
 
 
-def load_model_dict_MLP(model_dict, is_cuda = False):
-    net_type = model_dict["type"]
-    if net_type == "MLP":
-        return MLP(input_size = model_dict["input_size"],
-                   struct_param = model_dict["struct_param"],
-                   W_init_list = model_dict["weights"],
-                   b_init_list = model_dict["bias"],
-                   settings = model_dict["settings"],
-                   is_cuda = is_cuda,
-                  )
-    else:
-        raise Exception("net_type {0} not recognized!".format(net_type))
+# ## Multi_MLP:
+
+# In[ ]:
+
+
+class Multi_MLP(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        struct_param,
+        W_init_list = None,     # initialization for weights
+        b_init_list = None,     # initialization for bias
+        settings = None,          # Default settings for each layer, if the settings for the layer is not provided in struct_param
+        is_cuda = False,
+        ):
+        super(Multi_MLP, self).__init__()
+        self.input_size = input_size
+        self.num_layers = len(struct_param)
+        self.W_init_list = W_init_list
+        self.b_init_list = b_init_list
+        self.settings = deepcopy(settings)
+        self.num_blocks = len(struct_param)
+        self.is_cuda = is_cuda
+        
+        for i, struct_param_ele in enumerate(struct_param):
+            input_size_block = input_size if i == 0 else struct_param[i - 1][-1][0]
+            setattr(self, "block_{0}".format(i), MLP(input_size = input_size_block,
+                                                     struct_param = struct_param_ele,
+                                                     W_init_list = W_init_list[i] if W_init_list is not None else None,
+                                                     b_init_list = b_init_list[i] if b_init_list is not None else None,
+                                                     settings = self.settings[i] if self.settings is not None else {},
+                                                     is_cuda = self.is_cuda,
+                                                    ))
+    
+    def forward(self, input):
+        output = input
+        for i in range(self.num_blocks):
+            output = getattr(self, "block_{0}".format(i))(output)
+        return output
+
+
+    def get_loss(self, input, target, criterion, **kwargs):
+        y_pred = self(input)
+        return criterion(y_pred, target)
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        for i in range(self.num_blocks):
+            reg = reg + getattr(self, "block_{0}".format(i)).get_regularization(mode = mode, source = source)
+        return reg
+
+
+    @property
+    def struct_param(self):
+        return [getattr(self, "block_{0}".format(i)).struct_param for i in range(self.num_blocks)]
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Multi_MLP"}
+        model_dict["input_size"] = self.input_size
+        model_dict["struct_param"] = self.struct_param
+        model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
+        model_dict["settings"] = deepcopy(self.settings)
+        model_dict["net_type"] = "Multi_MLP"
+        return model_dict
+
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict_Multi_MLP(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
+
+
+    def get_weights_bias(self, W_source = "core", b_source = "core"):
+        W_list = []
+        b_list = []
+        for i in range(self.num_blocks):
+            W, b = getattr(self, "block_{0}".format(i)).get_weights_bias(W_source = W_source, b_source = b_source)
+            W_list.append(W)
+            b_list.append(b)
+        return deepcopy(W_list), deepcopy(b_list)
+
+
+    def prepare_inspection(self, X, y):
+        pass
+
+
+    def set_cuda(self, is_cuda):
+        for i in range(self.num_blocks):
+            getattr(self, "block_{0}".format(i)).set_cuda(is_cuda)
+        self.is_cuda = is_cuda
+
+
+    def set_trainable(self, is_trainable):
+        for i in range(self.num_blocks):
+            getattr(self, "block_{0}".format(i)).set_trainable(is_trainable)
 
 
 # ## MLP:
@@ -526,11 +615,14 @@ class MLP(nn.Module):
     def forward(self, input):
         output = input
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
         for k in range(len(self.struct_param)):
             if res_forward and k > 0:
                 output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], 1))
             else:
                 output = getattr(self, "layer_{0}".format(k))(output)
+        if is_res_block:
+            output = output + input
         return output
 
 
@@ -665,7 +757,7 @@ class MLP(nn.Module):
 
 
     def load_model_dict(self, model_dict):
-        new_net = load_model_dict_MLP(model_dict, is_cuda = self.is_cuda)
+        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(new_net.__dict__)
 
 
