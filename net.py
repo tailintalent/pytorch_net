@@ -618,7 +618,7 @@ class MLP(nn.Module):
         is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
         for k in range(len(self.struct_param)):
             if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], 1))
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1))
             else:
                 output = getattr(self, "layer_{0}".format(k))(output)
         if is_res_block:
@@ -693,9 +693,14 @@ class MLP(nn.Module):
 
 
     def inspect_operation(self, input, operation_between):
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         output = input
         for k in range(*operation_between):
             output = getattr(self, "layer_{0}".format(k))(output)
+            if res_forward and k > 0:
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1))
+            else:
+                output = getattr(self, "layer_{0}".format(k))(output)
         return output
 
 
