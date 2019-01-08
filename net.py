@@ -19,7 +19,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir
 
 
 # In[ ]:
@@ -83,6 +83,8 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     filename = kwargs["filename"] if "filename" in kwargs else None
+    if filename is not None:
+        make_dir(filename)
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
     logdir = kwargs["logdir"] if "logdir" in kwargs else None
     data_record = {key: [] for key in record_keys}
@@ -192,7 +194,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     optimizer.step(closure)
                 
                 if logdir is not None:
-                    batch_idx += 1            
+                    batch_idx += 1
                     if hasattr(model, "info_dict"):
                         for item in inspect_items:
                             if item in model.info_dict:
