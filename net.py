@@ -84,16 +84,16 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     filename = kwargs["filename"] if "filename" in kwargs else None
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
-    logger_dir = kwargs["logger_dir"] if "logger_dir" in kwargs else None
+    logdir = kwargs["logdir"] if "logdir" in kwargs else None
     data_record = {key: [] for key in record_keys}
     if patience is not None:
         early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
         early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon, mode = "max" if early_stopping_monitor in ["accuracy"] else "min")
-    if logger_dir is not None:
+    if logdir is not None:
         from pytorch_net.logger import Logger
         batch_idx = 0
-        logger = Logger(logger_dir)
+        logger = Logger(logdir)
     
     if validation_loader is not None:
         assert validation_data is None
@@ -191,7 +191,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         return loss
                     optimizer.step(closure)
                 
-                if logger_dir is not None:
+                if logdir is not None:
                     batch_idx += 1
                     info = {'loss_train': loss.item()}
                     for tag, value in info.items():
