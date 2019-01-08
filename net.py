@@ -232,26 +232,26 @@ def load_model_dict_net(model_dict, is_cuda = False):
     if net_type == "MLP":
         return MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
-                   W_init_list = model_dict["weights"],
-                   b_init_list = model_dict["bias"],
-                   settings = model_dict["settings"],
+                   W_init_list = model_dict["weights"] if "weights" in model_dict else None,
+                   b_init_list = model_dict["bias"] if "bias" in model_dict else None,
+                   settings = model_dict["settings"] if "settings" in model_dict else {},
                    is_cuda = is_cuda,
                   )
     elif net_type == "Multi_MLP":
         return Multi_MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
-                   W_init_list = model_dict["weights"],
-                   b_init_list = model_dict["bias"],
-                   settings = model_dict["settings"],
+                   W_init_list = model_dict["weights"] if "weights" in model_dict else None,
+                   b_init_list = model_dict["bias"] if "bias" in model_dict else None,
+                   settings = model_dict["settings"] if "settings" in model_dict else {},
                    is_cuda = is_cuda,
                   )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
-                       W_init_list = model_dict["weights"],
-                       b_init_list = model_dict["bias"],
-                       settings = model_dict["settings"],
-                       return_indices = model_dict["return_indices"],
+                       W_init_list = model_dict["weights"] if "weights" in model_dict else None,
+                       b_init_list = model_dict["bias"] if "bias" in model_dict else None,
+                       settings = model_dict["settings"] if "settings" in model_dict else {},
+                       return_indices = model_dict["return_indices"] if "return_indices" in model_dict else False,
                        is_cuda = is_cuda,
                       )
     elif net_type == "Conv_Autoencoder":
