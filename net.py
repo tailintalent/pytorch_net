@@ -192,10 +192,11 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     optimizer.step(closure)
                 
                 if logdir is not None:
-                    batch_idx += 1
-                    info = {'loss_train': loss.item()}
-                    for tag, value in info.items():
-                        logger.log_scalar(tag, value, batch_idx)
+                    batch_idx += 1            
+                    if hasattr(model, "info_dict"):
+                        for item in inspect_items:
+                            if item in model.info_dict:
+                                logger.log_scalar(item, model.info_dict[item], batch_idx)
 
                     # 2. Log values and gradients of the parameters (histogram summary)
                     for tag, value in model.named_parameters():
