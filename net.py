@@ -282,8 +282,10 @@ def load_model_dict_net(model_dict, is_cuda = False):
                                  settings = model_dict["settings"],
                                  is_cuda = is_cuda,
                                 )
-        model.encoder.load_model_dict(model_dict["encoder"])
-        model.decoder.load_model_dict(model_dict["decoder"])
+        if "encoder" in model_dict:
+            model.encoder.load_model_dict(model_dict["encoder"])
+        if "decoder" in model_dict:
+            model.decoder.load_model_dict(model_dict["decoder"])
         return model
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
