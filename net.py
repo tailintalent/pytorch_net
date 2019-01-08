@@ -84,11 +84,16 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     filename = kwargs["filename"] if "filename" in kwargs else None
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
+    is_log = kwargs["is_log"] if "is_log" in kwargs else False
     data_record = {key: [] for key in record_keys}
     if patience is not None:
         early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
         early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon, mode = "max" if early_stopping_monitor in ["accuracy"] else "min")
+    if is_log:
+        from pytorch_net.logger import Logger
+        batch_idx = 0
+        logger = Logger('./logs')
     
     if validation_loader is not None:
         assert validation_data is None
@@ -185,6 +190,18 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         loss.backward()
                         return loss
                     optimizer.step(closure)
+                
+                if is_log:
+                    batch_idx += 1
+                    info = {'loss_train': loss.item()}
+                    for tag, value in info.items():
+                        logger.log_scalar(tag, value, batch_idx)
+
+                    # 2. Log values and gradients of the parameters (histogram summary)
+                    for tag, value in model.named_parameters():
+                        tag = tag.replace('.', '/')
+                        logger.log_histogram(tag, to_np_array(value), batch_idx)
+                        logger.log_histogram(tag + '/grad', to_np_array(value.grad), batch_idx)
 
         if i % inspect_interval == 0:
             model.eval()
