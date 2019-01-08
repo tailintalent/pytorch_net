@@ -44,7 +44,22 @@ def flatten(*tensors):
     return new_tensors
 
 
-def train(model, X = None, y = None, train_loader = None, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
+def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
+    """Get loss using the whole data or data_loader"""
+    if data_loader is not None:
+        assert X is None and y is None
+        loss_list = []
+        for X_batch, y_batch in data_loader:
+            loss_ele = model.get_loss(X_batch, y_batch, criterion = criterion)
+            loss_list.append(loss_ele)
+        loss = torch.stack(loss_list).mean()
+    else:
+        assert X is not None and y is not None
+        loss = model.get_loss(X, y, criterion = criterion)
+    return loss
+
+
+def train(model, X = None, y = None, train_loader = None, validation_data = None, validation_loader = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
     """minimal version of training. "model" can be a single model or a ordered list of models"""
     def get_regularization(model, **kwargs):
         reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
@@ -75,15 +90,20 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
         early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon, mode = "max" if early_stopping_monitor in ["accuracy"] else "min")
     
-    if validation_data is not None:
+    if validation_loader is not None:
+        assert validation_data is None
+        X_valid, y_valid = None, None
+    elif validation_data is not None:
         X_valid, y_valid = validation_data
     else:
         X_valid, y_valid = X, y
     
     # Get original loss:
-    loss_original = model.get_loss(X_valid, y_valid, criterion = criterion).item()
+    
+    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
+    
     if "loss" in record_keys:
-        record_data(data_record, [-1, model.get_loss(X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
+        record_data(data_record, [-1, get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
     if "param" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
@@ -106,9 +126,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     num_params = len(list(model.parameters()))
     if num_params == 0:
         print("No parameters to optimize!")
-        loss_value = model.get_loss(X_valid, y_valid, criterion = criterion).item()
+        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
         if "loss" in record_keys:
-            record_data(data_record, [0, model.get_loss(X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
+            record_data(data_record, [0, get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
         if "param" in record_keys:
             record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
         if "param_grad" in record_keys:
@@ -168,7 +188,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
 
         if i % inspect_interval == 0:
             model.eval()
-            loss_value = model.get_loss(X_valid, y_valid, criterion = criterion).item()
+            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
             if scheduler_type is not None:
                 if scheduler_type == "ReduceLROnPlateau":
                     scheduler.step(loss_value)
@@ -205,7 +225,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         if to_stop:
             break
 
-    loss_value = model.get_loss(X_valid, y_valid, criterion = criterion).item()
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:
