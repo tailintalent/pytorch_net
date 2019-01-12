@@ -537,7 +537,7 @@ class Multi_MLP(nn.Module):
 
 
     def get_loss(self, input, target, criterion, **kwargs):
-        y_pred = self(input)
+        y_pred = self(input, **kwargs)
         return criterion(y_pred, target)
 
 
@@ -809,7 +809,7 @@ class MLP(nn.Module):
 
 
     def get_loss(self, input, target, criterion, **kwargs):
-        y_pred = self(input)
+        y_pred = self(input, **kwargs)
         return criterion(y_pred, target)
 
 
