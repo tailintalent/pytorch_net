@@ -617,8 +617,9 @@ def matrix_diag_transform(matrix, fun):
     num_examples = len(matrix)
     idx = torch.eye(matrix.size(-1)).byte().unsqueeze(0)
     idx = idx.repeat(num_examples, 1, 1)
-    matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
-    return matrix
+    new_matrix = matrix.clone()
+    new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
+    return new_matrix
 
 
 def sort_two_lists(list1, list2, reverse = False):

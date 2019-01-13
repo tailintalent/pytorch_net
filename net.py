@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[ ]:
@@ -6,6 +6,7 @@
 
 from __future__ import print_function
 import numpy as np
+import pprint as pp
 from copy import deepcopy
 import pickle
 from collections import OrderedDict
@@ -13,8 +14,10 @@ import itertools
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+from torch.nn import functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -43,6 +46,33 @@ def flatten(*tensors):
         new_tensors = new_tensors[0]
     return new_tensors
 
+
+def fill_triangular(vec, dim, mode = "lower"):
+    """Fill an lower or upper triangular matrices with given vectors"""
+    num_examples, size = vec.shape
+    assert size == dim * (dim + 1) // 2
+    matrix = torch.zeros(num_examples, dim, dim)
+    if vec.is_cuda:
+        matrix = matrix.cuda()
+    idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
+    idx = idx.repeat(num_examples,1,1)
+    if mode == "lower":
+        matrix[idx] = vec.contiguous().view(-1)
+    elif mode == "upper":
+        matrix[idx] = vec.contiguous().view(-1)
+    else:
+        raise Exception("mode {0} not recognized!".format(mode))
+    return matrix
+
+
+def matrix_diag_transform(matrix, fun):
+    """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
+    num_examples = len(matrix)
+    idx = torch.eye(matrix.size(-1)).byte().unsqueeze(0)
+    idx = idx.repeat(num_examples, 1, 1)
+    new_matrix = matrix.clone()
+    new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
+    return new_matrix
 
 def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
     """Get loss using the whole data or data_loader"""
@@ -106,7 +136,6 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         X_valid, y_valid = X, y
     
     # Get original loss:
-    
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
     
     if "loss" in record_keys:
@@ -1306,4 +1335,157 @@ class Flatten(nn.Module):
 
     def forward(self, x):
         return x.view(x.size(0), -1)
+
+
+# ## Probability models:
+# ### Mixture of Gaussian:
+
+# In[ ]:
+
+
+class Mixture_Gaussian(nn.Module):
+    def __init__(
+        self,
+        num_components,
+        dim,
+        is_cuda = False,
+        ):
+        super(Mixture_Gaussian, self).__init__()
+        self.num_components = num_components
+        self.dim = dim
+        self.device = torch.device("cuda" if is_cuda else "cpu")
+        self.info_dict = {}
+        self.is_cuda = is_cuda
+
+
+    def initialize(self, input, num_samples = 100, verbose = False):
+        neg_log_prob_min = np.inf
+        loc_init_min = None
+        scale_init_min = None
+        for i in range(num_samples):
+            neg_log_prob, loc_init_list, scale_init_list = self.initialize_ele(input)
+            if verbose:
+                print("{0}: neg_log_prob: {1:.4f}".format(i, neg_log_prob))
+            if neg_log_prob < neg_log_prob_min:
+                neg_log_prob_min = neg_log_prob
+                loc_init_min = loc_init_list
+                scale_init_min = scale_init_list
+        
+        for i in range(self.num_components):
+            setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_min[i].to(self.device)))
+            setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init_min[i].to(self.device)))
+        print("min neg_log_prob: {0:.6f}".format(to_np_array(neg_log_prob_min)))
+
+
+    def initialize_ele(self, input):
+        # Initialize the scale:
+        size = self.dim * (self.dim + 1) // 2
+        length = len(input)
+        self.weight_logits = nn.Parameter(torch.zeros(self.num_components).to(self.device))
+        loc_init_all = input[torch.multinomial(torch.ones(length) / length, self.num_components)].unsqueeze(0)
+        scale_init_list = []
+        loc_init_list = []
+        for i in range(self.num_components):
+            # Initialize the scale:
+            scale_init = torch.randn(1, size) * input.std() / 5
+            idx_list = []
+            for j in range(self.dim):
+                idx = (j + 1) * (j + 2) // 2 - 1
+                idx_list.append(idx)
+            diagonal = (input.std(0) / np.sqrt(2)) * (1 + torch.randn(self.dim) * 0.1)
+            diagonal = torch.log(torch.exp(diagonal) - 1)
+            scale_init[0, idx_list] = diagonal
+            scale_init_list.append(scale_init)
+            setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init.to(self.device)))
+        
+            # Initialize the loc:
+            setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_all[:, i].to(self.device)))
+            loc_init_list.append(loc_init_all[:, i])
+        neg_log_prob = self.get_loss(input)
+        return neg_log_prob, loc_init_list, scale_init_list
+
+
+    def prob(self, input):
+        if len(input.shape) == 1:
+            input = input.unsqueeze(1)
+        assert len(input.shape) in [0, 2]
+        prob_list = []
+        for i in range(self.num_components):
+            scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
+            scale_tril = matrix_diag_transform(scale_tril, F.softplus)
+            dist = MultivariateNormal(getattr(self, "loc_{0}".format(i)), scale_tril = scale_tril)
+            setattr(self, "component_{0}".format(i), dist)
+            prob = torch.exp(dist.log_prob(input))
+            prob_list.append(prob)
+        prob_list = torch.stack(prob_list, 1)
+        prob = torch.matmul(prob_list, nn.Softmax(dim = 0)(self.weight_logits))
+        return prob
+
+
+    def log_prob(self, input):
+        return torch.log(self.prob(input) + 1e-45)
+
+
+    def get_loss(self, X, y = None, **kwargs):
+        """Optimize negative log-likelihood"""
+        neg_log_prob = - self.log_prob(X).mean()
+        self.info_dict["loss"] = to_np_array(neg_log_prob)
+        return neg_log_prob
+
+
+    def prepare_inspection(X, y, criterion):
+        pass
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Mixture_Gaussian"}
+        model_dict["num_components"] = self.num_components
+        model_dict["dim"] = self.dim
+        model_dict["weight_logits"] = self.weight_logits
+        loc_list = []
+        scale_list = []
+        for i in range(self.num_components):
+            loc_list.append(to_np_array(getattr(self, "loc_{0}".format(i))))
+            scale_list.append(to_np_array(getattr(self, "scale_{0}".format(i))))
+        loc_list = np.stack(loc_list)
+        scale_list = np.concatenate(scale_list)
+        model_dict["loc_list"] = loc_list
+        model_dict["scale_list"] = scale_list
+        return model_dict
+
+
+    def get_param(self):
+        weights = to_np_array(nn.Softmax(dim = 0)(self.weight_logits))
+        loc_list = self.model_dict["loc_list"]
+        scale_list = self.model_dict["scale_list"]
+        print("weights: {0}".format(weights))
+        print("loc:")
+        pp.pprint(loc_list)
+        print("scale:")
+        pp.pprint(scale_list)
+        return weights, loc_list, scale_list
+
+
+    def visualize(self, input):
+        import scipy
+        import matplotlib.pylab as plt
+        std = to_np_array(input.std())
+        X = np.arange(to_np_array(input.min()) - 0.2 * std, to_np_array(input.max()) + 0.2 * std, 0.1)
+        Y_dict = {}
+        weights = nn.Softmax(dim = 0)(self.weight_logits)
+        plt.figure(figsize=(10, 4), dpi=100).set_facecolor('white')
+        for i in range(self.num_components):
+            Y_dict[i] = weights[0].item() * scipy.stats.norm.pdf((X - getattr(self, "loc_{0}".format(i)).item()) / getattr(self, "scale_{0}".format(i)).item())
+            plt.plot(X, Y_dict[i])
+        Y = np.sum([item for item in Y_dict.values()], 0)
+        plt.plot(X, Y, 'k--')
+        plt.plot(input.data.numpy(), np.zeros(len(input)), 'k*')
+        plt.title('Density of {0}-component mixture model'.format(self.num_components))
+        plt.ylabel('probability density');
+
+
+    def get_regularization(self, source = ["weights", "bias"], mode = "L1", **kwargs):
+        reg = to_Variable([0], requires_grad = False).to(self.device)
+        return reg
 
