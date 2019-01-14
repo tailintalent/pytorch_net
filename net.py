@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[ ]:
@@ -1428,7 +1428,7 @@ class Mixture_Gaussian(nn.Module):
 
     def get_loss(self, X, y = None, **kwargs):
         """Optimize negative log-likelihood"""
-        neg_log_prob = - self.log_prob(X).mean()
+        neg_log_prob = - self.log_prob(X).mean() / np.log(2)
         self.info_dict["loss"] = to_np_array(neg_log_prob)
         return neg_log_prob
 
