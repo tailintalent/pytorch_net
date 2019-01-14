@@ -540,19 +540,31 @@ def expand_tensor(tensor, dim, times):
     return tensor.unsqueeze(dim + 1).repeat(repeat_times).view(*size)
 
 
-def shrink_boolean_tensor(tensor, dim, shrink_ratio, mode = "any"):
-    assert tensor.dtype == "bool"
+def shrink_tensor(tensor, dim, shrink_ratio, mode = "any"):
+    """Shrink a tensor along certain dimension using neighboring sites"""
+    is_tensor = isinstance(tensor, torch.Tensor)
     shape = tuple(tensor.shape)
     if dim < 0:
         dim += len(tensor.shape)
     assert shape[dim] % shrink_ratio == 0
     new_dim = int(shape[dim] / shrink_ratio)
     new_shape = shape[:dim] + (new_dim, shrink_ratio) + shape[dim+1:]
-    new_tensor = np.reshape(tensor, new_shape)
+    if is_tensor:
+        new_tensor = tensor.view(*new_shape)
+    else:
+        new_tensor = np.reshape(tensor, new_shape)
     if mode == "any":
+        assert tensor.dtype == "bool" or isinstance(tensor, torch.ByteTensor)
         return new_tensor.any(dim + 1)
     elif mode == "all":
+        assert tensor.dtype == "bool" or isinstance(tensor, torch.ByteTensor)
         return new_tensor.all(dim + 1)
+    elif mode == "sum":
+        return new_tensor.sum(dim + 1)
+    elif mode == "mean":
+        return new_tensor.mean(dim + 1)
+    else:
+        raise
 
 
 def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
