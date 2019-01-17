@@ -1,4 +1,5 @@
 from __future__ import print_function
+import os
 import numpy as np
 from copy import deepcopy
 import random
@@ -661,3 +662,38 @@ def to_string(List, connect = "-", num_digits = None, num_strings = None):
             return connect.join([str(element)[:num_strings] for element in List])
         else:
             return connect.join(["{0:.{1}f}".format(element, num_digits)[:num_strings] for element in List])
+
+        
+def filter_filename(dirname, include = [], exclude = [], array_id = None):
+    """Filter filename in a directory"""
+    def get_array_id(filename):
+        array_id = filename.split("_")[-2]
+        try:
+            array_id = eval(array_id)
+        except:
+            pass
+        return array_id
+    filename_collect = []
+    if array_id is None:
+        filename_cand = [filename for filename in os.listdir(dirname)]
+    else:
+        filename_cand = [filename for filename in os.listdir(dirname) if get_array_id(filename) == array_id]
+    
+    if not isinstance(include, list):
+        include = [include]
+    if not isinstance(exclude, list):
+        exclude = [exclude]
+    
+    for filename in filename_cand:
+        is_in = True
+        for element in include:
+            if element not in filename:
+                is_in = False
+                break
+        for element in exclude:
+            if element in filename:
+                is_in = False
+                break
+        if is_in:
+            filename_collect.append(filename)
+    return filename_collect
