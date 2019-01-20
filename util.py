@@ -648,6 +648,17 @@ def sort_two_lists(list1, list2, reverse = False):
         return List[0], List[1]
     
 
+def sort_dict(Dict, reverse = False):
+    """Return an ordered dictionary whose values are sorted"""
+    from collections import OrderedDict
+    orderedDict = OrderedDict()
+    keys, values = list(Dict.keys()), list(Dict.values())
+    values_sorted, keys_sorted = sort_two_lists(values, keys, reverse = reverse)
+    for key, value in zip(keys_sorted, values_sorted):
+        orderedDict[key] = value
+    return orderedDict
+    
+
 def to_string(List, connect = "-", num_digits = None, num_strings = None):
     """Turn a list into a string, with specified format"""
     if List is None:
