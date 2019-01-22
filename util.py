@@ -657,6 +657,17 @@ def sort_dict(Dict, reverse = False):
     for key, value in zip(keys_sorted, values_sorted):
         orderedDict[key] = value
     return orderedDict
+
+
+def get_dict_items(Dict, idx):
+    """Obtain dictionary items with the current ordering of dictionary keys"""
+    from collections import OrderedDict
+    from copy import deepcopy
+    keys = list(Dict.keys())
+    new_dict = OrderedDict()
+    for id in idx:
+        new_dict[keys[id]] = deepcopy(Dict[keys[id]])
+    return new_dict
     
 
 def to_string(List, connect = "-", num_digits = None, num_strings = None):
