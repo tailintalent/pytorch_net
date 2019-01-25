@@ -74,6 +74,7 @@ def matrix_diag_transform(matrix, fun):
     new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
     return new_matrix
 
+
 def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
     """Get loss using the whole data or data_loader"""
     if data_loader is not None:
@@ -87,6 +88,39 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
         assert X is not None and y is not None
         loss = model.get_loss(X, y, criterion = criterion)
     return loss
+
+
+def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
+    inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
+    if data_loader is None:
+        assert X is not None and y is not None
+        all_dict_summary = model.prepare_inspection(X, y, **kwargs)
+        if inspect_functions is not None:
+            for inspect_function_key, inspect_function in inspect_functions.items():
+                all_dict_summary[inspect_function_key] = inspect_function(model, X, y, **kwargs)
+    else:
+        assert X is None and y is None
+        all_dict = {}
+        for X_batch, y_batch in data_loader:
+            info_dict = model.prepare_inspection(X_batch, y_batch, **kwargs)
+            for key, item in info_dict.items():
+                if key not in all_dict:
+                    all_dict[key] = [item]
+                else:
+                    all_dict[key].append(item)
+            if inspect_functions is not None:
+                for inspect_function_key, inspect_function in inspect_functions.items():
+                    inspect_function_result = inspect_function(model, X_batch, y_batch, **kwargs)
+                    if inspect_function_key not in all_dict:
+                        all_dict[inspect_function_key] = [inspect_function_result]
+                    else:
+                        all_dict[inspect_function_key].append(inspect_function_result)
+        all_dict_summary = {}
+        for key, item in all_dict.items():
+            all_dict_summary[key] = np.mean(all_dict[key])
+    model.info_dict = all_dict_summary
+    return all_dict_summary
+    
 
 
 def train(model, X = None, y = None, train_loader = None, validation_data = None, validation_loader = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
@@ -110,6 +144,11 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
+    inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
+    if inspect_functions is not None:
+        for inspect_function_key in inspect_functions:
+            if inspect_function_key not in inspect_items:
+                inspect_items.append(inspect_function_key)
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     filename = kwargs["filename"] if "filename" in kwargs else None
@@ -147,14 +186,13 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
         print("\tlr: {0}\t loss:{1:.{2}f}".format(lr, loss_original, inspect_loss_precision), end = "")
-        if hasattr(model, "prepare_inspection"):
-            model.prepare_inspection(X_valid, y_valid)
-        if hasattr(model, "info_dict"):
+        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+        if len(info_dict) > 0:
             for item in inspect_items:
-                if item in model.info_dict:
-                    print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                if item in info_dict:
+                    print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
                     if item in record_keys and item != "loss":
-                        record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                        record_data(data_record, [to_np_array(info_dict[item])], [item])
         print()
 
     # Setting up optimizer:
@@ -224,10 +262,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 
                 if logdir is not None:
                     batch_idx += 1
-                    if hasattr(model, "info_dict"):
+                    if len(info_dict) > 0:
                         for item in inspect_items:
-                            if item in model.info_dict:
-                                logger.log_scalar(item, model.info_dict[item], batch_idx)
+                            if item in info_dict:
+                                logger.log_scalar(item, info_dict[item], batch_idx)
 
                     # 2. Log values and gradients of the parameters (histogram summary)
                     for tag, value in model.named_parameters():
@@ -247,20 +285,19 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 if early_stopping_monitor == "loss":
                     to_stop = early_stopping.monitor(loss_value)
                 else:
-                    model.prepare_inspection(X_valid, y_valid)
-                    to_stop = early_stopping.monitor(model.info_dict[early_stopping_monitor])
+                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+                    to_stop = early_stopping.monitor(info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}:".format(i), end = "")
                     print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
-                    if hasattr(model, "prepare_inspection"):
-                        model.prepare_inspection(X_valid, y_valid)
-                    if hasattr(model, "info_dict"):
+                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+                    if len(info_dict) > 0:
                         for item in inspect_items:
-                            if item in model.info_dict:
-                                print(" \t{0}: {1:.{2}f}".format(item, model.info_dict[item], inspect_loss_precision), end = "")
+                            if item in info_dict:
+                                print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
                                 if item in record_keys and item != "loss":
-                                    record_data(data_record, [to_np_array(model.info_dict[item])], [item])
+                                    record_data(data_record, [to_np_array(info_dict[item])], [item])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "param" in record_keys:
@@ -472,8 +509,8 @@ class Model_Ensemble(nn.Module):
         return W_list_dict, b_list_dict
 
 
-    def prepare_inspection(self, X, y):
-        pass
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
     
     
     def set_cuda(self, is_cuda):
@@ -610,8 +647,8 @@ class Multi_MLP(nn.Module):
         return deepcopy(W_list), deepcopy(b_list)
 
 
-    def prepare_inspection(self, X, y):
-        pass
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
 
 
     def set_cuda(self, is_cuda):
@@ -647,6 +684,7 @@ class MLP(nn.Module):
         self.b_init_list = b_init_list
         self.settings = deepcopy(settings)
         self.is_cuda = is_cuda
+        self.info_dict = {}
         
         self.init_layers(deepcopy(struct_param))
 
@@ -683,7 +721,7 @@ class MLP(nn.Module):
             setattr(self, "layer_{0}".format(k), layer)
 
 
-    def forward(self, input):
+    def forward(self, input, **kwargs):
         output = input
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
@@ -842,8 +880,8 @@ class MLP(nn.Module):
         return criterion(y_pred, target)
 
 
-    def prepare_inspection(self, X, y):
-        pass
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
 
 
     def set_cuda(self, is_cuda):
@@ -996,8 +1034,8 @@ class LSTM(RNNCellBase):
         y_pred = self(input, hx = hx)
         return criterion(y_pred, target)
     
-    def prepare_inspection(self, X, y):
-        pass
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
 
 
 # ## CNN:
@@ -1221,12 +1259,13 @@ class ConvNet(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
-    def prepare_inspection(self, X, y):
+    def prepare_inspection(self, X, y, **kwargs):
         pred_prob = self(X)
         if self.return_indices:
             pred_prob = pred_prob[0]
         pred = pred_prob.max(1)[1]
         self.info_dict["accuracy"] = get_accuracy(pred, y)
+        return deepcopy(self.info_dict)
     
     
     def set_cuda(self, is_cuda):
@@ -1433,8 +1472,8 @@ class Mixture_Gaussian(nn.Module):
         return neg_log_prob
 
 
-    def prepare_inspection(X, y, criterion):
-        pass
+    def prepare_inspection(X, y, criterion, **kwargs):
+        return deepcopy(self.info_dict)
 
 
     @property

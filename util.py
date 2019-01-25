@@ -438,6 +438,20 @@ def get_accuracy(pred, target):
     return accuracy
 
 
+def get_model_accuracy(model, X, y, **kwargs):
+    """Get accuracy from model, X and target"""
+    is_tensor = kwargs["is_tensor"] if "is_tensor" in kwargs else False
+    pred = model(X)
+    assert len(pred.shape) == 2
+    assert isinstance(y, torch.LongTensor) or isinstance(y, torch.cuda.LongTensor)
+    assert len(y.shape) == 1
+    pred_max = pred.max(-1)[1]
+    acc = (y == pred_max).float().mean()
+    if not is_tensor:
+        acc = to_np_array(acc)
+    return acc
+
+
 def normalize_tensor(X, new_range = None, mean = None, std = None):
     """Normalize the tensor's value range to new_range"""
     X = X.float()
