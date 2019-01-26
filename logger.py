@@ -8,7 +8,7 @@ import tensorflow as tf
 try:
     from StringIO import StringIO
 except ImportError:
-    from io import StringIO
+    from io import StringIO, BytesIO
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -39,7 +39,7 @@ class Logger(object):
         im_summaries = []
         for nr, img in enumerate(images):
             # Write the image to a string
-            s = StringIO()
+            s = BytesIO()
             plt.imsave(s, img, format='png')
 
             # Create an Image object

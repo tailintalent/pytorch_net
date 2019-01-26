@@ -165,6 +165,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         from pytorch_net.logger import Logger
         batch_idx = 0
         logger = Logger(logdir)
+    logimages = kwargs["logimages"] if "logimages" in kwargs else None
     
     if validation_loader is not None:
         assert validation_data is None
@@ -222,6 +223,12 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
         else:
             raise
+            
+    if logdir is not None:
+        if logimages is not None:
+            for tag, image_fun in logimages["image_fun"].items():
+                image = image_fun(model, logimages["X"], logimages["y"])
+                logger.log_images(tag, image, -1)
 
     # Training:
     to_stop = False
@@ -267,11 +274,16 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                             if item in info_dict:
                                 logger.log_scalar(item, info_dict[item], batch_idx)
 
-                    # 2. Log values and gradients of the parameters (histogram summary)
-                    for tag, value in model.named_parameters():
-                        tag = tag.replace('.', '/')
-                        logger.log_histogram(tag, to_np_array(value), batch_idx)
-                        logger.log_histogram(tag + '/grad', to_np_array(value.grad), batch_idx)
+        if logdir is not None:
+            # Log values and gradients of the parameters (histogram summary)
+            for tag, value in model.named_parameters():
+                tag = tag.replace('.', '/')
+                logger.log_histogram(tag, to_np_array(value), i)
+                logger.log_histogram(tag + '/grad', to_np_array(value.grad), i)
+            if logimages is not None:
+                for tag, image_fun in logimages["image_fun"].items():
+                    image = image_fun(model, logimages["X"], logimages["y"])
+                    logger.log_images(tag, image, i)
 
         if i % inspect_interval == 0:
             model.eval()
