@@ -733,3 +733,20 @@ def filter_filename(dirname, include = [], exclude = [], array_id = None):
         if is_in:
             filename_collect.append(filename)
     return filename_collect
+
+
+def remove_files_in_directory(directory, is_remove_subdir = False):
+    """Remove files in a directory"""
+    import os, shutil
+    if not os.path.isdir(directory):
+        print("Directory {0} does not exist!".format(directory))
+        return
+    for the_file in os.listdir(directory):
+        file_path = os.path.join(directory, the_file)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+            elif is_remove_subdir and os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print(e)
