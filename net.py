@@ -184,17 +184,6 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
-    if inspect_items is not None:
-        print("{0}:".format(-1), end = "")
-        print("\tlr: {0}\t loss:{1:.{2}f}".format(lr, loss_original, inspect_loss_precision), end = "")
-        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
-        if len(info_dict) > 0:
-            for item in inspect_items:
-                if item in info_dict:
-                    print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
-                    if item in record_keys and item != "loss":
-                        record_data(data_record, [to_np_array(info_dict[item])], [item])
-        print()
 
     # Setting up optimizer:
     parameters = model.parameters()
@@ -223,6 +212,23 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
         else:
             raise
+        # First step:
+        if scheduler_type == "ReduceLROnPlateau":
+            scheduler.step(loss_original)
+        else:
+            scheduler.step()
+    
+    if inspect_items is not None:
+        print("{0}:".format(-1), end = "")
+        print("\tlr: {0:.3e}\t loss:{1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_original, inspect_loss_precision), end = "")
+        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+        if len(info_dict) > 0:
+            for item in inspect_items:
+                if item in info_dict:
+                    print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
+                    if item in record_keys and item != "loss":
+                        record_data(data_record, [to_np_array(info_dict[item])], [item])
+        print()
             
     if logdir is not None:
         if logimages is not None:
