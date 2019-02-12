@@ -263,6 +263,12 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     reg = get_regularization(model, **kwargs)
                     loss = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs) + reg
                     loss.backward()
+                    if logdir is not None:
+                        batch_idx += 1
+                        if len(info_dict) > 0:
+                            for item in inspect_items:
+                                if item in info_dict:
+                                    logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step()
                 else:
                     def closure():
@@ -271,14 +277,13 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         loss = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs) + reg
                         loss.backward()
                         return loss
+                    if logdir is not None:
+                        batch_idx += 1
+                        if len(info_dict) > 0:
+                            for item in inspect_items:
+                                if item in info_dict:
+                                    logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step(closure)
-                
-                if logdir is not None:
-                    batch_idx += 1
-                    if len(info_dict) > 0:
-                        for item in inspect_items:
-                            if item in info_dict:
-                                logger.log_scalar(item, info_dict[item], batch_idx)
 
         if logdir is not None:
             # Log values and gradients of the parameters (histogram summary)
