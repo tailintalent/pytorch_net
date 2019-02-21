@@ -1410,33 +1410,42 @@ class Mixture_Gaussian(nn.Module):
         self,
         num_components,
         dim,
+        param_mode = "full",
         is_cuda = False,
         ):
         super(Mixture_Gaussian, self).__init__()
         self.num_components = num_components
         self.dim = dim
+        self.param_mode = param_mode
         self.device = torch.device("cuda" if is_cuda else "cpu")
         self.info_dict = {}
         self.is_cuda = is_cuda
 
 
-    def initialize(self, input, num_samples = 100, verbose = False):
-        neg_log_prob_min = np.inf
-        loc_init_min = None
-        scale_init_min = None
-        for i in range(num_samples):
-            neg_log_prob, loc_init_list, scale_init_list = self.initialize_ele(input)
-            if verbose:
-                print("{0}: neg_log_prob: {1:.4f}".format(i, neg_log_prob))
-            if neg_log_prob < neg_log_prob_min:
-                neg_log_prob_min = neg_log_prob
-                loc_init_min = loc_init_list
-                scale_init_min = scale_init_list
-        
-        for i in range(self.num_components):
-            setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_min[i].to(self.device)))
-            setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init_min[i].to(self.device)))
-        print("min neg_log_prob: {0:.6f}".format(to_np_array(neg_log_prob_min)))
+    def initialize(self, input = None, num_samples = 100, verbose = False):
+        if input is not None:
+            neg_log_prob_min = np.inf
+            loc_init_min = None
+            scale_init_min = None
+            for i in range(num_samples):
+                neg_log_prob, loc_init_list, scale_init_list = self.initialize_ele(input)
+                if verbose:
+                    print("{0}: neg_log_prob: {1:.4f}".format(i, neg_log_prob))
+                if neg_log_prob < neg_log_prob_min:
+                    neg_log_prob_min = neg_log_prob
+                    loc_init_min = loc_init_list
+                    scale_init_min = scale_init_list
+
+            for i in range(self.num_components):
+                setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_min[i].to(self.device)))
+                setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init_min[i].to(self.device)))
+            print("min neg_log_prob: {0:.6f}".format(to_np_array(neg_log_prob_min)))
+        else:
+            self.weight_logits = nn.Parameter((torch.randn(self.num_components) * np.sqrt(2 / (1 + self.dim))).to(self.device))
+            size = self.dim * (self.dim + 1) // 2
+            for i in range(self.num_components):
+                setattr(self, "loc_{0}".format(i), nn.Parameter(torch.randn(self.dim).to(self.device)))
+                setattr(self, "scale_{0}".format(i), nn.Parameter((torch.randn(1, size) / self.dim).to(self.device)))
 
 
     def initialize_ele(self, input):
@@ -1470,7 +1479,7 @@ class Mixture_Gaussian(nn.Module):
     def prob(self, input):
         if len(input.shape) == 1:
             input = input.unsqueeze(1)
-        assert len(input.shape) in [0, 2]
+        assert len(input.shape) in [0, 2, 3]
         prob_list = []
         for i in range(self.num_components):
             scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
@@ -1479,7 +1488,7 @@ class Mixture_Gaussian(nn.Module):
             setattr(self, "component_{0}".format(i), dist)
             prob = torch.exp(dist.log_prob(input))
             prob_list.append(prob)
-        prob_list = torch.stack(prob_list, 1)
+        prob_list = torch.stack(prob_list, -1)
         prob = torch.matmul(prob_list, nn.Softmax(dim = 0)(self.weight_logits))
         return prob
 
