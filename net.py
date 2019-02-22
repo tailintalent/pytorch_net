@@ -17,6 +17,7 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
+from torch.distributions.normal import Normal
 from torch.distributions.multivariate_normal import MultivariateNormal
 
 import sys, os
@@ -434,6 +435,8 @@ def load_model_dict(model_dict, is_cuda = False):
     elif net_type == "Model_with_Uncertainty":
         return Model_with_Uncertainty(model_pred = load_model_dict(model_dict["model_pred"], is_cuda = is_cuda),
                                       model_logstd = load_model_dict(model_dict["model_logstd"], is_cuda = is_cuda))
+    elif net_type == "Mixture_Gaussian":
+        return load_model_dict_Mixture_Gaussian(model_dict, is_cuda = is_cuda)
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
 
@@ -1422,7 +1425,7 @@ class Mixture_Gaussian(nn.Module):
         self.is_cuda = is_cuda
 
 
-    def initialize(self, input = None, num_samples = 100, verbose = False):
+    def initialize(self, model_dict = None, input = None, num_samples = 100, verbose = False):
         if input is not None:
             neg_log_prob_min = np.inf
             loc_init_min = None
@@ -1441,11 +1444,23 @@ class Mixture_Gaussian(nn.Module):
                 setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init_min[i].to(self.device)))
             print("min neg_log_prob: {0:.6f}".format(to_np_array(neg_log_prob_min)))
         else:
-            self.weight_logits = nn.Parameter((torch.randn(self.num_components) * np.sqrt(2 / (1 + self.dim))).to(self.device))
-            size = self.dim * (self.dim + 1) // 2
+            if model_dict is None:
+                self.weight_logits = nn.Parameter((torch.randn(self.num_components) * np.sqrt(2 / (1 + self.dim))).to(self.device))
+            else:
+                self.weight_logits = nn.Parameter((torch.FloatTensor(model_dict["weight_logits"])).to(self.device))
+            if self.param_mode == "full": 
+                size = self.dim * (self.dim + 1) // 2
+            elif self.param_mode == "diag":
+                size = self.dim
+            else:
+                raise
             for i in range(self.num_components):
-                setattr(self, "loc_{0}".format(i), nn.Parameter(torch.randn(self.dim).to(self.device)))
-                setattr(self, "scale_{0}".format(i), nn.Parameter((torch.randn(1, size) / self.dim).to(self.device)))
+                if model_dict is None:
+                    setattr(self, "loc_{0}".format(i), nn.Parameter(torch.randn(self.dim).to(self.device)))
+                    setattr(self, "scale_{0}".format(i), nn.Parameter((torch.randn(1, size) / self.dim).to(self.device)))
+                else:
+                    setattr(self, "loc_{0}".format(i), nn.Parameter(torch.FloatTensor(model_dict["loc_list"][i]).to(self.device)))
+                    setattr(self, "scale_{0}".format(i), nn.Parameter(torch.FloatTensor(model_dict["scale_list"][i:i+1]).to(self.device)))
 
 
     def initialize_ele(self, input):
@@ -1482,11 +1497,19 @@ class Mixture_Gaussian(nn.Module):
         assert len(input.shape) in [0, 2, 3]
         prob_list = []
         for i in range(self.num_components):
-            scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
-            scale_tril = matrix_diag_transform(scale_tril, F.softplus)
-            dist = MultivariateNormal(getattr(self, "loc_{0}".format(i)), scale_tril = scale_tril)
+            if self.param_mode == "full":
+                scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
+                scale_tril = matrix_diag_transform(scale_tril, F.softplus)
+                dist = MultivariateNormal(getattr(self, "loc_{0}".format(i)), scale_tril = scale_tril)
+            elif self.param_mode == "diag":
+                dist = Normal(getattr(self, "loc_{0}".format(i)).unsqueeze(0), F.softplus(getattr(self, "scale_{0}".format(i))))
+            else:
+                raise
             setattr(self, "component_{0}".format(i), dist)
-            prob = torch.exp(dist.log_prob(input))
+            log_prob = dist.log_prob(input)
+            if self.param_mode == "diag":
+                log_prob = log_prob.sum(-1)
+            prob = torch.exp(log_prob)
             prob_list.append(prob)
         prob_list = torch.stack(prob_list, -1)
         prob = torch.matmul(prob_list, nn.Softmax(dim = 0)(self.weight_logits))
@@ -1513,7 +1536,8 @@ class Mixture_Gaussian(nn.Module):
         model_dict = {"type": "Mixture_Gaussian"}
         model_dict["num_components"] = self.num_components
         model_dict["dim"] = self.dim
-        model_dict["weight_logits"] = self.weight_logits
+        model_dict["param_mode"] = self.param_mode
+        model_dict["weight_logits"] = to_np_array(self.weight_logits)
         loc_list = []
         scale_list = []
         for i in range(self.num_components):
@@ -1559,4 +1583,14 @@ class Mixture_Gaussian(nn.Module):
     def get_regularization(self, source = ["weights", "bias"], mode = "L1", **kwargs):
         reg = to_Variable([0], requires_grad = False).to(self.device)
         return reg
+
+
+def load_model_dict_Mixture_Gaussian(model_dict, is_cuda = False):
+    model = Mixture_Gaussian(num_components = model_dict["num_components"],
+                             dim = model_dict["dim"],
+                             param_mode = model_dict["param_mode"],
+                             is_cuda = is_cuda,
+                            )
+    model.initialize(model_dict = model_dict)
+    return model
 
