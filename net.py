@@ -185,6 +185,8 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+    if filename is not None and save_interval is not None:
+        record_data(data_record, [{}], ["model_dict"])
 
     # Setting up optimizer:
     parameters = model.parameters()
@@ -288,10 +290,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
 
         if logdir is not None:
             # Log values and gradients of the parameters (histogram summary)
-            for tag, value in model.named_parameters():
-                tag = tag.replace('.', '/')
-                logger.log_histogram(tag, to_np_array(value), i)
-                logger.log_histogram(tag + '/grad', to_np_array(value.grad), i)
+#             for tag, value in model.named_parameters():
+#                 tag = tag.replace('.', '/')
+#                 logger.log_histogram(tag, to_np_array(value), i)
+#                 logger.log_histogram(tag + '/grad', to_np_array(value.grad), i)
             if logimages is not None:
                 for tag, image_fun in logimages["image_fun"].items():
                     image = image_fun(model, logimages["X"], logimages["y"])
@@ -329,9 +331,14 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     if "param_grad" in record_keys:
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
                     print()
+                    try:
+                        sys.stdout.flush()
+                    except:
+                        pass
         if filename is not None and save_interval is not None:
             if i % save_interval == 0:
-                pickle.dump(model.model_dict, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
+                record_data(data_record, [model.model_dict], ["model_dict"])
+                pickle.dump(data_record, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
         if to_stop:
             break
 
@@ -339,7 +346,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:
-            if key != "iter":
+            if key not in ["iter", "model_dict"]:
                 if key in ["accuracy"]:
                     plt.figure(figsize = (8,6))
                     plt.plot(data_record["iter"], data_record[key])
