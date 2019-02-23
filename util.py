@@ -392,26 +392,27 @@ def to_one_hot(idx, num):
     return onehot
 
 
-def train_test_split(X, y, test_size = 0.1):
+def train_test_split(*args, test_size = 0.1):
     """Split the dataset into training and testing sets"""
     import torch
-    num_examples = len(X)
+    num_examples = len(args[0])
+    train_list = []
+    test_list = []
     if test_size is not None:
         num_test = int(num_examples * test_size)
         num_train = num_examples - num_test
         idx_train = np.random.choice(range(num_examples), size = num_train, replace = False)
         idx_test = set(range(num_examples)) - set(idx_train)
-        device = torch.device("cuda" if X.is_cuda else "cpu")
+        device = torch.device("cuda" if args[0].is_cuda else "cpu")
         idx_train = torch.LongTensor(list(idx_train)).to(device)
         idx_test = torch.LongTensor(list(idx_test)).to(device)
-        X_train = X[idx_train]
-        y_train = y[idx_train]
-        X_test = X[idx_test]
-        y_test = y[idx_test]
+        for arg in args:
+            train_list.append(arg[idx_train])
+            test_list.append(arg[idx_test])
     else:
-        X_train, X_test = X, X
-        y_train, y_test = y, y
-    return (X_train, y_train), (X_test, y_test)
+        train_list = args
+        test_list = args
+    return train_list, test_list
 
 
 def make_dir(filename):
