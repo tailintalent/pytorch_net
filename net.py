@@ -1443,12 +1443,11 @@ class Mixture_Gaussian(nn.Module):
                     print("{0}: neg_log_prob: {1:.4f}".format(i, neg_log_prob))
                 if neg_log_prob < neg_log_prob_min:
                     neg_log_prob_min = neg_log_prob
-                    loc_init_min = loc_init_list
-                    scale_init_min = scale_init_list
+                    loc_init_min = self.loc_list.detach()
+                    scale_init_min = self.scale_list.detach()
 
-            for i in range(self.num_components):
-                setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_min[i].to(self.device)))
-                setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init_min[i].to(self.device)))
+            self.loc_list = nn.Parameter(loc_init_min.to(self.device))
+            self.scale_list = nn.Parameter(scale_init_min.to(self.device))
             print("min neg_log_prob: {0:.6f}".format(to_np_array(neg_log_prob_min)))
         else:
             if model_dict is None:
@@ -1461,65 +1460,60 @@ class Mixture_Gaussian(nn.Module):
                 size = self.dim
             else:
                 raise
-            for i in range(self.num_components):
-                if model_dict is None:
-                    setattr(self, "loc_{0}".format(i), nn.Parameter(torch.randn(self.dim).to(self.device)))
-                    setattr(self, "scale_{0}".format(i), nn.Parameter((torch.randn(1, size) / self.dim).to(self.device)))
-                else:
-                    setattr(self, "loc_{0}".format(i), nn.Parameter(torch.FloatTensor(model_dict["loc_list"][i]).to(self.device)))
-                    setattr(self, "scale_{0}".format(i), nn.Parameter(torch.FloatTensor(model_dict["scale_list"][i:i+1]).to(self.device)))
+            
+            if model_dict is None:
+                self.loc_list = nn.Parameter(torch.randn(self.num_components, self.dim).to(self.device))
+                self.scale_list = nn.Parameter((torch.randn(self.num_components, size) / self.dim).to(self.device))
+            else:
+                self.loc_list = nn.Parameter(torch.FloatTensor(model_dict["loc_list"]).to(self.device))
+                self.scale_list = nn.Parameter(torch.FloatTensor(model_dict["scale_list"]).to(self.device))
 
 
     def initialize_ele(self, input):
-        # Initialize the scale:
-        size = self.dim * (self.dim + 1) // 2
+        if self.param_mode == "full":
+            size = self.dim * (self.dim + 1) // 2
+        elif self.param_mode == "diag":
+            size = self.dim
+        else:
+            raise
         length = len(input)
         self.weight_logits = nn.Parameter(torch.zeros(self.num_components).to(self.device))
-        loc_init_all = input[torch.multinomial(torch.ones(length) / length, self.num_components)].unsqueeze(0)
-        scale_init_list = []
-        loc_init_list = []
-        for i in range(self.num_components):
-            # Initialize the scale:
-            scale_init = torch.randn(1, size) * input.std() / 5
-            idx_list = []
-            for j in range(self.dim):
-                idx = (j + 1) * (j + 2) // 2 - 1
-                idx_list.append(idx)
-            diagonal = (input.std(0) / np.sqrt(2)) * (1 + torch.randn(self.dim) * 0.1)
-            diagonal = torch.log(torch.exp(diagonal) - 1)
-            scale_init[0, idx_list] = diagonal
-            scale_init_list.append(scale_init)
-            setattr(self, "scale_{0}".format(i), nn.Parameter(scale_init.to(self.device)))
-        
-            # Initialize the loc:
-            setattr(self, "loc_{0}".format(i), nn.Parameter(loc_init_all[:, i].to(self.device)))
-            loc_init_list.append(loc_init_all[:, i])
+        self.loc_list = nn.Parameter(input[torch.multinomial(torch.ones(length) / length, self.num_components)].detach())
+        self.scale_list = nn.Parameter((torch.randn(self.num_components, size).to(self.device) * input.std() / 5).to(self.device))
         neg_log_prob = self.get_loss(input)
-        return neg_log_prob, loc_init_list, scale_init_list
+        return neg_log_prob
 
 
     def prob(self, input):
         if len(input.shape) == 1:
             input = input.unsqueeze(1)
         assert len(input.shape) in [0, 2, 3]
-        prob_list = []
-        for i in range(self.num_components):
-            if self.param_mode == "full":
-                scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
-                scale_tril = matrix_diag_transform(scale_tril, F.softplus)
-                dist = MultivariateNormal(getattr(self, "loc_{0}".format(i)), scale_tril = scale_tril)
-            elif self.param_mode == "diag":
-                dist = Normal(getattr(self, "loc_{0}".format(i)).unsqueeze(0), F.softplus(getattr(self, "scale_{0}".format(i))))
-            else:
-                raise
-            setattr(self, "component_{0}".format(i), dist)
-            log_prob = dist.log_prob(input)
-            if self.param_mode == "diag":
-                log_prob = log_prob.sum(-1)
-            prob = torch.exp(log_prob)
-            prob_list.append(prob)
-        prob_list = torch.stack(prob_list, -1)
-        prob = torch.matmul(prob_list, nn.Softmax(dim = 0)(self.weight_logits))
+        input = input.unsqueeze(-2)
+        if self.param_mode == "diag":
+            scale_list = F.softplus(self.scale_list)
+            logits = (- (input - self.loc_list) ** 2 / 2 / scale_list ** 2 - torch.log(scale_list * np.sqrt(2 * np.pi))).sum(-1)
+        else:
+            raise
+        prob = torch.matmul(torch.exp(logits), nn.Softmax(dim = 0)(self.weight_logits))
+#         prob_list = []
+#         for i in range(self.num_components):
+#             if self.param_mode == "full":
+#                 scale_tril = fill_triangular(getattr(self, "scale_{0}".format(i)), self.dim)
+#                 scale_tril = matrix_diag_transform(scale_tril, F.softplus)
+#                 dist = MultivariateNormal(getattr(self, "loc_{0}".format(i)), scale_tril = scale_tril)
+#                 log_prob = dist.log_prob(input)
+#             elif self.param_mode == "diag":
+#                 dist = Normal(getattr(self, "loc_{0}".format(i)).unsqueeze(0), F.softplus(getattr(self, "scale_{0}".format(i))))
+#                 mu = getattr(self, "loc_{0}".format(i)).unsqueeze(0)
+#                 sigma = F.softplus(getattr(self, "scale_{0}".format(i)))
+#                 log_prob = (- (input - mu) ** 2 / 2 / sigma ** 2 - torch.log(sigma * np.sqrt(2 * np.pi))).sum(-1)
+#             else:
+#                 raise
+#             setattr(self, "component_{0}".format(i), dist)
+#             prob = torch.exp(log_prob)
+#             prob_list.append(prob)
+#         prob_list = torch.stack(prob_list, -1)
+#         prob = torch.matmul(prob_list, nn.Softmax(dim = 0)(self.weight_logits))
         return prob
 
 
@@ -1545,22 +1539,15 @@ class Mixture_Gaussian(nn.Module):
         model_dict["dim"] = self.dim
         model_dict["param_mode"] = self.param_mode
         model_dict["weight_logits"] = to_np_array(self.weight_logits)
-        loc_list = []
-        scale_list = []
-        for i in range(self.num_components):
-            loc_list.append(to_np_array(getattr(self, "loc_{0}".format(i))))
-            scale_list.append(to_np_array(getattr(self, "scale_{0}".format(i))))
-        loc_list = np.stack(loc_list)
-        scale_list = np.concatenate(scale_list)
-        model_dict["loc_list"] = loc_list
-        model_dict["scale_list"] = scale_list
+        model_dict["loc_list"] = to_np_array(self.loc_list)
+        model_dict["scale_list"] = to_np_array(self.scale_list)
         return model_dict
 
 
     def get_param(self):
         weights = to_np_array(nn.Softmax(dim = 0)(self.weight_logits))
-        loc_list = self.model_dict["loc_list"]
-        scale_list = self.model_dict["scale_list"]
+        loc_list = to_np_array(self.loc_list)
+        scale_list = to_np_array(self.scale_list)
         print("weights: {0}".format(weights))
         print("loc:")
         pp.pprint(loc_list)
@@ -1578,7 +1565,7 @@ class Mixture_Gaussian(nn.Module):
         weights = nn.Softmax(dim = 0)(self.weight_logits)
         plt.figure(figsize=(10, 4), dpi=100).set_facecolor('white')
         for i in range(self.num_components):
-            Y_dict[i] = weights[0].item() * scipy.stats.norm.pdf((X - getattr(self, "loc_{0}".format(i)).item()) / getattr(self, "scale_{0}".format(i)).item())
+            Y_dict[i] = weights[0].item() * scipy.stats.norm.pdf((X - self.loc_list[i].item()) / self.scale_list[i].item())
             plt.plot(X, Y_dict[i])
         Y = np.sum([item for item in Y_dict.values()], 0)
         plt.plot(X, Y, 'k--')
