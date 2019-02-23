@@ -158,6 +158,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
     logdir = kwargs["logdir"] if "logdir" in kwargs else None
     data_record = {key: [] for key in record_keys}
+    info_to_save = kwargs["info_to_save"] if "info_to_save" in kwargs else None
+    if info_to_save is not None:
+        data_record.update(info_to_save)
     if patience is not None:
         early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
         early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
