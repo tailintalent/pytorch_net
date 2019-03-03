@@ -1412,6 +1412,78 @@ class Flatten(nn.Module):
         return x.view(x.size(0), -1)
 
 
+# ## VAE:
+
+# In[ ]:
+
+
+class VAE(nn.Module):
+    def __init__(
+        self,
+        encoder_model_dict,
+        decoder_model_dict,
+        is_cuda = False,
+        ):
+        super(VAE, self).__init__()
+        self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
+        self.decoder = load_model_dict(decoder_model_dict, is_cuda = is_cuda)
+        self.is_cuda = is_cuda
+        self.info_dict = {}
+
+
+    def encode(self, X):
+        Z = self.encoder(X)
+        latent_size = int(Z.shape[-1] / 2)
+        mu = Z[..., :latent_size]
+        logvar = Z[..., latent_size:]
+        return mu, logvar
+
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add_(mu)
+
+
+    def decode(self, Z):
+        return self.decoder(Z)
+
+
+    def forward(self, X):
+        mu, logvar = self.encode(X)
+        Z = self.reparameterize(mu, logvar)
+        return self.decode(Z), mu, logvar
+
+
+    def get_loss(self, X, y = None, **kwargs):
+        recon_X, mu, logvar = self(X)
+        BCE = F.binary_cross_entropy(recon_X.view(recon_X.shape[0], -1), X.view(X.shape[0], -1), reduction='sum')
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        loss = (BCE + KLD) / len(X)
+        self.info_dict["KLD"] = KLD.item() / len(X)
+        self.info_dict["BCE"] = BCE.item() / len(X)
+        return loss
+
+
+    def model_dict(self):
+        model_dict = {"type": "VAE"}
+        model_dict["encoder_model_dict"] = self.encoder.model_dict
+        model_dict["decoder_model_dict"] = self.decoder.model_dict
+        return model_dict
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        return self.encoder.get_regularization(source = source, mode = mode) + self.decoder.get_regularization(source = source, mode = mode)
+
+
+    def prepare_inspection(self, X, y, **kwargs):
+        return deepcopy(self.info_dict)
+
+
 # ## Probability models:
 # ### Mixture of Gaussian:
 

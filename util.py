@@ -234,7 +234,7 @@ def get_activation(activation):
     elif activation == "softplus":
         f = F.softplus
     elif activation == "sigmoid":
-        f = F.sigmoid
+        f = torch.sigmoid
     elif activation == "selu":
         f = F.selu
     elif activation == "elu":
