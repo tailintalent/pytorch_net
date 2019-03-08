@@ -81,10 +81,18 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
     if data_loader is not None:
         assert X is None and y is None
         loss_list = []
+        all_info_dict = {}
         for X_batch, y_batch in data_loader:
             loss_ele = model.get_loss(X_batch, y_batch, criterion = criterion)
             loss_list.append(loss_ele)
+            for key in model.info_dict:
+                if key not in all_info_dict:
+                    all_info_dict[key] = []
+                all_info_dict[key].append(model.info_dict[key])
+        for key in model.info_dict:
+            all_info_dict[key] = np.mean(all_info_dict[key])
         loss = torch.stack(loss_list).mean()
+        model.info_dict = deepcopy(all_info_dict)
     else:
         assert X is not None and y is not None
         loss = model.get_loss(X, y, criterion = criterion)
