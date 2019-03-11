@@ -4,12 +4,14 @@ import numpy as np
 from copy import deepcopy
 import random
 from sklearn.model_selection import train_test_split
+import scipy.linalg
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.loss import _Loss
+from torch.autograd import Function
 
 
 def plot_matrices(
@@ -751,3 +753,39 @@ def remove_files_in_directory(directory, is_remove_subdir = False):
                 shutil.rmtree(file_path)
         except Exception as e:
             print(e)
+
+
+
+
+class MatrixSquareRoot(Function):
+    """Square root of a positive definite matrix.
+    NOTE: matrix square root is not differentiable for matrices with
+          zero eigenvalues.
+          From https://github.com/steveli/pytorch-sqrtm/blob/master/sqrtm.py
+    """
+    @staticmethod
+    def forward(ctx, input):
+        m = input.detach().numpy().astype(np.float_)
+        sqrtm = torch.from_numpy(scipy.linalg.sqrtm(m).real).type_as(input)
+        ctx.save_for_backward(sqrtm)
+        return sqrtm
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            sqrtm, = ctx.saved_tensors
+            sqrtm = sqrtm.data.numpy().astype(np.float_)
+            gm = grad_output.data.numpy().astype(np.float_)
+
+            # Given a positive semi-definite matrix X,
+            # since X = X^{1/2}X^{1/2}, we can compute the gradient of the
+            # matrix square root dX^{1/2} by solving the Sylvester equation:
+            # dX = (d(X^{1/2})X^{1/2} + X^{1/2}(dX^{1/2}).
+            grad_sqrtm = scipy.linalg.solve_sylvester(sqrtm, sqrtm, gm)
+
+            grad_input = torch.from_numpy(grad_sqrtm).type_as(grad_output.data)
+        return grad_input
+
+
+sqrtm = MatrixSquareRoot.apply
