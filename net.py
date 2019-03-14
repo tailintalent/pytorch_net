@@ -346,10 +346,11 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         sys.stdout.flush()
                     except:
                         pass
-        if filename is not None and save_interval is not None:
+        if save_interval is not None:
             if i % save_interval == 0:
                 record_data(data_record, [model.model_dict], ["model_dict"])
-                pickle.dump(data_record, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
+                if filename is not None:
+                    pickle.dump(data_record, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
         if to_stop:
             break
 
