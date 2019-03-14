@@ -755,6 +755,12 @@ def remove_files_in_directory(directory, is_remove_subdir = False):
             print(e)
 
 
+def softmax(tensor, dim):
+    assert isinstance(tensor, np.ndarray)
+    tensor = tensor - tensor.mean(dim, keepdims = True)
+    tensor = np.exp(tensor)
+    tensor = tensor / tensor.sum(dim, keepdims = True)
+    return tensor
 
 
 class MatrixSquareRoot(Function):
