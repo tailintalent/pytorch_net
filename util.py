@@ -795,3 +795,20 @@ class MatrixSquareRoot(Function):
 
 
 sqrtm = MatrixSquareRoot.apply
+
+
+
+def get_flat_function(List, idx):
+    """Get the idx index of List. If idx >= len(List), return the last element"""
+    if idx < 0:
+        return List[0]
+    elif idx < len(List):
+        return List[idx]
+    else:
+        return List[-1]
+
+
+def Beta_Function(x, alpha, beta):
+    """Beta function"""
+    from scipy.special import gamma
+    return gamma(alpha + beta) / gamma(alpha) / gamma(beta) * x ** (alpha - 1) * (1 - x) ** (beta - 1)

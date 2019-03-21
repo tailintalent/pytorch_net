@@ -76,14 +76,14 @@ def matrix_diag_transform(matrix, fun):
     return new_matrix
 
 
-def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
+def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **kwargs):
     """Get loss using the whole data or data_loader"""
     if data_loader is not None:
         assert X is None and y is None
         loss_list = []
         all_info_dict = {}
         for X_batch, y_batch in data_loader:
-            loss_ele = model.get_loss(X_batch, y_batch, criterion = criterion)
+            loss_ele = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs)
             loss_list.append(loss_ele)
             for key in model.info_dict:
                 if key not in all_info_dict:
@@ -95,7 +95,7 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None):
         model.info_dict = deepcopy(all_info_dict)
     else:
         assert X is not None and y is not None
-        loss = model.get_loss(X, y, criterion = criterion)
+        loss = model.get_loss(X, y, criterion = criterion, **kwargs)
     return loss
 
 
@@ -188,10 +188,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         X_valid, y_valid = X, y
     
     # Get original loss:
-    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
+    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs).item()
     
     if "loss" in record_keys:
-        record_data(data_record, [-1, get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
+        record_data(data_record, [-1, loss_original], ["iter", "loss"])
     if "param" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
@@ -204,9 +204,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     num_params = len(list(model.parameters()))
     if num_params == 0:
         print("No parameters to optimize!")
-        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
+        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs).item()
         if "loss" in record_keys:
-            record_data(data_record, [0, get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()], ["iter", "loss"])
+            record_data(data_record, [0, loss_value], ["iter", "loss"])
         if "param" in record_keys:
             record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
         if "param_grad" in record_keys:
@@ -258,7 +258,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
                 reg = get_regularization(model, **kwargs)
-                loss = model.get_loss(X, y, criterion = criterion, **kwargs) + reg
+                loss = model.get_loss(X, y, criterion = criterion, loss_epoch = i, **kwargs) + reg
                 loss.backward()
                 optimizer.step()
             else:
@@ -266,7 +266,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 def closure():
                     optimizer.zero_grad()
                     reg = get_regularization(model, **kwargs)
-                    loss = model.get_loss(X, y, criterion = criterion, **kwargs) + reg
+                    loss = model.get_loss(X, y, criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     return loss
                 optimizer.step(closure)
@@ -275,7 +275,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
                     reg = get_regularization(model, **kwargs)
-                    loss = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs) + reg
+                    loss = model.get_loss(X_batch, y_batch, criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     if logdir is not None:
                         batch_idx += 1
@@ -288,7 +288,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     def closure():
                         optimizer.zero_grad()
                         reg = get_regularization(model, **kwargs)
-                        loss = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs) + reg
+                        loss = model.get_loss(X_batch, y_batch, criterion = criterion, loss_epoch = i, **kwargs) + reg
                         loss.backward()
                         return loss
                     if logdir is not None:
@@ -312,7 +312,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
 
         if i % inspect_interval == 0:
             model.eval()
-            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
+            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs).item()
             if scheduler_type is not None:
                 if scheduler_type == "ReduceLROnPlateau":
                     scheduler.step(loss_value)
@@ -354,7 +354,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         if to_stop:
             break
 
-    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion).item()
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epoch, **kwargs).item()
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:
