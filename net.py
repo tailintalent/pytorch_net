@@ -354,7 +354,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         if to_stop:
             break
 
-    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epoch, **kwargs).item()
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, **kwargs).item()
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:
