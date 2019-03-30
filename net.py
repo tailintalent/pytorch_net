@@ -99,6 +99,22 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **
     return loss
 
 
+def plot_model(model, data_loader = None, X = None, y = None):
+    if data_loader is not None:
+        assert X is None and y is None
+        X_all = []
+        y_all = []
+        for X_batch, y_batch in data_loader:
+            X_all.append(X_batch)
+            y_all.append(y_batch)
+        X_all = torch.cat(X_all)
+        y_all = torch.cat(y_all)
+        model.plot(X_all, y_all)
+    else:
+        assert X is not None and y is not None
+        model.plot(X, y)
+
+
 def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     if data_loader is None:
@@ -159,6 +175,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             if inspect_function_key not in inspect_items:
                 inspect_items.append(inspect_function_key)
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
+    inspect_image_interval = kwargs["inspect_image_interval"] if "inspect_image_interval" in kwargs else None
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     filename = kwargs["filename"] if "filename" in kwargs else None
     if filename is not None:
@@ -346,6 +363,9 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         sys.stdout.flush()
                     except:
                         pass
+            if inspect_image_interval is not None:
+                if i % inspect_image_interval == 0:
+                    plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
         if save_interval is not None:
             if i % save_interval == 0:
                 record_data(data_record, [model.model_dict], ["model_dict"])
