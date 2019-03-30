@@ -232,7 +232,7 @@ def get_activation(activation):
     elif activation == "leakyReluFlat":
         f = nn.LeakyReLU(negative_slope = 0.01)
     elif activation == "tanh":
-        f = F.tanh
+        f = torch.tanh
     elif activation == "softplus":
         f = F.softplus
     elif activation == "sigmoid":
