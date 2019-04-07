@@ -148,7 +148,7 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
     
 
 
-def train(model, X = None, y = None, train_loader = None, validation_data = None, validation_loader = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
+def train(model, X = None, y = None, train_loader = None, validation_data = None, validation_loader = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, is_cuda = None, **kwargs):
     """minimal version of training. "model" can be a single model or a ordered list of models"""
     def get_regularization(model, **kwargs):
         reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
@@ -156,11 +156,12 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         for reg_type, reg_coeff in reg_dict.items():
             reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
         return reg
-    if X is None and y is None:
-        assert train_loader is not None
-        is_cuda = train_loader.dataset.tensors[0].is_cuda
-    else:
-        is_cuda = X.is_cuda
+    if is_cuda is None:
+        if X is None and y is None:
+            assert train_loader is not None
+            is_cuda = train_loader.dataset.tensors[0].is_cuda
+        else:
+            is_cuda = X.is_cuda
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
@@ -363,7 +364,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         sys.stdout.flush()
                     except:
                         pass
-            if inspect_image_interval is not None:
+            if inspect_image_interval is not None and hasattr(model, "plot"):
                 if i % inspect_image_interval == 0:
                     plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
         if save_interval is not None:
@@ -438,6 +439,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
         return model
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
+
         
 
 def load_model_dict(model_dict, is_cuda = False):
