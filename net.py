@@ -151,10 +151,11 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
 def train(model, X = None, y = None, train_loader = None, validation_data = None, validation_loader = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, is_cuda = None, **kwargs):
     """minimal version of training. "model" can be a single model or a ordered list of models"""
     def get_regularization(model, **kwargs):
-        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
+        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else None
         reg = to_Variable([0], is_cuda = is_cuda)
-        for reg_type, reg_coeff in reg_dict.items():
-            reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
+        if reg_dict is not None:
+            for reg_type, reg_coeff in reg_dict.items():
+                reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
         return reg
     if is_cuda is None:
         if X is None and y is None:
