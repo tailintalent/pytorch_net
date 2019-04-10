@@ -416,6 +416,11 @@ def load_model_dict_net(model_dict, is_cuda = False):
                    settings = model_dict["settings"] if "settings" in model_dict else {},
                    is_cuda = is_cuda,
                   )
+    elif net_type == "Branching_Net":
+        return Branching_Net(net_base_model_dict = model_dict["net_base_model_dict"],
+                             net_1_model_dict = model_dict["net_1_model_dict"],
+                             net_2_model_dict = model_dict["net_2_model_dict"],
+                            )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
@@ -440,7 +445,6 @@ def load_model_dict_net(model_dict, is_cuda = False):
         return model
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
-
         
 
 def load_model_dict(model_dict, is_cuda = False):
@@ -789,15 +793,16 @@ class MLP(nn.Module):
             setattr(self, "layer_{0}".format(k), layer)
 
 
-    def forward(self, input, **kwargs):
+    def forward(self, input, p_dict = None, **kwargs):
         output = input
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
         for k in range(len(self.struct_param)):
+            p_dict_ele = p_dict[k] if p_dict is not None else None
             if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1))
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
             else:
-                output = getattr(self, "layer_{0}".format(k))(output)
+                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
         if is_res_block:
             output = output + input
         return output
@@ -961,6 +966,53 @@ class MLP(nn.Module):
     def set_trainable(self, is_trainable):
         for k in range(self.num_layers):
             getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
+
+
+# In[ ]:
+
+
+class Branching_Net(nn.Module):
+    def __init__(
+        self,
+        net_base_model_dict,
+        net_1_model_dict,
+        net_2_model_dict,
+        ):
+        super(Branching_Net, self).__init__()
+        self.net_base = load_model_dict(net_base_model_dict)
+        self.net_1 = load_model_dict(net_1_model_dict)
+        self.net_2 = load_model_dict(net_2_model_dict)
+        self.info_dict = {}
+    
+    
+    def forward(self, X, **kwargs):
+        shared = self.net_base(X)
+        shared = shared.max(0, keepdim = True)[0]
+        return self.net_1(shared)[0], self.net_2(shared)[0]
+
+
+    def get_regularization(self, source = ["weights", "bias"], mode = "L1"):
+        reg = self.net_base.get_regularization(source = source, mode = mode) +               self.net_1.get_regularization(source = source, mode = mode) +               self.net_2.get_regularization(source = source, mode = mode)
+        return reg
+
+
+    def set_trainable(self, is_trainable):
+        self.net_base.set_trainable(is_trainable)
+        self.net_1.set_trainable(is_trainable)
+        self.net_2.set_trainable(is_trainable)
+
+
+    def prepare_inspection(self, X, y, **kwargs):
+        return deepcopy(self.info_dict)
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Branching_Net"}
+        model_dict["net_base_model_dict"] = self.net_base.model_dict
+        model_dict["net_1_model_dict"] = self.net_1.model_dict
+        model_dict["net_2_model_dict"] = self.net_2.model_dict
+        return model_dict
 
 
 # ## RNN:
