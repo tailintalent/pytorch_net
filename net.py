@@ -757,7 +757,7 @@ class MLP(nn.Module):
         self.settings = deepcopy(settings)
         self.is_cuda = is_cuda
         self.info_dict = {}
-        
+
         self.init_layers(deepcopy(struct_param))
 
 
@@ -1212,6 +1212,7 @@ class ConvNet(nn.Module):
                                            kernel_size = layer_settings["kernel_size"],
                                            stride = layer_settings["stride"] if "stride" in layer_settings else 1,
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                           output_padding = layer_settings["output_padding"] if "output_padding" in layer_settings else 0,
                                            dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
             elif layer_type == "Simple_Layer":
