@@ -1458,7 +1458,7 @@ class Conv_Model(nn.Module):
     
     def plot(self, X, y):
         y_pred = self(X)
-        idx_list = np.random.choice(len(X), 3)
+        idx_list = np.random.choice(len(X), 1)
         for idx in idx_list:
             matrix = torch.cat([X[idx], y[idx], y_pred[idx]])
             plot_matrices(matrix, images_per_row = 8)
