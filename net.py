@@ -420,6 +420,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
         return Branching_Net(net_base_model_dict = model_dict["net_base_model_dict"],
                              net_1_model_dict = model_dict["net_1_model_dict"],
                              net_2_model_dict = model_dict["net_2_model_dict"],
+                             is_cuda = is_cuda,
                             )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
@@ -983,11 +984,12 @@ class Branching_Net(nn.Module):
         net_base_model_dict,
         net_1_model_dict,
         net_2_model_dict,
+        is_cuda = False,
         ):
         super(Branching_Net, self).__init__()
-        self.net_base = load_model_dict(net_base_model_dict)
-        self.net_1 = load_model_dict(net_1_model_dict)
-        self.net_2 = load_model_dict(net_2_model_dict)
+        self.net_base = load_model_dict(net_base_model_dict, is_cuda = is_cuda)
+        self.net_1 = load_model_dict(net_1_model_dict, is_cuda = is_cuda)
+        self.net_2 = load_model_dict(net_2_model_dict, is_cuda = is_cuda)
         self.info_dict = {}
     
     
@@ -1428,9 +1430,9 @@ class Conv_Model(nn.Module):
         ):
         """Conv_Model consists of an encoder, a core and a decoder"""
         super(Conv_Model, self).__init__()
-        self.encoder = load_model_dict(encoder_model_dict)
-        self.core = load_model_dict(core_model_dict)
-        self.decoder = load_model_dict(decoder_model_dict)
+        self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
+        self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
+        self.decoder = load_model_dict(decoder_model_dict, is_cuda = is_cuda)
         self.is_cuda = is_cuda
         self.info_dict = {}
     
