@@ -1433,6 +1433,11 @@ class Conv_Model(nn.Module):
         self.decoder = load_model_dict(decoder_model_dict)
         self.is_cuda = is_cuda
         self.info_dict = {}
+    
+    
+    @property
+    def num_layers(self):
+        return len(self.core.model_dict["struct_param"])
 
 
     def forward(
@@ -1465,6 +1470,12 @@ class Conv_Model(nn.Module):
 
     def prepare_inspection(self, X, y, **kwargs):
         return deepcopy(self.info_dict)
+    
+    
+    def set_trainable(self, is_trainable):
+        self.encoder.set_trainable(is_trainable)
+        self.core.set_trainable(is_trainable)
+        self.decoder.set_trainable(is_trainable)
     
     
     @property
