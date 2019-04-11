@@ -443,6 +443,12 @@ def load_model_dict_net(model_dict, is_cuda = False):
         if "decoder" in model_dict:
             model.decoder.load_model_dict(model_dict["decoder"])
         return model
+    elif model_dict["type"] == "Conv_Model":
+        return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"],
+                          core_model_dict = model_dict["core_model_dict"],
+                          decoder_model_dict = model_dict["decoder_model_dict"],
+                          is_cuda = is_cuda,
+                         )
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
         
@@ -1354,7 +1360,7 @@ class ConvNet(nn.Module):
                 if W_source == "core":
                     W_list.append(to_np_array(layer.weight))
                 if b_source == "core":
-                    b_list.append(to_np_array(layer.bias))
+                    b_list.append(to_np_array(layer.bias, full_reduce = False))
             else:
                 if W_source == "core":
                     W_list.append(None)
@@ -1411,6 +1417,66 @@ class ConvNet(nn.Module):
                     param.requires_grad = is_trainable
 
 
+
+class Conv_Model(nn.Module):
+    def __init__(
+        self,
+        encoder_model_dict,
+        core_model_dict,
+        decoder_model_dict,
+        is_cuda = False,
+        ):
+        """Conv_Model consists of an encoder, a core and a decoder"""
+        super(Conv_Model, self).__init__()
+        self.encoder = load_model_dict(encoder_model_dict)
+        self.core = load_model_dict(core_model_dict)
+        self.decoder = load_model_dict(decoder_model_dict)
+        self.is_cuda = is_cuda
+        self.info_dict = {}
+
+
+    def forward(
+        self,
+        X,
+        p_dict = None,
+        **kwargs
+        ):
+        latent = self.encoder(X)
+        latent = self.core(latent, p_dict = p_dict)
+        output = self.decoder(latent)
+        return output
+    
+    
+    def get_loss(self, X, y, criterion, **kwargs):
+        return criterion(self(X, **kwargs), y)
+    
+    
+    def plot(self, X, y):
+        y_pred = self(X)
+        idx_list = np.random.choice(len(X), 3)
+        for idx in idx_list:
+            matrix = torch.cat([X[idx], y[idx], y_pred[idx]])
+            plot_matrices(matrix, images_per_row = 8)
+    
+    
+    def get_regularization(self, source = ["weights", "bias"], mode = "L1"):
+        return self.encoder.get_regularization(source = source, mode = mode) +                 self.core.get_regularization(source = source, mode = mode) +                 self.decoder.get_regularization(source = source, mode = mode)
+
+
+    def prepare_inspection(self, X, y, **kwargs):
+        return deepcopy(self.info_dict)
+    
+    
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Conv_Model"}
+        model_dict["encoder_model_dict"] = self.encoder.model_dict
+        model_dict["core_model_dict"] = self.core.model_dict
+        model_dict["decoder_model_dict"] = self.decoder.model_dict
+        return model_dict
+
+
+
 class Conv_Autoencoder(nn.Module):
     def __init__(
         self,
@@ -1423,6 +1489,7 @@ class Conv_Autoencoder(nn.Module):
         settings = {},
         is_cuda = False,
         ):
+        """Conv_Autoencoder consists of an encoder and a decoder"""
         super(Conv_Autoencoder, self).__init__()
         self.input_channels_encoder = input_channels_encoder
         self.input_channels_decoder = input_channels_decoder
