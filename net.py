@@ -448,6 +448,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
         return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"],
                           core_model_dict = model_dict["core_model_dict"],
                           decoder_model_dict = model_dict["decoder_model_dict"],
+                          is_res_block = model_dict["is_res_block"],
                           is_cuda = is_cuda,
                          )
     else:
@@ -1426,6 +1427,7 @@ class Conv_Model(nn.Module):
         encoder_model_dict,
         core_model_dict,
         decoder_model_dict,
+        is_res_block = False,
         is_cuda = False,
         ):
         """Conv_Model consists of an encoder, a core and a decoder"""
@@ -1433,6 +1435,7 @@ class Conv_Model(nn.Module):
         self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
         self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
         self.decoder = load_model_dict(decoder_model_dict, is_cuda = is_cuda)
+        self.is_res_block = is_res_block
         self.is_cuda = is_cuda
         self.info_dict = {}
     
@@ -1451,6 +1454,8 @@ class Conv_Model(nn.Module):
         latent = self.encoder(X)
         latent = self.core(latent, p_dict = p_dict)
         output = self.decoder(latent)
+        if self.is_res_block:
+            output = output + X
         return output
     
     
@@ -1486,6 +1491,7 @@ class Conv_Model(nn.Module):
         model_dict["encoder_model_dict"] = self.encoder.model_dict
         model_dict["core_model_dict"] = self.core.model_dict
         model_dict["decoder_model_dict"] = self.decoder.model_dict
+        model_dict["is_res_block"] = self.is_res_block
         return model_dict
 
 
