@@ -738,6 +738,16 @@ def filter_filename(dirname, include = [], exclude = [], array_id = None):
     return filename_collect
 
 
+def sort_filename(filename_list):
+    """Sort the files according to the id at the end. The filename is in the form of *_NUMBER.p """
+    iter_list = []
+    for filename in filename_list:
+        iter_num = eval(filename.split("_")[-1].split(".")[0])
+        iter_list.append(iter_num)
+    iter_list_sorted, filename_list_sorted = sort_two_lists(iter_list, filename_list, reverse = True)
+    return filename_list_sorted
+
+
 def remove_files_in_directory(directory, is_remove_subdir = False):
     """Remove files in a directory"""
     import os, shutil
