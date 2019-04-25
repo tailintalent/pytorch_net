@@ -365,7 +365,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         sys.stdout.flush()
                     except:
                         pass
-            if inspect_image_interval is not None and hasattr(model, "plot"):
+            if isplot and inspect_image_interval is not None and hasattr(model, "plot"):
                 if i % inspect_image_interval == 0:
                     plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
         if save_interval is not None:
