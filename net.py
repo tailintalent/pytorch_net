@@ -445,10 +445,12 @@ def load_model_dict_net(model_dict, is_cuda = False):
             model.decoder.load_model_dict(model_dict["decoder"])
         return model
     elif model_dict["type"] == "Conv_Model":
-        return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"],
-                          core_model_dict = model_dict["core_model_dict"],
+        is_generative = model_dict["is_generative"] if "is_generative" in model_dict else False
+        return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"] if not is_generative else None,
+                          core_model_dict = model_dict["core_model_dict"] if not is_generative else None,
                           decoder_model_dict = model_dict["decoder_model_dict"],
-                          is_res_block = model_dict["is_res_block"],
+                          is_generative = model_dict["is_generative"] if is_generative else False,
+                          is_res_block = model_dict["is_res_block"] if "is_res_block" in model_dict else False,
                           is_cuda = is_cuda,
                          )
     else:
@@ -1202,6 +1204,9 @@ class ConvNet(nn.Module):
                 num_channels_prev = self.struct_param[i - k][0]
             else:
                 num_channels_prev = input_channels
+                k = 0
+            if self.struct_param[i - k][1] == "Simple_Layer" and isinstance(num_channels_prev, tuple) and len(num_channels_prev) == 3:
+                num_channels_prev = num_channels_prev[0]
             num_channels = self.struct_param[i][0]
             layer_type = self.struct_param[i][1]
             layer_settings = self.struct_param[i][2]
@@ -1427,22 +1432,28 @@ class Conv_Model(nn.Module):
         encoder_model_dict,
         core_model_dict,
         decoder_model_dict,
-        is_res_block = False,
+        is_generative = True,
+        is_res_block = True,
         is_cuda = False,
         ):
         """Conv_Model consists of an encoder, a core and a decoder"""
         super(Conv_Model, self).__init__()
-        self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
-        self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
+        self.is_generative = is_generative
+        if not is_generative:
+            self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
+            self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
         self.decoder = load_model_dict(decoder_model_dict, is_cuda = is_cuda)
         self.is_res_block = is_res_block
         self.is_cuda = is_cuda
         self.info_dict = {}
-    
-    
+
+
     @property
     def num_layers(self):
-        return len(self.core.model_dict["struct_param"])
+        if self.is_generative:
+            return 1
+        else:
+            return len(self.core.model_dict["struct_param"])
 
 
     def forward(
@@ -1451,14 +1462,17 @@ class Conv_Model(nn.Module):
         p_dict = None,
         **kwargs
         ):
-        latent = self.encoder(X)
-        latent = self.core(latent, p_dict = p_dict)
+        if self.is_generative:
+            latent = p_dict[0]
+        else:
+            latent = self.encoder(X)
+            latent = self.core(latent, p_dict = p_dict)
         output = self.decoder(latent)
         if self.is_res_block:
             output = output + X
         return output
-    
-    
+
+
     def get_loss(self, X, y, criterion, **kwargs):
         return criterion(self(X, **kwargs), y)
     
@@ -1472,7 +1486,10 @@ class Conv_Model(nn.Module):
     
     
     def get_regularization(self, source = ["weights", "bias"], mode = "L1"):
-        return self.encoder.get_regularization(source = source, mode = mode) +                 self.core.get_regularization(source = source, mode = mode) +                 self.decoder.get_regularization(source = source, mode = mode)
+        if self.is_generative:
+            return self.decoder.get_regularization(source = source, mode = mode)
+        else:
+            return self.encoder.get_regularization(source = source, mode = mode) +                     self.core.get_regularization(source = source, mode = mode) +                     self.decoder.get_regularization(source = source, mode = mode)
 
 
     def prepare_inspection(self, X, y, **kwargs):
@@ -1480,17 +1497,20 @@ class Conv_Model(nn.Module):
     
     
     def set_trainable(self, is_trainable):
-        self.encoder.set_trainable(is_trainable)
-        self.core.set_trainable(is_trainable)
+        if not self.is_generative:
+            self.encoder.set_trainable(is_trainable)
+            self.core.set_trainable(is_trainable)
         self.decoder.set_trainable(is_trainable)
     
     
     @property
     def model_dict(self):
         model_dict = {"type": "Conv_Model"}
-        model_dict["encoder_model_dict"] = self.encoder.model_dict
-        model_dict["core_model_dict"] = self.core.model_dict
+        if not self.is_generative:
+            model_dict["encoder_model_dict"] = self.encoder.model_dict
+            model_dict["core_model_dict"] = self.core.model_dict
         model_dict["decoder_model_dict"] = self.decoder.model_dict
+        model_dict["is_generative"] = self.is_generative
         model_dict["is_res_block"] = self.is_res_block
         return model_dict
 
