@@ -464,7 +464,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
     elif model_dict["type"] == "Conv_Model":
         is_generative = model_dict["is_generative"] if "is_generative" in model_dict else False
         return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"] if not is_generative else None,
-                          core_model_dict = model_dict["core_model_dict"] if not is_generative else None,
+                          core_model_dict = model_dict["core_model_dict"],
                           decoder_model_dict = model_dict["decoder_model_dict"],
                           is_generative = model_dict["is_generative"] if is_generative else False,
                           is_res_block = model_dict["is_res_block"] if "is_res_block" in model_dict else False,
@@ -1458,7 +1458,7 @@ class Conv_Model(nn.Module):
         self.is_generative = is_generative
         if not is_generative:
             self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
-            self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
+        self.core = load_model_dict(core_model_dict, is_cuda = is_cuda)
         self.decoder = load_model_dict(decoder_model_dict, is_cuda = is_cuda)
         self.is_res_block = is_res_block
         self.is_cuda = is_cuda
@@ -1476,35 +1476,38 @@ class Conv_Model(nn.Module):
     def forward(
         self,
         X,
-        p_dict = None,
+        latent = None,
         **kwargs
         ):
         if self.is_generative:
-            latent = p_dict[0]
+            if len(latent.shape) == 1:
+                latent = latent.repeat(len(X), 1)
+            latent = self.core(latent)
         else:
+            p_dict = {k: latent if k == 0 else None for k in range(self.num_layers)}
             latent = self.encoder(X)
             latent = self.core(latent, p_dict = p_dict)
         output = self.decoder(latent)
         if self.is_res_block:
-            output = output + X
+            output = nn.Sigmoid()(output + X)
         return output
 
 
     def get_loss(self, X, y, criterion, **kwargs):
-        return criterion(self(X, **kwargs), y)
+        return criterion(self(X = X[0], latent = X[1]), y)
     
     
     def plot(self, X, y):
-        y_pred = self(X)
+        y_pred = self(X[0], latent = X[1])
         idx_list = np.random.choice(len(X), 1)
         for idx in idx_list:
-            matrix = torch.cat([X[idx], y[idx], y_pred[idx]])
+            matrix = torch.cat([X[0][idx], y[idx], y_pred[idx]])
             plot_matrices(matrix, images_per_row = 8)
     
     
     def get_regularization(self, source = ["weights", "bias"], mode = "L1"):
         if self.is_generative:
-            return self.decoder.get_regularization(source = source, mode = mode)
+            return self.core.get_regularization(source = source, mode = mode) +                     self.decoder.get_regularization(source = source, mode = mode)
         else:
             return self.encoder.get_regularization(source = source, mode = mode) +                     self.core.get_regularization(source = source, mode = mode) +                     self.decoder.get_regularization(source = source, mode = mode)
 
@@ -1516,7 +1519,7 @@ class Conv_Model(nn.Module):
     def set_trainable(self, is_trainable):
         if not self.is_generative:
             self.encoder.set_trainable(is_trainable)
-            self.core.set_trainable(is_trainable)
+        self.core.set_trainable(is_trainable)
         self.decoder.set_trainable(is_trainable)
     
     
@@ -1525,7 +1528,7 @@ class Conv_Model(nn.Module):
         model_dict = {"type": "Conv_Model"}
         if not self.is_generative:
             model_dict["encoder_model_dict"] = self.encoder.model_dict
-            model_dict["core_model_dict"] = self.core.model_dict
+        model_dict["core_model_dict"] = self.core.model_dict
         model_dict["decoder_model_dict"] = self.decoder.model_dict
         model_dict["is_generative"] = self.is_generative
         model_dict["is_res_block"] = self.is_res_block

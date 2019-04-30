@@ -115,8 +115,8 @@ class Simple_Layer(nn.Module):
         }
         Layer_dict["weights"], Layer_dict["bias"] = self.get_weights_bias()
         return Layer_dict
-    
-    
+
+
     def load_layer_dict(self, layer_dict):
         new_layer = load_layer_dict(layer_dict, "Simple_Layer", self.is_cuda)
         self.__dict__.update(new_layer.__dict__)
