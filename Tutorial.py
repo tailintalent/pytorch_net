@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -194,4 +194,40 @@ loss_original, loss_value, data_record = train(model,
                                                inspect_items_interval = 1,
                                                inspect_loss_precision = 4,
                                               )
+
+
+# ## An example callback code:
+
+# In[ ]:
+
+
+if isplot:
+    import matplotlib.pylab as plt
+    fig = plt.figure()
+    if dim == 3:
+        ax = fig.add_subplot(111, projection='3d')
+    else:
+        fig.add_axes([0, 0, 1, 1])
+        ax = fig.axes[0]
+else:
+    ax = None
+
+
+def visualize(model, X, y, iteration, loss, ax, dim):
+    if isplot:
+        plt.cla()
+        y_pred = model.transform(X)
+        y_pred, y = to_np_array(y_pred, y)
+        if dim == 3:
+            ax.scatter(y[:,0],  y[:,1], y[:,2], color='red', label='ref', s = 1)
+            ax.scatter(y_pred[:,0],  y_pred[:,1], y_pred[:,2], color='blue', label='data', s = 1)
+            ax.text2D(0.87, 0.92, 'Iteration: {:d}\nError: {:06.4f}'.format(iteration, loss), horizontalalignment='center', verticalalignment='center', transform=ax.transAxes, fontsize='x-large')
+        else:
+            ax.scatter(y[:,0], y[:,1], color='red', label='ref')
+            ax.scatter(y_pred[:,0], y_pred[:,1], color='blue', label='data')
+            plt.text(0.87, 0.92, 'Iteration: {:d}\nError: {:06.4f}'.format(iteration, loss), horizontalalignment='center', verticalalignment='center', transform=ax.transAxes, fontsize='x-large')
+        ax.legend(loc='upper left', fontsize='x-large')
+        plt.draw()
+        plt.pause(pause)
+callback = partial(visualize, ax = ax, dim = dim)
 
