@@ -163,13 +163,15 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             is_cuda = train_loader.dataset.tensors[0].is_cuda
         else:
             is_cuda = X.is_cuda
+    
+    # Optimization kwargs:
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
     optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
-    patience = kwargs["patience"] if "patience" in kwargs else 20
-    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+
+    # Inspection kwargs:
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     if inspect_functions is not None:
@@ -179,6 +181,10 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     inspect_items_interval = kwargs["inspect_items_interval"] if "inspect_items_interval" in kwargs else 1000
     inspect_image_interval = kwargs["inspect_image_interval"] if "inspect_image_interval" in kwargs else None
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
+    callback = kwargs["callback"] if "callback" in kwargs else None
+    
+    # Saving kwargs:
+    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     filename = kwargs["filename"] if "filename" in kwargs else None
     if filename is not None:
         make_dir(filename)
@@ -188,6 +194,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     info_to_save = kwargs["info_to_save"] if "info_to_save" in kwargs else None
     if info_to_save is not None:
         data_record.update(info_to_save)
+    patience = kwargs["patience"] if "patience" in kwargs else 20
     if patience is not None:
         early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
         early_stopping_monitor = kwargs["early_stopping_monitor"] if "early_stopping_monitor" in kwargs else "loss"
@@ -251,6 +258,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         else:
             scheduler.step()
     
+    # Initialize inspect_items:
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
         print("\tlr: {0:.3e}\t loss:{1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_original, inspect_loss_precision), end = "")
@@ -262,7 +270,8 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     if item in record_keys and item != "loss":
                         record_data(data_record, [to_np_array(info_dict[item])], [item])
         print()
-            
+
+    # Initialize logdir:
     if logdir is not None:
         if logimages is not None:
             for tag, image_fun in logimages["image_fun"].items():
@@ -337,6 +346,14 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     scheduler.step(loss_value)
                 else:
                     scheduler.step()
+            if callback is not None:
+                assert callable(callback)
+                callback(model = model,
+                         X = X_valid,
+                         y = y_valid,
+                         iteration = i,
+                         loss = loss_value,
+                        )
             if patience is not None:
                 if early_stopping_monitor == "loss":
                     to_stop = early_stopping.monitor(loss_value)
