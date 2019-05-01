@@ -466,6 +466,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
         return Conv_Model(encoder_model_dict = model_dict["encoder_model_dict"] if not is_generative else None,
                           core_model_dict = model_dict["core_model_dict"],
                           decoder_model_dict = model_dict["decoder_model_dict"],
+                          latent_size = model_dict["latent_size"],
                           is_generative = model_dict["is_generative"] if is_generative else False,
                           is_res_block = model_dict["is_res_block"] if "is_res_block" in model_dict else False,
                           is_cuda = is_cuda,
@@ -1449,12 +1450,14 @@ class Conv_Model(nn.Module):
         encoder_model_dict,
         core_model_dict,
         decoder_model_dict,
+        latent_size = 2,
         is_generative = True,
         is_res_block = True,
         is_cuda = False,
         ):
         """Conv_Model consists of an encoder, a core and a decoder"""
         super(Conv_Model, self).__init__()
+        self.latent_size = latent_size
         self.is_generative = is_generative
         if not is_generative:
             self.encoder = load_model_dict(encoder_model_dict, is_cuda = is_cuda)
@@ -1489,7 +1492,19 @@ class Conv_Model(nn.Module):
             latent = self.core(latent, p_dict = p_dict)
         output = self.decoder(latent)
         if self.is_res_block:
-            output = nn.Sigmoid()(output + X)
+            output = (X + nn.Sigmoid()(output)).clamp(0, 1)
+        return output
+    
+    
+    def forward_multistep(self, X, latents, isplot = False, num_images = 1):
+        assert len(latents.shape) == 1
+        length = int(len(latents) / 2)
+        output = X
+        for i in range(length - 1):
+            latent = latents[i * self.latent_size: (i + 2) * self.latent_size]
+            output = self(output, latent = latent)
+            if isplot:
+                plot_matrices(output[:num_images,0])
         return output
 
 
@@ -1499,7 +1514,7 @@ class Conv_Model(nn.Module):
     
     def plot(self, X, y, num_images = 1):
         y_pred = self(X[0], latent = X[1])
-        idx_list = np.random.choice(len(X), num_images)
+        idx_list = np.random.choice(len(X[0]), num_images)
         for idx in idx_list:
             matrix = torch.cat([X[0][idx], y[idx], y_pred[idx]])
             plot_matrices(matrix, images_per_row = 8)
@@ -1528,6 +1543,7 @@ class Conv_Model(nn.Module):
         model_dict = {"type": "Conv_Model"}
         if not self.is_generative:
             model_dict["encoder_model_dict"] = self.encoder.model_dict
+        model_dict["latent_size"] = self.latent_size
         model_dict["core_model_dict"] = self.core.model_dict
         model_dict["decoder_model_dict"] = self.decoder.model_dict
         model_dict["is_generative"] = self.is_generative
