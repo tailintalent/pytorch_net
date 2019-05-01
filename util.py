@@ -97,6 +97,62 @@ def plot_matrices(
     print()
 
 
+def Zip(*data, **kwargs):
+    """Recursive unzipping of data structure
+    Example: Zip(*[(('a',2), 1), (('b',3), 2), (('c',3), 3), (('d',2), 4)])
+    ==> [[['a', 'b', 'c', 'd'], [2, 3, 3, 2]], [1, 2, 3, 4]]
+    Each subtree in the original data must be in the form of a tuple.
+
+    In the **kwargs, you can set the function that is applied to each fully unzipped subtree.
+    """
+    import collections
+    function = kwargs["function"] if "function" in kwargs else None
+    if len(data) == 1:
+        return data[0]
+    data = [list(element) for element in zip(*data)]
+    for i, element in enumerate(data):
+        if isinstance(element[0], tuple):
+            data[i] = Zip(*element, **kwargs)
+        elif isinstance(element, list):
+            if function is not None:
+                data[i] = function(element)
+    return data
+
+
+class Recursive_Loader(object):
+    """A recursive loader, able to deal with any depth of X"""
+    def __init__(self, X, y, batch_size):
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.length = int(len(self.y) / self.batch_size)
+        self.idx_list = torch.randperm(len(self.y))
+
+    def __iter__(self):
+        self.current = 0
+        return self
+
+    def __next__(self):
+        if self.current < self.length:
+            idx = self.idx_list[self.current * self.batch_size: (self.current + 1) * self.batch_size]
+            self.current += 1
+            return recursive_index((self.X, self.y), idx)
+        else:
+            self.idx_list = torch.randperm(len(self.y))
+            raise StopIteration
+
+
+def recursive_index(data, idx):
+    """Recursively obtain the idx of data"""
+    data_new = []
+    for i, element in enumerate(data):
+        if isinstance(element, tuple):
+            data_new.append(recursive_index(element, idx))
+        else:
+            data_new.append(element[idx])
+    return data_new
+
+
 def record_data(data_record_dict, data_list, key_list, nolist = False):
     """Record data to the dictionary data_record_dict. It records each key: value pair in the corresponding location of 
     key_list and data_list into the dictionary."""

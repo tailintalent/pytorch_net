@@ -23,7 +23,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir, Zip
 
 
 # In[ ]:
@@ -107,7 +107,7 @@ def plot_model(model, data_loader = None, X = None, y = None):
         for X_batch, y_batch in data_loader:
             X_all.append(X_batch)
             y_all.append(y_batch)
-        X_all = torch.cat(X_all)
+        X_all = Zip(*X_all, function = torch.cat)
         y_all = torch.cat(y_all)
         model.plot(X_all, y_all)
     else:
