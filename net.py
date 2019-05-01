@@ -1497,9 +1497,9 @@ class Conv_Model(nn.Module):
         return criterion(self(X = X[0], latent = X[1]), y)
     
     
-    def plot(self, X, y):
+    def plot(self, X, y, num_images = 1):
         y_pred = self(X[0], latent = X[1])
-        idx_list = np.random.choice(len(X), 1)
+        idx_list = np.random.choice(len(X), num_images)
         for idx in idx_list:
             matrix = torch.cat([X[0][idx], y[idx], y_pred[idx]])
             plot_matrices(matrix, images_per_row = 8)
