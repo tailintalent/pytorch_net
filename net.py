@@ -23,7 +23,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir, Zip
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir
 
 
 # In[ ]:
@@ -74,6 +74,27 @@ def matrix_diag_transform(matrix, fun):
     new_matrix = matrix.clone()
     new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
     return new_matrix
+
+
+def Zip(*data, **kwargs):
+    """Recursive unzipping of data structure
+    Example: Zip(*[(('a',2), 1), (('b',3), 2), (('c',3), 3), (('d',2), 4)])
+    ==> [[['a', 'b', 'c', 'd'], [2, 3, 3, 2]], [1, 2, 3, 4]]
+    Each subtree in the original data must be in the form of a tuple.
+    In the **kwargs, you can set the function that is applied to each fully unzipped subtree.
+    """
+    import collections
+    function = kwargs["function"] if "function" in kwargs else None
+    if len(data) == 1:
+        return data[0]
+    data = [list(element) for element in zip(*data)]
+    for i, element in enumerate(data):
+        if isinstance(element[0], tuple):
+            data[i] = Zip(*element, **kwargs)
+        elif isinstance(element, list):
+            if function is not None:
+                data[i] = function(element)
+    return data
 
 
 def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **kwargs):
