@@ -680,7 +680,12 @@ def get_loss_cumu(loss_dict, cumu_mode):
     """Combine different losses to obtain a single scalar loss"""
     if cumu_mode == "original":
         return loss_dict
-    loss_list = torch.stack([loss for loss in loss_dict.values()])
+    if isinstance(loss_dict, dict):
+        loss_list = torch.stack([loss for loss in loss_dict.values()])
+    elif isinstance(loss_dict, list):
+        loss_list = torch.stack(loss_dict)
+    else:
+        raise
     N = len(loss_list)
     epsilon = 1e-20  # to prevent NaN
     if cumu_mode[0] == "generalized-mean":
