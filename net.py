@@ -23,7 +23,8 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices, Early_Stopping, record_data, to_np_array, to_Variable, make_dir
+from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
+from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, Gradient_Noise_Scale_Gen
 
 
 # In[ ]:
@@ -191,6 +192,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
     optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+    gradient_noise = kwargs["gradient_noise"] if "gradient_noise" in kwargs else None
 
     # Inspection kwargs:
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
@@ -236,7 +238,6 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     
     # Get original loss:
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs).item()
-    
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
     if "param" in record_keys:
@@ -260,6 +261,15 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
             record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
         return loss_original, loss_value, data_record
     optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
+    
+    # Setting up gradient noise:
+    if gradient_noise is not None:
+        scale_gen = Gradient_Noise_Scale_Gen(epochs = epochs,
+                                             gamma = gradient_noise["gamma"],  # decay rate
+                                             eta = gradient_noise["eta"],      # starting variance
+                                             gradient_noise_interval_epoch = 1,
+                                            )
+        gradient_noise_scale = scale_gen.generate_scale(verbose = True)
     
     # Set up learning rate scheduler:
     if scheduler_type is not None:
@@ -303,6 +313,26 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     to_stop = False
     for i in range(epochs + 1):
         model.train()
+        
+        # Updating gradient noise:
+        if gradient_noise is not None:
+            hook_handle_list = []
+            if i % scale_gen.gradient_noise_interval_epoch == 0:
+                for h in hook_handle_list:
+                    h.remove()
+                hook_handle_list = []
+                scale_idx = int(i / scale_gen.gradient_noise_interval_epoch)
+                if scale_idx >= len(gradient_noise_scale):
+                    current_gradient_noise_scale = gradient_noise_scale[-1]
+                else:
+                    current_gradient_noise_scale = gradient_noise_scale[scale_idx]
+                for param_group in optimizer.param_groups:
+                    for param in param_group["params"]:
+                        if param.requires_grad:
+                            h = param.register_hook(lambda grad: grad + Variable(torch.normal(mean = torch.zeros(grad.size()),
+                                                                                              std = current_gradient_noise_scale * torch.ones(grad.size()))))
+                            hook_handle_list.append(h)
+        
         if X is not None and y is not None:
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
@@ -405,6 +435,8 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                         pass
             if isplot and inspect_image_interval is not None and hasattr(model, "plot"):
                 if i % inspect_image_interval == 0:
+                    if gradient_noise is not None:
+                        print("gradient_noise: {0:.9f}".format(current_gradient_noise_scale))
                     plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
         if save_interval is not None:
             if i % save_interval == 0:

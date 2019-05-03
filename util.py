@@ -877,3 +877,39 @@ def Zip(*data, **kwargs):
             if function is not None:
                 data[i] = function(element)
     return data
+
+
+class Gradient_Noise_Scale_Gen(object):
+    def __init__(
+        self,
+        epochs, 
+        gamma = 0.55,
+        eta = 0.01,
+        noise_scale_start = 1e-2,
+        noise_scale_end = 1e-6,
+        gradient_noise_interval_epoch = 1,
+        fun_pointer = "generate_scale_simple",
+        ):
+        self.epochs = epochs
+        self.gradient_noise_interval_epoch = gradient_noise_interval_epoch
+        self.max_iter = int(self.epochs / self.gradient_noise_interval_epoch) + 1
+        self.gamma = gamma
+        self.eta = eta
+        self.noise_scale_start = noise_scale_start
+        self.noise_scale_end = noise_scale_end
+        self.generate_scale = getattr(self, fun_pointer) # Sets the default function to generate scale
+    
+    def generate_scale_simple(self, verbose = True):     
+        gradient_noise_scale = np.sqrt(self.eta * (np.array(range(self.max_iter)) + 1) ** (- self.gamma))
+        if verbose:
+            print("gradient_noise_scale: start = {0}, end = {1:.6f}, gamma = {2}, length = {3}".format(gradient_noise_scale[0], gradient_noise_scale[-1], self.gamma, self.max_iter))
+        return gradient_noise_scale
+
+    def generate_scale_fix_ends(self, verbose = True):
+        ratio = (self.noise_scale_start / float(self.noise_scale_end)) ** (1 / self.gamma) - 1
+        self.bb = self.max_iter / ratio
+        self.aa = self.noise_scale_start * self.bb ** self.gamma
+        gradient_noise_scale = np.sqrt(self.aa * (np.array(range(self.max_iter)) + self.bb) ** (- self.gamma))
+        if verbose:
+            print("gradient_noise_scale: start = {0}, end = {1:.6f}, gamma = {2}, length = {3}".format(gradient_noise_scale[0], gradient_noise_scale[-1], self.gamma, self.max_iter))
+        return gradient_noise_scale
