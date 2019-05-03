@@ -676,6 +676,39 @@ def fill_triangular(vec, dim, mode = "lower"):
     return matrix
 
 
+def get_loss_cumu(loss_dict, cumu_mode):
+    """Combine different losses to obtain a single scalar loss"""
+    if cumu_mode == "original":
+        return loss_dict
+    loss_list = torch.stack([loss for loss in loss_dict.values()])
+    N = len(loss_list)
+    epsilon = 1e-20  # to prevent NaN
+    if cumu_mode[0] == "generalized-mean":
+        if cumu_mode[1] == -1:
+            cumu_mode = "harmonic"
+        elif cumu_mode[1] == 0:
+            cumu_mode = "geometric"
+        elif cumu_mode[1] == 1:
+            cumu_mode = "mean"
+    
+    if cumu_mode == "harmonic":
+        loss = N / (1 / (loss_list + epsilon)).sum()
+    elif cumu_mode == "geometric":
+        loss = (loss_list + epsilon).prod() ** (1 / float(N))
+    elif cumu_mode == "mean":
+        loss = loss_list.mean()
+    elif cumu_mode == "sum":
+        loss = loss_list.sum()
+    elif cumu_mode == "min":
+        loss = loss_list.min()
+    elif cumu_mode[0] == "generalized-mean":
+        order = cumu_mode[1]
+        loss = (((loss_list + epsilon) ** order).mean()) ** (1 / float(order))
+    else:
+        raise
+    return loss
+
+
 def matrix_diag_transform(matrix, fun):
     """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
     num_examples = len(matrix)
