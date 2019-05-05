@@ -1470,7 +1470,7 @@ class ConvNet(nn.Module):
         if self.return_indices:
             pred_prob = pred_prob[0]
         pred = pred_prob.max(1)[1]
-        self.info_dict["accuracy"] = get_accuracy(pred, y)
+#         self.info_dict["accuracy"] = get_accuracy(pred, y)
         return deepcopy(self.info_dict)
     
     
