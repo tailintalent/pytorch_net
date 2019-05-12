@@ -951,3 +951,36 @@ class Gradient_Noise_Scale_Gen(object):
         if verbose:
             print("gradient_noise_scale: start = {0}, end = {1:.6f}, gamma = {2}, length = {3}".format(gradient_noise_scale[0], gradient_noise_scale[-1], self.gamma, self.max_iter))
         return gradient_noise_scale
+
+
+def serialize(item):
+    if isinstance(item, dict):
+        return {str(key): serialize(value) for key, value in item.items()}
+    elif isinstance(item, list):
+        return [serialize(element) for element in item]
+    elif isinstance(item, tuple):
+        return tuple(serialize(element) for element in item)
+    elif isinstance(item, np.ndarray):
+        return item.tolist()
+    else:
+        return str(item)
+
+
+def deserialize(item):
+    if isinstance(item, dict):
+        try:
+            return {eval(key): deserialize(value) for key, value in item.items()}
+        except:
+            return {key: deserialize(value) for key, value in item.items()}
+    elif isinstance(item, list):
+        return [deserialize(element) for element in item]
+    elif isinstance(item, tuple):
+        return tuple(deserialize(element) for element in item)
+    else:
+        if isinstance(item, str) and item in CLASS_TYPES:
+            return item
+        else:
+            try:
+                return eval(item)
+            except:
+                return item
