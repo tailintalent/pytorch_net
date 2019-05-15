@@ -984,3 +984,19 @@ def deserialize(item):
                 return eval(item)
             except:
                 return item
+
+
+def get_num_params(model, is_trainable = None):
+    """Get number of parameters of the model, specified by 'None': all parameters;
+    True: trainable parameters; False: non-trainable parameters.
+    """
+    num_params = 0
+    for param in list(model.parameters()):
+        nn=1
+        if is_trainable is None \
+            or (is_trainable is True and param.requires_grad is True) \
+            or (is_trainable is False and param.requires_grad is False):
+            for s in list(param.size()):
+                nn = nn * s
+            num_params += nn
+    return num_params
