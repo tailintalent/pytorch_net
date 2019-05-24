@@ -24,7 +24,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
 from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
-from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, Gradient_Noise_Scale_Gen
+from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir
 
 
 # In[ ]:
@@ -264,6 +264,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     
     # Setting up gradient noise:
     if gradient_noise is not None:
+        from pytorch_net.util import Gradient_Noise_Scale_Gen
         scale_gen = Gradient_Noise_Scale_Gen(epochs = epochs,
                                              gamma = gradient_noise["gamma"],  # decay rate
                                              eta = gradient_noise["eta"],      # starting variance
