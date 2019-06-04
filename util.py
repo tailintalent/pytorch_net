@@ -1000,3 +1000,17 @@ def get_num_params(model, is_trainable = None):
                 nn = nn * s
             num_params += nn
     return num_params
+
+
+def set_subtract(list1, list2):
+    list1 = list(list1)
+    list2 = list(list2)
+    assert isinstance(list1, list)
+    assert isinstance(list2, list)
+    return list(set(list1) - set(list2))
+
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx, array[idx]
