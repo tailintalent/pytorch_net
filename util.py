@@ -1010,7 +1010,17 @@ def set_subtract(list1, list2):
     return list(set(list1) - set(list2))
 
 
-def find_nearest(array, value):
+def find_nearest(array, value, mode = "abs"):
+    array = deepcopy(array)
     array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
+    if mode == "abs":
+        idx = (np.abs(array - value)).argmin()
+    elif mode == "le":
+        array[array > value] = -np.Inf
+        idx = array.argmax()
+    elif mode == "ge":
+        array[array < value] = np.Inf
+        idx = array.argmin()
+    else:
+        raise
     return idx, array[idx]
