@@ -1035,3 +1035,21 @@ def sort_matrix(matrix, dim, reverse = False):
         return matrix[:,idx_sort]
     else:
         raise
+
+
+def hashing(X, width = 128):
+    import hashlib
+    def hash_ele(x):
+        return np.array([int(element) for element in np.binary_repr(int(hashlib.md5(x.view(np.uint8)).hexdigest(), 16), width = 128)])[-width:]
+    is_torch = isinstance(X, torch.Tensor)
+    if is_torch:
+        is_cuda = X.is_cuda
+    X = to_np_array(X)
+    hash_list = np.array([hash_ele(x) for x in X])
+    if is_torch:
+        hash_list = to_Variable(hash_list, is_cuda = is_cuda)
+    
+    # Check collision:
+    string =["".join([str(e) for e in ele]) for ele in to_np_array(hash_list)]
+    uniques = np.unique(np.unique(string, return_counts=True)[1], return_counts = True)
+    return hash_list, uniques
