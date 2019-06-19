@@ -1024,3 +1024,14 @@ def find_nearest(array, value, mode = "abs"):
     else:
         raise
     return idx, array[idx]
+
+
+def sort_matrix(matrix, dim, reverse = False):
+    if dim == 0:
+        _, idx_sort = sort_two_lists(matrix[:,0], range(len(matrix[:,0])), reverse = reverse)
+        return matrix[idx_sort]
+    elif dim == 1:
+        _, idx_sort = sort_two_lists(matrix[0,:], range(len(matrix[0,:])), reverse = reverse)
+        return matrix[:,idx_sort]
+    else:
+        raise
