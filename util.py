@@ -1053,3 +1053,34 @@ def hashing(X, width = 128):
     string =["".join([str(e) for e in ele]) for ele in to_np_array(hash_list)]
     uniques = np.unique(np.unique(string, return_counts=True)[1], return_counts = True)
     return hash_list, uniques
+
+
+def pplot(
+    X,
+    y,
+    markers=".",
+    label=None,
+    xlabel=None,
+    ylabel=None,
+    title=None,
+    figsize=(10,8),
+    fontsize=18,
+    plt = None,
+    is_show=True,
+    ):
+    if plt is None:
+        import matplotlib.pylab as plt
+        plt.figure(figsize=figsize)
+    plt.plot(X, y, markers, label=label)
+    if xlabel is not None:
+        plt.xlabel(xlabel, fontsize=fontsize)
+    if ylabel is not None:
+        plt.ylabel(ylabel, fontsize=fontsize)
+    if title is not None:
+        plt.title(title, fontsize=fontsize)
+    plt.tick_params(labelsize=fontsize)
+    if label is not None:
+        plt.legend(fontsize=fontsize)
+    if is_show:
+        plt.show()
+    return plt
