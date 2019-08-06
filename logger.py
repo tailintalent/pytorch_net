@@ -17,7 +17,7 @@ class Logger(object):
 
     def __init__(self, log_dir):
         """Creates a summary writer logging to log_dir."""
-        self.writer = tf.summary.FileWriter(log_dir)
+        self.writer = tf.compat.v1.summary.FileWriter(log_dir)
 
     def log_scalar(self, tag, value, step):
         """Log a scalar variable.
@@ -29,8 +29,8 @@ class Logger(object):
         step : int
             training iteration
         """
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag,
-                                                     simple_value=value)])
+        summary = tf.compat.v1.summary(value=[tf.compat.v1.summary.Value(tag=tag,
+                                                                         simple_value=value)])
         self.writer.add_summary(summary, step)
 
     def log_images(self, tag, images, step):
@@ -43,15 +43,15 @@ class Logger(object):
             plt.imsave(s, img, format='png')
 
             # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
-                                       height=img.shape[0],
-                                       width=img.shape[1])
+            img_sum = tf.compat.v1.summary.Image(encoded_image_string=s.getvalue(),
+                                                 height=img.shape[0],
+                                                 width=img.shape[1])
             # Create a Summary value
-            im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
-                                                 image=img_sum))
+            im_summaries.append(tf.compat.v1.summary.Value(tag='%s/%d' % (tag, nr),
+                                                           image=img_sum))
 
         # Create and write Summary
-        summary = tf.Summary(value=im_summaries)
+        summary = tf.compat.v1.summary(value=im_summaries)
         self.writer.add_summary(summary, step)
         
 
@@ -83,6 +83,6 @@ class Logger(object):
             hist.bucket.append(c)
 
         # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        summary = tf.compat.v1.summary(value=[tf.compat.v1.summary.Value(tag=tag, histo=hist)])
         self.writer.add_summary(summary, step)
         self.writer.flush()
