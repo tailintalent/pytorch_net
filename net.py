@@ -493,6 +493,12 @@ def load_model_dict_net(model_dict, is_cuda = False):
                              net_2_model_dict = model_dict["net_2_model_dict"],
                              is_cuda = is_cuda,
                             )
+    elif net_type == "Fan_in_MLP":
+        return Fan_in_MLP(model_dict_branch1=model_dict["model_dict_branch1"],
+                          model_dict_branch2=model_dict["model_dict_branch2"],
+                          model_dict_joint=model_dict["model_dict_joint"],
+                          is_cuda=is_cuda,
+                         )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
@@ -1095,6 +1101,67 @@ class Branching_Net(nn.Module):
         model_dict["net_base_model_dict"] = self.net_base.model_dict
         model_dict["net_1_model_dict"] = self.net_1.model_dict
         model_dict["net_2_model_dict"] = self.net_2.model_dict
+        return model_dict
+
+    
+class Fan_in_MLP(nn.Module):
+    def __init__(
+        self,
+        model_dict_branch1,
+        model_dict_branch2,
+        model_dict_joint,
+        is_cuda=False,
+    ):
+        super(Fan_in_MLP, self).__init__()
+        if model_dict_branch1 is not None:
+            self.net_branch1 = load_model_dict(model_dict_branch1, is_cuda=is_cuda)
+        else:
+            self.net_branch1 = None
+        if model_dict_branch2 is not None:
+            self.net_branch2 = load_model_dict(model_dict_branch2, is_cuda=is_cuda)
+        else:
+            self.net_branch2 = None
+        self.net_joint = load_model_dict(model_dict_joint, is_cuda=is_cuda)
+        self.is_cuda = is_cuda
+        self.info_dict = {}
+    
+    def forward(self, X1, X2, is_outer=False):
+        if self.net_branch1 is not None:
+            X1 = self.net_branch1(X1)
+        if self.net_branch2 is not None:
+            X2 = self.net_branch2(X2)
+        # In case there is a sample dimension:
+        if len(X2.shape) > len(X1.shape):
+            X1 = X1.unsqueeze(0).expand(X2.shape)
+        elif len(X1.shape) > len(X2.shape):
+            X2 = X2.unsqueeze(0).expand(X1.shape)
+        out = torch.cat([X1, X2], -1)
+        return self.net_joint(out)
+    
+    def get_loss(self, input, target, criterion, **kwargs):
+        X1, X2 = input
+        y_pred = self(X1, X2)
+        return criterion(y_pred, target)
+    
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        if self.net_branch1 is not None:
+            reg = reg + self.net_branch1.get_regularization(source=source, mode=mode)
+        if self.net_branch2 is not None:
+            reg = reg + self.net_branch2.get_regularization(source=source, mode=mode)
+        return reg
+    
+    def prepare_inspection(self, X, y, **kwargs):
+        return deepcopy(self.info_dict)
+    
+    @property
+    def model_dict(self):
+        model_dict = {'type': "Fan_in_MLP"}
+        model_dict["model_dict_branch1"] = self.net_branch1.model_dict
+        model_dict["model_dict_branch2"] = self.net_branch2.model_dict
+        model_dict["model_dict_joint"] = self.net_joint.model_dict
         return model_dict
 
 
