@@ -499,6 +499,11 @@ def load_model_dict_net(model_dict, is_cuda = False):
                           model_dict_joint=model_dict["model_dict_joint"],
                           is_cuda=is_cuda,
                          )
+    elif net_type == "Net_reparam":
+        return Net_reparam(model_dict=model_dict["model"],
+                           reparam_mode=model_dict["reparam_mode"],
+                           is_cuda=is_cuda,
+                          )
     elif net_type == "ConvNet":
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
@@ -1163,6 +1168,93 @@ class Fan_in_MLP(nn.Module):
         model_dict["model_dict_branch2"] = self.net_branch2.model_dict
         model_dict["model_dict_joint"] = self.net_joint.model_dict
         return model_dict
+
+
+# ## Reparameterization toolkit:
+
+# In[ ]:
+
+
+class Net_reparam(nn.Module):
+    """Module that uses reparameterization to take into two inputs and gets a scaler"""
+    def __init__(
+        self,
+        model_dict,
+        reparam_mode,
+        is_cuda=False,
+        ):
+        super(Net_reparam, self).__init__()
+        self.model = load_model_dict(model_dict, is_cuda=is_cuda)
+        self.reparam_mode = reparam_mode
+
+    def forward(self, X, Z, is_outer=False):
+        """
+        Obtaining single value using reparameterization.
+
+        Args:
+            X shape: [Bx, ...]
+            Z shape: [S, Bz, Z]
+            is_outer: whether to use outer product to get a tensor with shape [S, Bz, Bx].
+        
+        Returns:
+            If is_outer==True, return log_prob of shape [S, Bz, Bx]
+            If is_outer==False, return log_prob of shape [S, Bz]  (where Bz=Bx)
+        """
+        dist, _ = reparameterize(self.model, X, mode=self.reparam_mode)
+        if is_outer:
+            log_prob = dist.log_prob(Z[...,None,:])
+        else:
+            log_prob = dist.log_prob(Z)
+        if self.reparam_mode == 'diag':
+            log_prob = log_prob.sum(-1)
+        return log_prob
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        return self.model.get_regularization(source=source, model=mode, **kwargs)
+
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Net_reparam"}
+        model_dict["model"] = self.model.model_dict
+        model_dict["reparam_mode"] = self.reparam_mode
+        return model_dict
+    
+
+def reparameterize(model, input, mode = "full", size = None):
+    if mode == "diag":
+        return reparameterize_diagonal(model, input)
+    elif mode == "full":
+        return reparameterize_full(model, input, size = size)
+    else:
+        raise Exception("Mode {0} is not valid!".format(mode))
+
+
+def reparameterize_diagonal(model, input):
+    mean_logit = model(input)
+    if isinstance(mean_logit, tuple):
+        mean_logit = mean_logit[0]
+    size = int(mean_logit.size(-1) / 2)
+    mean = mean_logit[:, :size]
+    std = F.softplus(mean_logit[:, size:], beta = 1)
+    dist = Normal(mean, std)
+    return dist, (mean, std)
+
+
+def reparameterize_full(model, input, size = None):
+    mean_logit = model(input)
+    if isinstance(mean_logit, tuple):
+        mean_logit = mean_logit[0]
+    if size is None:
+        dim = mean_logit.size(-1)
+        size = int((np.sqrt(9 + 8 * dim) - 3) / 2)
+    mean = mean_logit[:, :size]
+    scale_tril = fill_triangular(mean_logit[:, size:], size)
+    scale_tril = matrix_diag_transform(scale_tril, F.softplus)
+    dist = MultivariateNormal(mean, scale_tril = scale_tril)
+    return dist, (mean, scale_tril)
 
 
 # ## RNN:
