@@ -29,8 +29,8 @@ class Logger(object):
         step : int
             training iteration
         """
-        summary = tf.compat.v1.summary(value=[tf.compat.v1.summary.Value(tag=tag,
-                                                                         simple_value=value)])
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag,
+                                                     simple_value=value)])
         self.writer.add_summary(summary, step)
 
     def log_images(self, tag, images, step):
