@@ -320,14 +320,19 @@ def get_criterion(loss_type, reduce = True, **kwargs):
     return criterion
 
 
-def get_optimizer(optim_type, lr, parameters):
+def get_optimizer(optim_type, lr, parameters, **kwargs):
     """Get optimizer"""
+    momentum = kwargs["momentum"] if "momentum" in kwargs else 0
     if optim_type == "adam":
-        optimizer = optim.Adam(parameters, lr = lr)
+        amsgrad = kwargs["amsgrad"] if "amsgrad" in kwargs else False
+        optimizer = optim.Adam(parameters, lr=lr, amsgrad=amsgrad)
+    elif optim_type == "sgd":
+        nesterov = kwargs["nesterov"] if "nesterov" in kwargs else False
+        optimizer = optim.SGD(parameters, lr=lr, momentum=momentum, nesterov=nesterov)
     elif optim_type == "RMSprop":
-        optimizer = optim.RMSprop(parameters, lr = lr)
+        optimizer = optim.RMSprop(parameters, lr=lr, momentum=momentum)
     elif optim_type == "LBFGS":
-        optimizer = optim.LBFGS(parameters, lr = lr)
+        optimizer = optim.LBFGS(parameters, lr=lr)
     else:
         raise Exception("optim_type {0} not recognized!".format(optim_type))
     return optimizer

@@ -195,6 +195,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     gradient_noise = kwargs["gradient_noise"] if "gradient_noise" in kwargs else None
 
     # Inspection kwargs:
+    inspect_step = kwargs["inspect_step"] if "inspect_step" in kwargs else None
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     if inspect_functions is not None:
@@ -351,7 +352,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                     return loss
                 optimizer.step(closure)
         else:
-            for _, (X_batch, y_batch) in enumerate(train_loader):
+            for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
                     reg = get_regularization(model, **kwargs)
@@ -378,6 +379,17 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                                 if item in info_dict:
                                     logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step(closure)
+                
+                if inspect_step is not None:
+                    if k % inspect_step == 0:
+                        print("Step {}:".format(k), end = "")
+                        print("\tlr: {0:.3e} \tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss.item(), inspect_loss_precision), end = "")
+                        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+                        if len(info_dict) > 0:
+                            for item in inspect_items:
+                                if item in info_dict:
+                                    print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
+                            print()
 
         if logdir is not None:
             # Log values and gradients of the parameters (histogram summary)
