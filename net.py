@@ -129,7 +129,10 @@ def plot_model(model, data_loader = None, X = None, y = None):
         for X_batch, y_batch in data_loader:
             X_all.append(X_batch)
             y_all.append(y_batch)
-        X_all = Zip(*X_all, function = torch.cat)
+        if not isinstance(X_all[0], torch.Tensor):
+            X_all = Zip(*X_all, function = torch.cat)
+        else:
+            X_all = torch.cat(X_all, 0)
         y_all = torch.cat(y_all)
         model.plot(X_all, y_all)
     else:
@@ -382,7 +385,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
                 
                 if inspect_step is not None:
                     if k % inspect_step == 0:
-                        print("Step {}:".format(k), end = "")
+                        print("Step {}:   ".format(k), end = "")
                         print("\tlr: {0:.3e} \tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss.item(), inspect_loss_precision), end = "")
                         info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
                         if len(info_dict) > 0:
