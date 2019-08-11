@@ -519,12 +519,14 @@ def train(
                         sys.stdout.flush()
                     except:
                         pass
-            if isplot and inspect_image_interval is not None and hasattr(model, "plot"):
-                if i % inspect_image_interval == 0:
-                    if gradient_noise is not None:
-                        print("gradient_noise: {0:.9f}".format(current_gradient_noise_scale))
-                    plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
-                    if co_kwargs is not None:
+            if isplot:
+                if inspect_image_interval is not None and hasattr(model, "plot"):
+                    if i % inspect_image_interval == 0:
+                        if gradient_noise is not None:
+                            print("gradient_noise: {0:.9f}".format(current_gradient_noise_scale))
+                        plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
+                if co_kwargs is not None and "inspect_image_interval" in co_kwargs and co_kwargs["inspect_image_interval"] and hasattr(co_model, "plot"):
+                    if i % co_kwargs["inspect_image_interval"] == 0:
                         plot_model(co_model, data_loader = validation_loader, X = X_valid, y = y_valid)
         if save_interval is not None:
             if i % save_interval == 0:
