@@ -1089,3 +1089,11 @@ def pplot(
     if is_show:
         plt.show()
     return plt
+
+
+def formalize_value(value, precision):
+    """Formalize value with floating or scientific notation, depending on its absolute value."""
+    if 10 ** (-(precision - 1)) <= np.abs(value) <= 10 ** (precision - 1):
+        return "{0:.{1}f}".format(value, precision)
+    else:
+        return "{0:.{1}e}".format(value, precision)

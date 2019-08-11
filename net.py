@@ -24,7 +24,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
 from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
-from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir
+from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value
 
 
 # In[ ]:
@@ -444,7 +444,7 @@ def train(
                         if len(info_dict) > 0:
                             for item in inspect_items:
                                 if item in info_dict:
-                                    print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
+                                    print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                         if co_kwargs is not None:
                             co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
                             if "co_loss" in inspect_items:
@@ -452,7 +452,7 @@ def train(
                             if len(co_info_dict) > 0:
                                 for item in inspect_items:
                                     if item in co_info_dict:
-                                        print(" \t{0}: {1:.{2}f}".format(item, co_info_dict[item], inspect_loss_precision), end="")
+                                        print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                         print()
 
         if logdir is not None:
@@ -496,7 +496,7 @@ def train(
                     if len(info_dict) > 0:
                         for item in inspect_items:
                             if item in info_dict:
-                                print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
+                                print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                                 if item in record_keys and item != "loss":
                                     record_data(data_record, [to_np_array(info_dict[item])], [item])
                     if co_kwargs is not None:
@@ -507,7 +507,7 @@ def train(
                         if len(co_info_dict) > 0:
                             for item in inspect_items:
                                 if item in co_info_dict:
-                                    print(" \t{0}: {1:.{2}f}".format(item, co_info_dict[item], inspect_loss_precision), end="")
+                                    print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "param" in record_keys:
