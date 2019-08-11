@@ -99,25 +99,27 @@ def Zip(*data, **kwargs):
 
 
 def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **kwargs):
-    """Get loss using the whole data or data_loader"""
+    """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
     if data_loader is not None:
         assert X is None and y is None
-        loss_list = []
-        all_info_dict = {}
-        for X_batch, y_batch in data_loader:
-            loss_ele = model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs)
-            loss_list.append(loss_ele)
+        loss_record = 0
+        count = 0
+        # Taking the average of all metrics:
+        for j, (X_batch, y_batch) in enumerate(data_loader):
+            loss_ele = to_np_array(model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs))
+            if j == 0:
+                all_info_dict = {key: 0 for key in model.info_dict.keys()}
+            loss_record = loss_record + loss_ele
+            count += 1
             for key in model.info_dict:
-                if key not in all_info_dict:
-                    all_info_dict[key] = []
-                all_info_dict[key].append(model.info_dict[key])
+                all_info_dict[key] = all_info_dict[key] + model.info_dict[key]
         for key in model.info_dict:
-            all_info_dict[key] = np.mean(all_info_dict[key])
-        loss = torch.stack(loss_list).mean()
+            all_info_dict[key] = all_info_dict[key] / count
+        loss = loss_record / count
         model.info_dict = deepcopy(all_info_dict)
     else:
         assert X is not None and y is not None
-        loss = model.get_loss(X, y, criterion = criterion, **kwargs)
+        loss = to_np_array(model.get_loss(X, y, criterion = criterion, **kwargs))
     return loss
 
 
@@ -241,7 +243,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         X_valid, y_valid = X, y
     
     # Get original loss:
-    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs).item()
+    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
     if "param" in record_keys:
@@ -256,7 +258,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
     num_params = len(list(model.parameters()))
     if num_params == 0:
         print("No parameters to optimize!")
-        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs).item()
+        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs)
         if "loss" in record_keys:
             record_data(data_record, [0, loss_value], ["iter", "loss"])
         if "param" in record_keys:
@@ -407,7 +409,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
 
         if i % inspect_interval == 0:
             model.eval()
-            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs).item()
+            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs)
             if scheduler_type is not None:
                 if scheduler_type == "ReduceLROnPlateau":
                     scheduler.step(loss_value)
@@ -462,7 +464,7 @@ def train(model, X = None, y = None, train_loader = None, validation_data = None
         if to_stop:
             break
 
-    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, **kwargs).item()
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, **kwargs)
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:
