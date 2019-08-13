@@ -9,6 +9,7 @@ import numpy as np
 import pprint as pp
 from copy import deepcopy
 import pickle
+from numbers import Number
 from collections import OrderedDict
 import itertools
 import torch
@@ -17,8 +18,11 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
+from torch.distributions import constraints
 from torch.distributions.normal import Normal
 from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.distributions.distribution import Distribution
+from torch.distributions.utils import broadcast_all
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -1281,93 +1285,6 @@ class Fan_in_MLP(nn.Module):
         return model_dict
 
 
-# ## Reparameterization toolkit:
-
-# In[ ]:
-
-
-class Net_reparam(nn.Module):
-    """Module that uses reparameterization to take into two inputs and gets a scaler"""
-    def __init__(
-        self,
-        model_dict,
-        reparam_mode,
-        is_cuda=False,
-        ):
-        super(Net_reparam, self).__init__()
-        self.model = load_model_dict(model_dict, is_cuda=is_cuda)
-        self.reparam_mode = reparam_mode
-
-    def forward(self, X, Z, is_outer=False):
-        """
-        Obtaining single value using reparameterization.
-
-        Args:
-            X shape: [Bx, ...]
-            Z shape: [S, Bz, Z]
-            is_outer: whether to use outer product to get a tensor with shape [S, Bz, Bx].
-        
-        Returns:
-            If is_outer==True, return log_prob of shape [S, Bz, Bx]
-            If is_outer==False, return log_prob of shape [S, Bz]  (where Bz=Bx)
-        """
-        dist, _ = reparameterize(self.model, X, mode=self.reparam_mode)
-        if is_outer:
-            log_prob = dist.log_prob(Z[...,None,:])
-        else:
-            log_prob = dist.log_prob(Z)
-        if self.reparam_mode == 'diag':
-            log_prob = log_prob.sum(-1)
-        return log_prob
-
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
-        return self.model.get_regularization(source=source, model=mode, **kwargs)
-
-    def prepare_inspection(self, X, y, **kwargs):
-        return {}
-
-    @property
-    def model_dict(self):
-        model_dict = {"type": "Net_reparam"}
-        model_dict["model"] = self.model.model_dict
-        model_dict["reparam_mode"] = self.reparam_mode
-        return model_dict
-    
-
-def reparameterize(model, input, mode = "full", size = None):
-    if mode == "diag":
-        return reparameterize_diagonal(model, input)
-    elif mode == "full":
-        return reparameterize_full(model, input, size = size)
-    else:
-        raise Exception("Mode {0} is not valid!".format(mode))
-
-
-def reparameterize_diagonal(model, input):
-    mean_logit = model(input)
-    if isinstance(mean_logit, tuple):
-        mean_logit = mean_logit[0]
-    size = int(mean_logit.size(-1) / 2)
-    mean = mean_logit[:, :size]
-    std = F.softplus(mean_logit[:, size:], beta = 1)
-    dist = Normal(mean, std)
-    return dist, (mean, std)
-
-
-def reparameterize_full(model, input, size = None):
-    mean_logit = model(input)
-    if isinstance(mean_logit, tuple):
-        mean_logit = mean_logit[0]
-    if size is None:
-        dim = mean_logit.size(-1)
-        size = int((np.sqrt(9 + 8 * dim) - 3) / 2)
-    mean = mean_logit[:, :size]
-    scale_tril = fill_triangular(mean_logit[:, size:], size)
-    scale_tril = matrix_diag_transform(scale_tril, F.softplus)
-    dist = MultivariateNormal(mean, scale_tril = scale_tril)
-    return dist, (mean, scale_tril)
-
-
 # ## RNN:
 
 # In[ ]:
@@ -2154,6 +2071,93 @@ class VAE(nn.Module):
         return deepcopy(self.info_dict)
 
 
+# ## Reparameterization toolkit:
+
+# In[ ]:
+
+
+class Net_reparam(nn.Module):
+    """Module that uses reparameterization to take into two inputs and gets a scaler"""
+    def __init__(
+        self,
+        model_dict,
+        reparam_mode,
+        is_cuda=False,
+        ):
+        super(Net_reparam, self).__init__()
+        self.model = load_model_dict(model_dict, is_cuda=is_cuda)
+        self.reparam_mode = reparam_mode
+
+    def forward(self, X, Z, is_outer=False):
+        """
+        Obtaining single value using reparameterization.
+
+        Args:
+            X shape: [Bx, ...]
+            Z shape: [S, Bz, Z]
+            is_outer: whether to use outer product to get a tensor with shape [S, Bz, Bx].
+        
+        Returns:
+            If is_outer==True, return log_prob of shape [S, Bz, Bx]
+            If is_outer==False, return log_prob of shape [S, Bz]  (where Bz=Bx)
+        """
+        dist, _ = reparameterize(self.model, X, mode=self.reparam_mode)
+        if is_outer:
+            log_prob = dist.log_prob(Z[...,None,:])
+        else:
+            log_prob = dist.log_prob(Z)
+        if self.reparam_mode == 'diag':
+            log_prob = log_prob.sum(-1)
+        return log_prob
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        return self.model.get_regularization(source=source, model=mode, **kwargs)
+
+    def prepare_inspection(self, X, y, **kwargs):
+        return {}
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Net_reparam"}
+        model_dict["model"] = self.model.model_dict
+        model_dict["reparam_mode"] = self.reparam_mode
+        return model_dict
+    
+
+def reparameterize(model, input, mode = "full", size = None):
+    if mode == "diag":
+        return reparameterize_diagonal(model, input)
+    elif mode == "full":
+        return reparameterize_full(model, input, size = size)
+    else:
+        raise Exception("Mode {0} is not valid!".format(mode))
+
+
+def reparameterize_diagonal(model, input):
+    mean_logit = model(input)
+    if isinstance(mean_logit, tuple):
+        mean_logit = mean_logit[0]
+    size = int(mean_logit.size(-1) / 2)
+    mean = mean_logit[:, :size]
+    std = F.softplus(mean_logit[:, size:], beta = 1)
+    dist = Normal(mean, std)
+    return dist, (mean, std)
+
+
+def reparameterize_full(model, input, size = None):
+    mean_logit = model(input)
+    if isinstance(mean_logit, tuple):
+        mean_logit = mean_logit[0]
+    if size is None:
+        dim = mean_logit.size(-1)
+        size = int((np.sqrt(9 + 8 * dim) - 3) / 2)
+    mean = mean_logit[:, :size]
+    scale_tril = fill_triangular(mean_logit[:, size:], size)
+    scale_tril = matrix_diag_transform(scale_tril, F.softplus)
+    dist = MultivariateNormal(mean, scale_tril = scale_tril)
+    return dist, (mean, scale_tril)
+
+
 # ## Probability models:
 # ### Mixture of Gaussian:
 
@@ -2324,12 +2328,115 @@ class Mixture_Gaussian(nn.Module):
         return reg
 
 
-def load_model_dict_Mixture_Gaussian(model_dict, is_cuda = False):
-    model = Mixture_Gaussian(num_components = model_dict["num_components"],
-                             dim = model_dict["dim"],
-                             param_mode = model_dict["param_mode"],
-                             is_cuda = is_cuda,
-                            )
-    model.initialize(model_dict = model_dict)
-    return model
+# ### Triangular distribution:
+
+# In[ ]:
+
+
+class Triangular_dist(Distribution):
+    """Probability distribution with a Triangular shape."""
+    def __init__(self, loc, a, b, validate_args=None):
+        self.loc, self.a, self.b = broadcast_all(loc, a, b)
+        batch_shape = torch.Size() if isinstance(loc, Number) else self.loc.size()
+        super(Triangular_dist, self).__init__(batch_shape, validate_args=validate_args)
+        
+    @property
+    def mean(self):
+        return self.loc + (self.b - self.a) / 3
+    
+    @property
+    def variance(self):
+        return (self.a ** 2 + self.b ** 2 + self.a * self.b) / 18
+    
+    @property
+    def stddev(self):
+        return torch.sqrt(self.variance)
+    
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(PieceWise, _instance)
+        batch_shape = torch.Size(batch_shape)
+        new.loc = self.loc.expand(batch_shape)
+        new.a = self.a.expand(batch_shape)
+        new.b = self.b.expand(batch_shape)
+        super(Triangular_dist, new).__init__(batch_shape, validate_args=False)
+        new._validate_args = self._validate_args
+        return new
+    
+    @constraints.dependent_property
+    def support(self):
+        return constraints.interval(self.loc - self.a, self.loc + self.b)
+    
+    def sample(self, sample_shape=torch.Size()):
+        shape = self._extended_shape(sample_shape)
+        rand = torch.rand(shape, dtype=self.loc.dtype, device=self.loc.device)
+        with torch.no_grad():
+            return self.icdf(rand)
+    
+    def rsample(self, sample_shape=torch.Size()):
+        """Sample with reparameterization."""
+        shape = self._extended_shape(sample_shape)
+        rand = torch.rand(shape, dtype=self.loc.dtype, device=self.loc.device)
+        return self.icdf(rand)
+
+    def icdf(self, value):
+        """Inverse cdf."""
+        if self._validate_args:
+            self._validate_sample(value)
+        assert value.min() >= 0 and value.max() <= 1
+        value, loc, a, b = broadcast_all(value, self.loc, self.a, self.b)
+        a_plus_b = a + b
+        idx = value < a / a_plus_b
+        iidx = ~idx
+        out = torch.ones_like(value)
+        out[idx] = loc[idx] - a[idx] + torch.sqrt(a[idx] * a_plus_b[idx] * value[idx])
+        out[iidx] = loc[iidx] + b[iidx] - torch.sqrt(b[iidx] * a_plus_b[iidx] * (1 - value[iidx]) )
+        return out
+
+    def prob(self, value):
+        """Get probability."""
+        if self._validate_args:
+            self._validate_sample(value)
+        # compute the variance
+        value, loc, a, b = broadcast_all(value, self.loc, self.a, self.b)
+        idx1 = (loc - a <= value) & (value <= loc)
+        idx2 = (loc < value) & (value <= loc + b)
+        a_plus_b = a + b
+
+        out = torch.zeros_like(value)
+        out[idx1] = 2 * (value[idx1] - loc[idx1] + a[idx1]) / a[idx1] / a_plus_b[idx1]
+        out[idx2] = -2 * (value[idx2] - loc[idx2] - b[idx2]) / b[idx2] / a_plus_b[idx2]
+        return out
+
+    def log_prob(self, value):
+        """Get log probability."""
+        return torch.log(self.prob(value))
+    
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Triangular_dist"}
+        model_dict["loc"] = to_np_array(self.loc)
+        model_dict["a"] = to_np_array(self.a)
+        model_dict["b"] = to_np_array(self.b)
+        return model_dict
+
+
+# In[ ]:
+
+
+def load_model_dict_distribution(model_dict, is_cuda = False):
+    if model_dict["type"] == "Mixture_Gaussian":
+        model = Mixture_Gaussian(num_components=model_dict["num_components"],
+                                 dim=model_dict["dim"],
+                                 param_mode=model_dict["param_mode"],
+                                 is_cuda=is_cuda,
+                                )
+        model.initialize(model_dict = model_dict)
+        return model
+    elif model_dict["type"] == "Triangular_dist":
+        return Triangular_dist(loc=model_dict["loc"],
+                               a=model_dict["a"],
+                               b=model_dict["b"],
+                              )
+    else:
+        raise Exception("Type {} is not valid!".format(model_dict["type"]))
 
