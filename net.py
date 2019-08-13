@@ -317,11 +317,6 @@ def train(
             scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
         else:
             raise
-        # First step:
-        if scheduler_type == "ReduceLROnPlateau":
-            scheduler.step(loss_original)
-        else:
-            scheduler.step()
     
     # Initialize inspect_items:
     if inspect_items is not None:

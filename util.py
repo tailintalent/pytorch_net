@@ -152,7 +152,7 @@ def to_np_array(*arrays, **kwargs):
             if array.is_cuda:
                 array = array.cpu()
             array = array.data
-        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor) or \
+        if isinstance(array, torch.Tensor) or isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor) or \
            isinstance(array, torch.cuda.FloatTensor) or isinstance(array, torch.cuda.LongTensor) or isinstance(array, torch.cuda.ByteTensor):
             if array.is_cuda:
                 array = array.cpu()
