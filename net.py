@@ -264,6 +264,7 @@ def train(
         co_optimizer = co_kwargs["co_optimizer"]
         co_model = co_kwargs["co_model"]
         co_criterion = co_kwargs["co_criterion"] if "co_criterion" in co_kwargs else None
+        co_multi_step = co_kwargs["co_multi_step"] if "co_multi_step" in co_kwargs else 1
     
     # Get original loss:
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs)
@@ -397,11 +398,12 @@ def train(
             # Cotrain step:
             if co_kwargs is not None:
                 if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
-                    co_optimizer.zero_grad()
-                    co_reg = get_regularization(co_model, **co_kwargs)
-                    co_loss = co_model.get_loss(X, y, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
-                    co_loss.backward()
-                    co_optimizer.step()
+                    for _ in range(co_multi_step):
+                        co_optimizer.zero_grad()
+                        co_reg = get_regularization(co_model, **co_kwargs)
+                        co_loss = co_model.get_loss(X, y, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                        co_loss.backward()
+                        co_optimizer.step()
         else:
             for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
@@ -434,16 +436,17 @@ def train(
                 # Cotrain step:
                 if co_kwargs is not None:
                     if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
-                        co_optimizer.zero_grad()
-                        co_reg = get_regularization(co_model, **co_kwargs)
-                        co_loss = co_model.get_loss(X_batch, y_batch, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
-                        co_loss.backward()
-                        if logdir is not None:
-                            if len(co_info_dict) > 0:
-                                for item in inspect_items:
-                                    if item in co_info_dict:
-                                        logger.log_scalar(item, co_info_dict[item], batch_idx)
-                        co_optimizer.step()
+                        for _ in range(co_multi_step):
+                            co_optimizer.zero_grad()
+                            co_reg = get_regularization(co_model, **co_kwargs)
+                            co_loss = co_model.get_loss(X_batch, y_batch, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                            co_loss.backward()
+                            if logdir is not None:
+                                if len(co_info_dict) > 0:
+                                    for item in inspect_items:
+                                        if item in co_info_dict:
+                                            logger.log_scalar(item, co_info_dict[item], batch_idx)
+                            co_optimizer.step()
                 
                 # Inspect at each step:
                 if inspect_step is not None:
