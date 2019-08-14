@@ -396,11 +396,12 @@ def train(
             
             # Cotrain step:
             if co_kwargs is not None:
-                co_optimizer.zero_grad()
-                co_reg = get_regularization(co_model, **co_kwargs)
-                co_loss = co_model.get_loss(X, y, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
-                co_loss.backward()
-                co_optimizer.step()
+                if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
+                    co_optimizer.zero_grad()
+                    co_reg = get_regularization(co_model, **co_kwargs)
+                    co_loss = co_model.get_loss(X, y, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                    co_loss.backward()
+                    co_optimizer.step()
         else:
             for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
@@ -432,16 +433,17 @@ def train(
                 
                 # Cotrain step:
                 if co_kwargs is not None:
-                    co_optimizer.zero_grad()
-                    co_reg = get_regularization(co_model, **co_kwargs)
-                    co_loss = co_model.get_loss(X_batch, y_batch, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
-                    co_loss.backward()
-                    if logdir is not None:
-                        if len(co_info_dict) > 0:
-                            for item in inspect_items:
-                                if item in co_info_dict:
-                                    logger.log_scalar(item, co_info_dict[item], batch_idx)
-                    co_optimizer.step()
+                    if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
+                        co_optimizer.zero_grad()
+                        co_reg = get_regularization(co_model, **co_kwargs)
+                        co_loss = co_model.get_loss(X_batch, y_batch, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                        co_loss.backward()
+                        if logdir is not None:
+                            if len(co_info_dict) > 0:
+                                for item in inspect_items:
+                                    if item in co_info_dict:
+                                        logger.log_scalar(item, co_info_dict[item], batch_idx)
+                        co_optimizer.step()
                 
                 # Inspect at each step:
                 if inspect_step is not None:
@@ -455,13 +457,14 @@ def train(
                                 if item in info_dict:
                                     print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                         if co_kwargs is not None:
-                            co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
-                            if "co_loss" in inspect_items:
-                                print("\tco_loss: {0:.{1}f}".format(co_loss.item(), inspect_loss_precision), end="")
-                            if len(co_info_dict) > 0:
-                                for item in inspect_items:
-                                    if item in co_info_dict and item != "co_loss":
-                                        print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
+                            if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
+                                co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
+                                if "co_loss" in inspect_items:
+                                    print("\tco_loss: {0:.{1}f}".format(co_loss.item(), inspect_loss_precision), end="")
+                                if len(co_info_dict) > 0:
+                                    for item in inspect_items:
+                                        if item in co_info_dict and item != "co_loss":
+                                            print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                         print()
 
         if logdir is not None:
