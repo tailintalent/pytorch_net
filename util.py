@@ -1076,7 +1076,7 @@ def pplot(
     if plt is None:
         import matplotlib.pylab as plt
         plt.figure(figsize=figsize)
-    plt.plot(X, y, markers, label=label)
+    plt.plot(to_np_array(X), to_np_array(y), markers, label=label)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:

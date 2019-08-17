@@ -405,6 +405,9 @@ def train(
                         co_loss.backward()
                         co_optimizer.step()
         else:
+            if inspect_step is not None:
+                info_dict_step = {key: [] for key in inspect_items}
+            
             for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
@@ -432,7 +435,7 @@ def train(
                                 if item in info_dict:
                                     logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step(closure)
-                
+
                 # Cotrain step:
                 if co_kwargs is not None:
                     if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
@@ -454,19 +457,23 @@ def train(
                         print("s{}:".format(k), end = "")
                         info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs) 
                         if "loss" in inspect_items:
+                            info_dict_step["loss"].append(loss.item())
                             print("\tloss: {0:.{1}f}".format(loss.item(), inspect_loss_precision), end="")
                         if len(info_dict) > 0:
                             for item in inspect_items:
                                 if item in info_dict:
+                                    info_dict_step[item].append(info_dict[item])
                                     print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                         if co_kwargs is not None:
                             if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
                                 co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
                                 if "co_loss" in inspect_items:
                                     print("\tco_loss: {0:.{1}f}".format(co_loss.item(), inspect_loss_precision), end="")
+                                    info_dict_step["co_loss"].append(co_loss.item())
                                 if len(co_info_dict) > 0:
                                     for item in inspect_items:
                                         if item in co_info_dict and item != "co_loss":
+                                            info_dict_step[item].append(co_info_dict[item])
                                             print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                         print()
 
@@ -527,6 +534,12 @@ def train(
                                         record_data(data_record, [to_np_array(co_info_dict[item])], [item])
                         if "co_loss" in record_keys:
                             record_data(data_record, [co_loss_value], ["co_loss"])
+                    if inspect_step is not None:
+                        for item in info_dict_step:
+                            if len(info_dict_step[item]) > 0:
+                                print(" \t{0}_s: {1}".format(item, formalize_value(np.mean(info_dict_step[item]), inspect_loss_precision)), end = "")
+                                if item in record_keys and item != "loss":
+                                    record_data(data_record, [np.mean(info_dict_step[item])], ["{}_s".format(item)])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "param" in record_keys:
