@@ -1265,17 +1265,16 @@ class Fan_in_MLP(nn.Module):
         self.info_dict = {}
     
     def forward(self, X1, X2, is_outer=False):
+        if is_outer:
+            X2 = X2[...,None,:]
         if self.net_branch1 is not None:
             X1 = self.net_branch1(X1)
         if self.net_branch2 is not None:
             X2 = self.net_branch2(X2)
-        # In case there is a sample dimension:
-        if len(X2.shape) > len(X1.shape):
-            X1 = X1.unsqueeze(0).expand(X2.shape)
-        elif len(X1.shape) > len(X2.shape):
-            X2 = X2.unsqueeze(0).expand(X1.shape)
+        X1, X2 = broadcast_all(X1, X2)
         out = torch.cat([X1, X2], -1)
-        return self.net_joint(out)
+        # if is_outer=True, then output dimension: [..., X2dim, X1dim, out_dim]:
+        return self.net_joint(out).squeeze(-1)
     
     def get_loss(self, input, target, criterion, **kwargs):
         X1, X2 = input
@@ -1298,8 +1297,8 @@ class Fan_in_MLP(nn.Module):
     @property
     def model_dict(self):
         model_dict = {'type': "Fan_in_MLP"}
-        model_dict["model_dict_branch1"] = self.net_branch1.model_dict
-        model_dict["model_dict_branch2"] = self.net_branch2.model_dict
+        model_dict["model_dict_branch1"] = self.net_branch1.model_dict if self.net_branch1 is not None else None
+        model_dict["model_dict_branch2"] = self.net_branch2.model_dict if self.net_branch2 is not None else None
         model_dict["model_dict_joint"] = self.net_joint.model_dict
         return model_dict
 
