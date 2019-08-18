@@ -1097,3 +1097,39 @@ def formalize_value(value, precision):
         return "{0:.{1}f}".format(value, precision)
     else:
         return "{0:.{1}e}".format(value, precision)
+
+
+def plot1D_3(X_mesh, Z_mesh, target, view_init=[(30, 50), (90, -90), (0, 0)], zlabel=None):
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+
+    X_mesh, Z_mesh, target = to_np_array(X_mesh, Z_mesh, target)
+    fig = plt.figure(figsize=(22,7))
+    ax = fig.add_subplot(131, projection='3d')
+    ax.plot_surface(X_mesh, Z_mesh, target, alpha=0.5,
+                    cmap=cm.coolwarm, linewidth=0, antialiased=False,
+                   )
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Z Label')
+    ax.set_zlabel(zlabel)
+    ax.view_init(elev=view_init[0][0], azim=view_init[0][1])
+
+    ax = fig.add_subplot(132, projection='3d')
+    ax.plot_surface(X_mesh, Z_mesh, target, alpha=0.5,
+                    cmap=cm.coolwarm, linewidth=0, antialiased=False,
+                   )
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Z Label')
+    ax.set_zlabel(zlabel)
+    ax.view_init(elev=view_init[1][0], azim=view_init[1][1])
+
+    ax = fig.add_subplot(133, projection='3d')
+    ax.plot_surface(X_mesh, Z_mesh, target, alpha=0.5,
+                    cmap=cm.coolwarm, linewidth=0, antialiased=False,
+                   )
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Z Label')
+    ax.set_zlabel(zlabel)
+    ax.view_init(elev=view_init[2][0], azim=view_init[2][1])
+    plt.show()
