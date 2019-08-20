@@ -1143,5 +1143,5 @@ class RampupLR(_LRScheduler):
         super(RampupLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
-        return [base_lr * np.logspace(-12, 0, 200)[self.last_epoch]
+        return [base_lr * np.logspace(-12, 0, self.num_steps + 1)[self.last_epoch]
                 for base_lr in self.base_lrs]
