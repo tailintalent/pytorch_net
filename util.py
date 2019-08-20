@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
+from torch.optim.lr_scheduler import _LRScheduler
 
 
 def plot_matrices(
@@ -1133,3 +1134,14 @@ def plot1D_3(X_mesh, Z_mesh, target, view_init=[(30, 50), (90, -90), (0, 0)], zl
     ax.set_zlabel(zlabel)
     ax.view_init(elev=view_init[2][0], azim=view_init[2][1])
     plt.show()
+    
+
+class RampupLR(_LRScheduler):
+    """Ramp up the learning rate in exponential steps."""
+    def __init__(self, optimizer, num_steps=200, last_epoch=-1):
+        self.num_steps = num_steps
+        super(RampupLR, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        return [base_lr * np.logspace(-12, 0, 200)[self.last_epoch]
+                for base_lr in self.base_lrs]

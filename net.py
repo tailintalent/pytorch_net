@@ -28,7 +28,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
 from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
-from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value
+from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR
 
 
 # In[ ]:
@@ -210,6 +210,7 @@ def train(
     # Optimization kwargs:
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
+    lr_rampup_steps = kwargs["lr_rampup"] if "lr_rampup" in kwargs else 200
     optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
     optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
@@ -323,6 +324,11 @@ def train(
         else:
             raise
     
+    if lr_rampup_steps is not None:
+        scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
+        data_size = train_loader.dataset.tensors[0].shape[0]
+        
+    
     # Initialize inspect_items:
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
@@ -435,6 +441,10 @@ def train(
                                 if item in info_dict:
                                     logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step(closure)
+                
+                # Rampup scheduler:
+                if lr_rampup_steps is not None and i * data_size // len(X_batch) + k < lr_rampup_steps:
+                    scheduler_rampup.step()
 
                 # Cotrain step:
                 if co_kwargs is not None:
@@ -492,10 +502,11 @@ def train(
             model.eval()
             loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs)
             if scheduler_type is not None:
-                if scheduler_type == "ReduceLROnPlateau":
-                    scheduler.step(loss_value)
-                else:
-                    scheduler.step()
+                if lr_rampup_steps is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
+                    if scheduler_type == "ReduceLROnPlateau":
+                        scheduler.step(loss_value)
+                    else:
+                        scheduler.step()
             if callback is not None:
                 assert callable(callback)
                 callback(model = model,
