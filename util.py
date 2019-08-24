@@ -280,6 +280,16 @@ def get_activation(activation):
         f = lambda x: torch.sign(x)
     elif activation == "heaviside":
         f = lambda x: (torch.sign(x) + 1) / 2.
+    elif activation == "softmax":
+        f = lambda x: nn.Softmax(dim=-1)(x)
+    elif activation == "negLogSoftmax":
+        f = lambda x: -torch.log(nn.Softmax(dim=-1)(x))
+    elif activation == "naturalLogSoftmax":
+        def natlogsoftmax(x):
+            x = torch.cat((x, torch.zeros_like(x[..., :1])), axis=-1)
+            norm = torch.logsumexp(x, axis=-1, keepdim=True)
+            return -(x - norm)
+        f = natlogsoftmax
     else:
         raise Exception("activation {0} not recognized!".format(activation))
     return f

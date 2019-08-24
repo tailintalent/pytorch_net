@@ -324,7 +324,7 @@ def train(
         else:
             raise
     
-    if lr_rampup_steps is not None:
+    if lr_rampup_steps is not None and train_loader is not None:
         scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
         data_size = train_loader.dataset.tensors[0].shape[0]
         
@@ -502,7 +502,7 @@ def train(
             model.eval()
             loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs)
             if scheduler_type is not None:
-                if lr_rampup_steps is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
+                if lr_rampup_steps is None or train_loader is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
                     if scheduler_type == "ReduceLROnPlateau":
                         scheduler.step(loss_value)
                     else:
