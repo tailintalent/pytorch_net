@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[7]:
+# In[1]:
 
 
 import numpy as np
@@ -15,11 +15,13 @@ import torch.utils.data as data_utils
 import matplotlib.pylab as plt
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
-from pytorch_net.net import MLP, ConvNet, load_model_dict_net, train, get_Layer
+from pytorch_net.net import MLP, ConvNet, load_model_dict, train, get_Layer
 from pytorch_net.util import Early_Stopping
 
 
-# ## 1. Preparing dataset:
+# ### Apart from section 0, each section is independent on its own
+
+# ## 0. Preparing dataset:
 
 # In[2]:
 
@@ -73,12 +75,12 @@ net.inspect_operation(X_train, operation_between = (0,2))
 
 # ### 2.1 Use SuperNet Layer in your own module:
 
-# In[32]:
+# In[9]:
 
 
 layer_dict = {
     "layer_type": "SuperNet_Layer",
-    "input_size": 4,
+    "input_size": 1,
     "output_size": 2,
     "settings": {"activation": "relu", # Choose from "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
                  "W_available": ["dense", "Toeplitz"],
@@ -89,7 +91,7 @@ layer_dict = {
 SuperNet_Layer = get_Layer(**layer_dict)
 
 
-# In[33]:
+# In[10]:
 
 
 class Net(nn.Module):
@@ -102,11 +104,11 @@ class Net(nn.Module):
         return self.layer_1(self.layer_0(X))
 
 
-# In[34]:
+# In[ ]:
 
 
 net = Net()
-net(torch.randn(100,4))
+net(X_train)
 
 
 # ### 2.2 Construct an MLP containing SuperNet layer:
@@ -114,13 +116,13 @@ net(torch.randn(100,4))
 # In[ ]:
 
 
-input_size = 4
+input_size = 1
 struct_param = [
     [6, "Simple_Layer", {}],   # (number of neurons in each layer, layer_type, layer settings)
     [4, "SuperNet_Layer", {"activation": "relu", # Choose from "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
                            "W_available": ["dense", "Toeplitz"],
                            "b_available": ["dense", "None", "arithmetic-series", "constant"],
-                           "A_availabel": ["linear", "relu"],
+                           "A_available": ["linear", "relu"],
                           }],
     [1, "Simple_Layer", {"activation": "linear"}],
 ]
@@ -131,12 +133,12 @@ net = MLP(input_size = input_size,
           struct_param = struct_param,
           settings = settings,
          )
-net(torch.randn(100,4))
+net(X_train)
 
 
 # ## 3. Training using explicit commands:
 
-# In[4]:
+# In[34]:
 
 
 # training settings:
@@ -170,8 +172,8 @@ for epoch in range(epochs):
         
     # Validation at the end of each epoch:
     loss_test = criterion(net(X_test), y_test)
-    to_stop = early_stopping.monitor(loss_test.data[0])
-    print("epoch {0} \tbatch {1} \tloss_train: {2:.6f}\tloss_test: {3:.6f}".format(epoch, batch_id, loss_train.data[0], loss_test.data[0]))
+    to_stop = early_stopping.monitor(loss_test.item())
+    print("epoch {0} \tbatch {1} \tloss_train: {2:.6f}\tloss_test: {3:.6f}".format(epoch, batch_id, loss_train.item(), loss_test.item()))
     if to_stop:
         print("Early stopping at epoch {0}".format(epoch))
         break
@@ -184,7 +186,7 @@ for epoch in range(epochs):
 pickle.dump(net.model_dict, open("net.p", "wb"))
 
 # Load model:
-net_loaded = load_model_dict_net(pickle.load(open("net.p", "rb")))
+net_loaded = load_model_dict(pickle.load(open("net.p", "rb")))
 
 # Check the loaded net and the original net is identical:
 net_loaded(X_train) - net(X_train)

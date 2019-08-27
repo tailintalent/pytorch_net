@@ -14,7 +14,7 @@ from copy import deepcopy
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias
+from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
 
@@ -294,7 +294,6 @@ class SuperNet_Layer(nn.Module):
         self.device = torch.device("cuda" if is_cuda else "cpu")
         
         # Obtain additional initialization settings if provided:
-        self.settings = settings
         self.W_available = settings["W_available"] if "W_available" in settings else ["dense", "Toeplitz"]
         self.b_available = settings["b_available"] if "b_available" in settings else ["dense", "None"]
         self.A_available = settings["A_available"] if "A_available" in settings else ["linear", "relu"]
@@ -315,6 +314,17 @@ class SuperNet_Layer(nn.Module):
         if is_cuda:
             self.cuda()
     
+    
+    @property
+    def settings(self):
+        layer_settings = {}
+        layer_settings["W_available"] = deepcopy(self.W_available)
+        layer_settings["b_available"] = deepcopy(self.b_available)
+        layer_settings["A_available"] = deepcopy(self.A_available)
+        layer_settings["W_sig_init"] = to_np_array(self.W_sig)
+        layer_settings["b_sig_init"] = to_np_array(self.b_sig)
+        layer_settings["A_sig_init"] = to_np_array(self.A_sig)
+        return layer_settings
     
     @property
     def struct_param(self):
@@ -498,7 +508,7 @@ class SuperNet_Layer(nn.Module):
     
     def get_weights_bias(self):
         self.get_layers(source = ["weight", "bias"])
-        return to_np_array(self.W_core), to_np_array(self.b_core)
+        return to_np_array(self.W_layer_seed), to_np_array(self.b_layer_seed)
 
 
     def get_regularization(self, mode, source = ["weight", "bias"]):

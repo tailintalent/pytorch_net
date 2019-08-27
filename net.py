@@ -1111,17 +1111,21 @@ class MLP(nn.Module):
             next_layer.add_input_neurons(num_neurons, mode = mode[1])
             self.reset_layer(layer_id + 1, next_layer)
 
-
-    def inspect_operation(self, input, operation_between):
-        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+    
+    def inspect_operation(self, input, operation_between, p_dict = None, **kwargs):
         output = input
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
         for k in range(*operation_between):
-            output = getattr(self, "layer_{0}".format(k))(output)
+            p_dict_ele = p_dict[k] if p_dict is not None else None
             if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1))
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
             else:
-                output = getattr(self, "layer_{0}".format(k))(output)
+                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
+        if is_res_block:
+            output = output + input
         return output
+
 
 
     def get_weights_bias(self, W_source = None, b_source = None, layer_ids = None, isplot = False, raise_error = True):
