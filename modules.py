@@ -291,8 +291,10 @@ class SuperNet_Layer(nn.Module):
         self.W_init = W_init
         self.b_init = b_init
         self.is_cuda = is_cuda
+        self.device = torch.device("cuda" if is_cuda else "cpu")
         
         # Obtain additional initialization settings if provided:
+        self.settings = settings
         self.W_available = settings["W_available"] if "W_available" in settings else ["dense", "Toeplitz"]
         self.b_available = settings["b_available"] if "b_available" in settings else ["dense", "None"]
         self.A_available = settings["A_available"] if "A_available" in settings else ["linear", "relu"]
@@ -354,7 +356,11 @@ class SuperNet_Layer(nn.Module):
             self.A_sig = nn.Parameter(torch.FloatTensor(self.A_sig_init))
 
 
-    def get_layers(self, source = ["weight", "bias"]):    
+    def get_layers(self, source = ["weight", "bias"]):
+        """All the different SuperNet layers are based on the same W_seed matrices. 
+        For example, W_seed is based on the full self.W_layer_seed; "Toeplitz" is based on
+        the first row and first column of self.W_layer_seed to construct the Toeplitz matrix, etc.
+        """
         # Superimpose different weights:
         if "weight" in source:
             self.W_list = []
@@ -364,10 +370,7 @@ class SuperNet_Layer(nn.Module):
                 elif weight_type == "Toeplitz":
                     W_layer_stacked = []
                     if self.output_size > 1:
-                        if self.is_cuda:
-                            inv_idx = torch.arange(self.output_size - 1, 0, -1).long().cuda()
-                        else:
-                            inv_idx = torch.arange(self.output_size - 1, 0, -1).long()
+                        inv_idx = torch.arange(self.output_size - 1, 0, -1).long().to(self.device)
                         W_seed = torch.cat([self.W_layer_seed[0][inv_idx], self.W_layer_seed[:,0]])
                     else:
                         W_seed = self.W_layer_seed[:,0]
@@ -376,41 +379,29 @@ class SuperNet_Layer(nn.Module):
                     W_layer = torch.stack(W_layer_stacked, 1)
                 elif weight_type == "arithmetic-series-in":
                     mean_j = self.W_layer_seed.mean(0)
-                    if self.is_cuda:
-                        idx_i = torch.FloatTensor(np.repeat(np.arange(self.input_size), self.output_size)).cuda()
-                        idx_j = torch.LongTensor(range(self.output_size) * self.input_size).cuda()
-                    else:
-                        idx_i = torch.FloatTensor(np.repeat(np.arange(self.input_size), self.output_size))
-                        idx_j = torch.LongTensor(range(self.output_size) * self.input_size)
+                    idx_i = torch.FloatTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
+                    idx_j = torch.LongTensor(range(self.output_size) * self.input_size).to(self.device)
                     offset = self.input_size / float(2) - 0.5
                     W_layer = (mean_j[idx_j] + self.W_interval_j[idx_j] * Variable(idx_i - offset, requires_grad = False)).view(self.input_size, self.output_size)
                 elif weight_type == "arithmetic-series-out":
                     mean_i = self.W_layer_seed.mean(1)
-                    if self.is_cuda:
-                        idx_i = torch.LongTensor(np.repeat(np.arange(self.input_size), self.output_size)).cuda()
-                        idx_j = torch.FloatTensor(range(self.output_size) * self.input_size).cuda()
-                    else:
-                        idx_i = torch.LongTensor(np.repeat(np.arange(self.input_size), self.output_size))
-                        idx_j = torch.FloatTensor(range(self.output_size) * self.input_size)
+                    idx_i = torch.LongTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
+                    idx_j = torch.FloatTensor(range(self.output_size) * self.input_size).to(self.device)
                     offset = self.output_size / float(2) - 0.5
                     W_layer = (mean_i[idx_i] + self.W_interval_i[idx_i] * Variable(idx_j - offset, requires_grad = False)).view(self.input_size, self.output_size)
                 elif weight_type == "arithmetic-series-2D-in":
                     idx_i, idx_j, idx_k = np.meshgrid(range(self.input_size_2D[0]), range(self.input_size_2D[1]), range(self.output_size), indexing = "ij")
-                    idx_i = torch.from_numpy(idx_i).float().view(-1)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1)
-                    idx_k = torch.from_numpy(idx_k).long().view(-1)
-                    if self.is_cuda:
-                        idx_i, idx_j, idx_k = idx_i.cuda(), idx_j.cuda(), idx_k.cuda()
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
+                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
                     offset_i = self.input_size_2D[0] / float(2) - 0.5
                     offset_j = self.input_size_2D[1] / float(2) - 0.5
                     W_layer = (self.W_mean_2D_in[idx_k] +                                self.W_interval_2D_in[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_in[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
                 elif weight_type == "arithmetic-series-2D-out":
                     idx_k, idx_i, idx_j = np.meshgrid(range(self.input_size), range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
-                    idx_k = torch.from_numpy(idx_k).long().view(-1)
-                    idx_i = torch.from_numpy(idx_i).float().view(-1)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1)
-                    if self.is_cuda:
-                        idx_i, idx_j, idx_k = idx_i.cuda(), idx_j.cuda(), idx_k.cuda()
+                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
                     offset_i = self.output_size_2D[0] / float(2) - 0.5
                     offset_j = self.output_size_2D[1] / float(2) - 0.5
                     W_layer = (self.W_mean_2D_out[idx_k] +                                self.W_interval_2D_out[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_out[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
@@ -430,26 +421,18 @@ class SuperNet_Layer(nn.Module):
             self.b_list = []
             for bias_type in self.b_available:
                 if bias_type == "None":
-                    if self.is_cuda:
-                        b_layer = Variable(torch.zeros(self.output_size).cuda(), requires_grad = False)
-                    else:
-                        b_layer = Variable(torch.zeros(self.output_size), requires_grad = False)
+                    b_layer = Variable(torch.zeros(self.output_size).to(self.device), requires_grad = False)
                 elif bias_type == "constant":
                     b_layer = self.b_layer_seed[0].repeat(self.output_size)
                 elif bias_type == "arithmetic-series":
                     mean = self.b_layer_seed.mean()
                     offset = self.output_size / float(2) - 0.5
-                    if self.is_cuda:
-                        idx = Variable(torch.FloatTensor(range(self.output_size)).cuda(), requires_grad = False)
-                    else:
-                        idx = Variable(torch.FloatTensor(range(self.output_size)), requires_grad = False)
+                    idx = Variable(torch.FloatTensor(range(self.output_size)).to(self.device), requires_grad = False)
                     b_layer = mean + self.b_interval * (idx - offset)
                 elif bias_type == "arithmetic-series-2D":
                     idx_i, idx_j = np.meshgrid(range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
-                    idx_i = torch.from_numpy(idx_i).float().view(-1)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1)
-                    if self.is_cuda:
-                        idx_i, idx_j = idx_i.cuda(), idx_j.cuda()
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
                     offset_i = self.output_size_2D[0] / float(2) - 0.5
                     offset_j = self.output_size_2D[1] / float(2) - 0.5
                     b_layer = (self.b_mean_2D +                                self.b_interval_2D[0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.b_interval_2D[1] * Variable(idx_j - offset_j, requires_grad = False)).view(-1)
@@ -467,7 +450,8 @@ class SuperNet_Layer(nn.Module):
                 self.b_core = torch.matmul(self.b_list, b_sig_softmax.transpose(1,0)).squeeze(1)
 
 
-    def forward(self, X):
+    def forward(self, X, p_dict = None):
+        del p_dict
         output = X
         if hasattr(self, "input_size_original"):
             output = output.view(-1, self.input_size)
@@ -514,17 +498,11 @@ class SuperNet_Layer(nn.Module):
     
     def get_weights_bias(self):
         self.get_layers(source = ["weight", "bias"])
-        W_core, b_core = self.W_core, self.b_core
-        if self.is_cuda:
-            W_core = W_core.cpu()
-            b_core = b_core.cpu()
-        return deepcopy(W_core.data.numpy()), deepcopy(b_core.data.numpy())
+        return to_np_array(self.W_core), to_np_array(self.b_core)
 
 
     def get_regularization(self, mode, source = ["weight", "bias"]):
-        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False).to(self.device)
         if not isinstance(source, list):
             source = [source]
         if mode == "L1":
