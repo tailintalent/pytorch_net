@@ -725,6 +725,686 @@ def load_model_dict(model_dict, is_cuda = False):
         raise Exception("net_type {0} not recognized!".format(net_type))
 
 
+# ## Simplify function:
+
+# In[ ]:
+
+
+def simplify(model, X, y, mode = "full", isplot = False, target_name = None, validation_data = None, **kwargs):
+    """Simplify function. "model" can be a single model or a ordered list of models"""
+    verbose = kwargs["verbose"] if "verbose" in kwargs else 1
+    if validation_data is None:
+        X_valid, y_valid = X, y
+    else:
+        X_valid, y_valid = validation_data
+    simplify_criteria = kwargs["simplify_criteria"] if "simplify_criteria" in kwargs else ("DLs", 0.05, 3, "relative") # the first argument choose from "DL", "loss"
+    simplify_epsilon = simplify_criteria[1]
+    simplify_patience = simplify_criteria[2]
+    simplify_compare_mode = simplify_criteria[3]
+    performance_monitor = Performance_Monitor(patience = simplify_patience, epsilon = simplify_epsilon, compare_mode = simplify_compare_mode)
+    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["mse"]
+    loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs else PrecisionFloorLoss
+    if y is None:
+        y = Variable(forward(model, X, **kwargs).data, requires_grad = False)
+    if not (isinstance(model, list) or isinstance(model, tuple)):
+        model = [model]
+        is_list = False
+    else:
+        is_list = True
+    if mode == "full":
+        mode = ["collapse_layers", "snap"]
+    if not isinstance(mode, list):
+        mode = [mode]
+
+    # Obtain the original loss and setup criterion:
+    loss_type = kwargs["loss_type"] if "loss_type" in kwargs else "mse"
+    criterion = get_criterion(loss_type, loss_precision_floor = loss_precision_floor)
+    DL_criterion = Loss_Fun(core = "DLs", loss_precision_floor = loss_precision_floor, DL_sum = True)
+    loss_dict = OrderedDict()
+
+    for mode_ele in mode:
+        if verbose >= 1:
+            print("\n" + "=" * 48 + "\nSimplifying mode: {0}".format(mode_ele), end = "")
+            if mode_ele == "snap":
+                snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                print(" {0}".format(snap_mode), end = "")
+            if target_name is not None:
+                print(" for {0}".format(target_name))
+            else:
+                print()
+            print("=" * 48)
+        
+        # Record the loss before simplification:
+        pred_valid = forward(model, X_valid, **kwargs)
+        loss_original = to_np_array(criterion(pred_valid, y_valid))
+        loss_list = [loss_original]
+        if verbose >= 1:
+            print("original_loss: {0}".format(loss_original))
+        event_list = ["before simplification"]        
+        mse_record_whole = [to_np_array(nn.MSELoss()(pred_valid, y_valid))]
+        data_DL_whole = [to_np_array(DL_criterion(pred_valid, y_valid))]
+        model_DL_whole = [get_model_DL(model)]
+        iter_end_whole = [1]
+        is_accept_whole = []
+        if "param" in record_keys:
+            param_record_whole = [model[0].get_weights_bias(W_source = "core", b_source = "core")]
+        if "param_grad" in record_keys:
+            param_grad_record_whole = [model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True)]
+        
+        # Begin simplification:
+        if mode_ele == "collapse_layers":
+            all_collapse_dict = {}
+            for model_id, model_ele in enumerate(model):
+                # Obtain activations for each layer:
+                activation_list = []
+                for k in range(len(model_ele.struct_param)):
+                    if "activation" in model_ele.struct_param[k][2]:
+                        activation_list.append(model_ele.struct_param[k][2]["activation"])
+                    elif "activation" in model_ele.settings:
+                        activation_list.append(model_ele.settings["activation"])
+                    else:
+                        activation_list.append("default")
+                
+                # Build the collapse_list that stipulates which layers to collapse:
+                collapse_dict = {}
+                current_start = None
+                current_layer_type = None
+                for k, activation in enumerate(activation_list):
+                    if activation == "linear" and k != len(activation_list) - 1:
+                        if k not in collapse_dict and current_start is None:
+                            # Create a new bunch:
+                            if model_ele.struct_param[k + 1][1] == model_ele.struct_param[k][1]: # The current layer must have the same layer_type as the next layer
+                                current_start = k
+                                collapse_dict[current_start] = [k]
+                                current_layer_type = model_ele.struct_param[k][1]
+                        else:
+                            # Adding to current bunch:
+                            if model_ele.struct_param[k + 1][1] == model_ele.struct_param[k][1] == current_layer_type:
+                                collapse_dict[current_start].append(k)
+                            else:
+                                collapse_dict[current_start].append(k)
+                                current_start = None
+                    else:
+                        if current_start is not None:
+                            collapse_dict[current_start].append(k)
+                        current_start = None
+
+                # Build new layer:
+                new_layer_info = {}
+                for current_start, layer_ids in collapse_dict.items():
+                    for i, layer_id in enumerate(layer_ids):
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        if i == 0:
+                            W_accum = layer.W_core
+                            b_accum = layer.b_core
+                        else:
+                            W_accum = torch.matmul(W_accum, layer.W_core)
+                            b_accum = torch.matmul(b_accum, layer.W_core) + layer.b_core
+                    if model_ele.is_cuda:
+                        W_accum = W_accum.cpu()
+                        b_accum = b_accum.cpu()
+                    last_layer_id = collapse_dict[current_start][-1]
+                    new_layer_info[current_start] = {"W_init": W_accum.data.numpy(), "b_init": b_accum.data.numpy(),
+                                                     "layer_struct_param": [b_accum.size(0), model_ele.struct_param[last_layer_id][1], deepcopy(model_ele.struct_param[last_layer_id][2])],
+                                                    }
+                    new_layer_info[current_start].pop("snap_dict", None)
+                if verbose >= 1:
+                    print("model_id {0}, layers collapsed: {1}".format(model_id, collapse_dict))
+                
+                # Rebuild the Net:
+                if len(collapse_dict) > 0:
+                    all_collapse_dict[model_id] = {"collapse_dict": collapse_dict, 
+                                                   "new_layer_info": new_layer_info, 
+                                                   "collapse_layer_ids": [idx for item in collapse_dict.values() for idx in item],
+                                                  }
+
+            # Rebuild the list of models:
+            if len(all_collapse_dict) > 0:
+                model_new = []
+                for model_id, model_ele in enumerate(model):
+                    if model_id in all_collapse_dict:
+                        W_list, b_list = model_ele.get_weights_bias(W_source = "core", b_source = "core")
+                        W_init_list = []
+                        b_init_list = []
+                        struct_param = []
+                        for k in range(len(model_ele.struct_param)):
+                            if k not in all_collapse_dict[model_id]["collapse_layer_ids"]:
+                                struct_param.append(model_ele.struct_param[k])
+                                W_init_list.append(W_list[k])
+                                b_init_list.append(b_list[k])
+                            else:
+                                if k in all_collapse_dict[model_id]["collapse_dict"].keys():
+                                    struct_param.append(all_collapse_dict[model_id]["new_layer_info"][k]["layer_struct_param"])
+                                    W_init_list.append(all_collapse_dict[model_id]["new_layer_info"][k]["W_init"])
+                                    b_init_list.append(all_collapse_dict[model_id]["new_layer_info"][k]["b_init"])
+                        model_ele_new = Net(input_size = model_ele.input_size,
+                                            struct_param = struct_param,
+                                            W_init_list = W_init_list,
+                                            b_init_list = b_init_list,
+                                            settings = model_ele.settings,
+                                            is_cuda = model_ele.is_cuda,
+                                           )
+                    else:
+                        model_ele_new = model_ele
+                    model_new.append(model_ele_new)               
+                model = model_new
+
+                # Calculate the loss again:
+                pred_valid = forward(model, X_valid, **kwargs)
+                loss_new = to_np_array(criterion(pred_valid, y_valid))
+                if verbose >= 1:
+                    print("after collapsing linear layers in all models, new loss {0}".format(loss_new))
+                loss_list.append(loss_new)
+                mse_record_whole.append(to_np_array(nn.MSELoss()(pred_valid, y_valid)))
+                data_DL_whole.append(to_np_array(DL_criterion(pred_valid, y_valid)))
+                model_DL_whole.append(get_model_DL(model))
+                if "param" in record_keys:
+                    param_record_whole.append(model[0].get_weights_bias(W_source = "core", b_source = "core"))
+                if "param_grad" in record_keys:
+                    param_grad_record_whole.append(model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True))
+                iter_end_whole.append(1)
+                event_list.append({mode_ele: all_collapse_dict})
+
+        elif mode_ele in ["local", "snap"]:
+            if mode_ele == "snap":
+                target_params = [[(model_id, layer_id), "snap"] for model_id, model_ele in enumerate(model) for layer_id in range(len(model_ele.struct_param))]
+            elif mode_ele == "local":
+                for model_id, model_ele in enumerate(model):
+                    if len(model_ele.struct_param) > 0:
+                        first_model_id = model_id
+                        break
+                first_layer = getattr(model[first_model_id], "layer_0")
+                target_params = [[(first_model_id, 0), [[(("weight", (i, j)), 0.) for j in range(first_layer.output_size)]                                                             for i in range(first_layer.input_size)]]]
+            else:
+                raise
+
+            excluded_idx_dict = {item[0]: [] for item in target_params}
+            target_layer_ids_exclude = []
+            for (model_id, layer_id), target_list in target_params:
+                layer = getattr(model[model_id], "layer_{0}".format(layer_id))
+                if isinstance(target_list, list):
+                    max_passes = len(target_list)
+                elif target_list == "snap":
+                    max_passes = (layer.input_size + 1) * layer.output_size
+                    if "max_passes" in kwargs:
+                        max_passes = min(max_passes, kwargs["max_passes"])
+                else:
+                    raise Exception("target_list {0} not recognizable!".format(target_list))
+                if verbose >= 2:
+                    print("\n****starting model:****")
+                    model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True)
+                    print("********\n" )
+                
+                
+                performance_monitor.reset()
+                criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                to_stop, pivot_dict, log, _, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                for i in range(max_passes):
+                    # Perform tentative simplification
+                    if isinstance(target_list, list):
+                        info = layer.simplify(mode = "snap", excluded_idx = excluded_idx_dict[(model_id, layer_id)], snap_targets = target_list[i], **kwargs)
+                    else:
+                        info = layer.simplify(mode = "snap", excluded_idx = excluded_idx_dict[(model_id, layer_id)], **kwargs)
+                    if len(info) == 0:
+                        target_layer_ids_exclude.append((model_id, layer_id))
+                        print("Pass {0}, (model {1}, layer {2}) has no parameters to snap. Revert to pivot model. Go to next layer".format(i, model_id, layer_id))
+                        break
+                    excluded_idx_dict[(model_id, layer_id)] = excluded_idx_dict[(model_id, layer_id)] + info
+
+                    _, loss_new, data_record = train(model, X, y, optim_type = "adam", validation_data = validation_data, **kwargs)
+                    if verbose >= 2:
+                        print("=" * 8)
+                        model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True) 
+                    criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                    to_stop, pivot_dict, log, is_accept, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                    is_accept_whole.append(is_accept)
+                    if is_accept:
+                        print('[Accepted] as pivot model!')
+                        print()
+
+                    # Check if the criterion after simplification and refit is worse. If it is worse than the simplify_epsilon, revert:
+                    if to_stop:
+                        target_layer_ids_exclude.append((model_id, layer_id))
+                        if verbose >= 1:
+                            print("Pass {0}, loss: {1}\tDL: {2}. New snap {3} is do not improve by {4} = {5} for {6} steps. Revert the simplification to pivot model. Go to next layer.".format(
+                                i, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL")), info, simplify_criteria[0], simplify_epsilon, simplify_patience))
+                        break
+                    mse_record_whole += data_record["mse"]
+                    data_DL_whole += data_record["data_DL"]
+                    model_DL_whole += data_record["model_DL"]
+                    if "param" in record_keys:
+                        param_record_whole += data_record["param"]
+                    if "param_grad" in record_keys:
+                        param_grad_record_whole += data_record["param_grad"]
+                    iter_end_whole.append(len(data_record["mse"]))
+
+                    model[model_id].reset_layer(layer_id, layer)
+                    loss_list.append(loss_new)
+                    event_list.append({mode_ele: ((model_id, layer_id), info)})
+                    if verbose >= 1:
+                        print("Pass {0}, snap (model {1}, layer {2}), snap {3}. \tloss: {4}\tDL: {5}".format(
+                            i, model_id, layer_id, info, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL"))))
+
+                # Update the whole model's struct_param and snap_dict:
+                model[model_id].load_model_dict(pivot_dict["model_dict"])
+                model[model_id].synchronize_settings()
+                if verbose >= 2:
+                    print("\n****pivot model at {0}th transformation:****".format(pivot_id))
+                    model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True)
+                    print("********\n" )
+
+        elif mode_ele == "pair_snap":
+            model_new = []
+            for model_id, model_ele in enumerate(model):
+                for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
+                    if layer_struct_param[1] == "Symbolic_Layer":
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        max_passes = len(layer.get_param_dict()) - 1
+                        if "max_passes" in kwargs:
+                            max_passes = min(max_passes, kwargs["max_passes"])
+                        if verbose > 1:
+                            print("original:")
+                            print("symbolic_expression: ", layer.symbolic_expression)
+                            print("numerical_expression: ", layer.numerical_expression)
+                            print()
+
+                        performance_monitor.reset()
+                        criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        to_stop, pivot_dict, log, _, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                        for i in range(max_passes):
+                            info = layer.simplify(mode = "pair_snap", **kwargs)
+                            if len(info) == 0:
+                                target_layer_ids_exclude.append((model_id, layer_id))
+                                print("Pass {0}, (model {1}, layer {2}) has no parameters to pair_snap. Revert to pivot model. Go to next layer".format(i, model_id, layer_id))
+                                break
+                            _, loss, data_record = train(model, X, y, optim_type = "adam", epochs = 1000, validation_data = validation_data, **kwargs)
+                            criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                            to_stop, pivot_dict, log, is_accept, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                            is_accept_whole.append(is_accept)
+                            if to_stop:
+                                if verbose >= 1:
+                                    print("\nPass {0}, loss: {1}\tDL: {2}. New snap {3} is do not improve by {4} = {5} for {6} steps. Revert the simplification to pivot model. Go to next layer.".format(
+                                        i, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL")), info, simplify_criteria[0], simplify_epsilon, simplify_patience))
+                                break
+
+                            mse_record_whole += data_record["mse"]
+                            data_DL_whole += data_record["data_DL"]
+                            model_DL_whole += data_record["model_DL"]
+                            if "param" in record_keys:
+                                param_record_whole += data_record["param"]
+                            if "param_grad" in record_keys:
+                                param_grad_record_whole += data_record["param_grad"]
+                            iter_end_whole.append(len(data_record["mse"]))
+
+                            model[model_id].reset_layer(layer_id, layer)
+                            loss_list.append(loss)
+                            event_list.append({mode_ele: ((model_id, layer_id), info)})
+                            if verbose >= 1:
+                                print("\nPass {0}, snap (model {1}, layer {2}), snap {3}. \tloss: {4}\tDL: {5}".format(
+                                    i, model_id, layer_id, info, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL"))))
+                                print("symbolic_expression: ", layer.symbolic_expression)
+                                print("numerical_expression: ", layer.numerical_expression)
+                                print()
+
+                        model[model_id].load_model_dict(pivot_dict["model_dict"])
+                        print("final: \nsymbolic_expression: ", getattr(model[model_id], "layer_{0}".format(layer_id)).symbolic_expression)
+                        print("numerical_expression: ", getattr(model[model_id], "layer_{0}".format(layer_id)).numerical_expression)
+                        print()
+
+        elif mode_ele[:11] == "to_symbolic":
+            from sympy import Symbol
+            force_simplification = kwargs["force_simplification"] if "force_simplification" in kwargs else False
+            is_multi_model = True if len(model) > 1 else False
+            for model_id, model_ele in enumerate(model):
+                for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
+                    prefix = "L{0}_".format(layer_id)
+                    if layer_struct_param[1] == "Simple_Layer":
+                        # Obtain loss before simplification:
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        
+                        if mode_ele.split("_")[-1] == "separable":
+                            new_layer = Simple_2_Symbolic(layer, settings = model_ele.settings, mode = "separable", prefix = prefix)
+                        else:
+                            new_layer = Simple_2_Symbolic(layer, settings = model_ele.settings, prefix = prefix)
+                        model[model_id].reset_layer(layer_id, new_layer)
+
+                        if "snap_dict" in model_ele.settings and layer_id in model_ele.settings["snap_dict"]:
+                            subs_targets = []
+                            for (pos, true_idx), item in model_ele.settings["snap_dict"][layer_id].items():
+                                if pos == "weight":
+                                    subs_targets.append((Symbol("W{0}{1}".format(true_idx[0], true_idx[1])), item["new_value"]))
+                                elif pos == "bias":
+                                    subs_targets.append((Symbol("b{0}".format(true_idx)), item["new_value"]))
+                                else:
+                                    raise Exception("pos {0} not recognized!".format(pos))
+                            new_expression = [expression.subs(subs_targets) for expression in new_layer.symbolic_expression]
+                            new_layer.set_symbolic_expression(new_expression)
+                            model_ele.settings["snap_dict"].pop(layer_id)
+                            model_ele.struct_param[layer_id][2].update(new_layer.struct_param[2])
+                        
+                        # Calculate the loss again:
+                        criteria_new, criteria_result_new = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        if verbose >= 1:
+                            print("Prev_loss: {0}, new loss: {1}\tprev_DL: {2:.9f}, new DL: {3:.9f}".format(
+                                   criteria_result_prev["loss"], criteria_result_new["loss"], criteria_result_prev["DL"], criteria_result_new["DL"]))
+                            print()
+                        if criteria_new > criteria_prev * (1 + 0.05):
+                            print("to_symbolic DL increase more than 5%! ", end = "")
+                            if not force_simplification:
+                                print("Reset layer.")
+                                model[model_id].reset_layer(layer_id, layer)
+                            else:
+                                print("Nevertheless, force simplification.")
+                        
+                        loss_list.append(criteria_result_new["loss"])
+                        event_list.append({mode_ele: (model_id, layer_id)})
+                        print("{0} succeed. Prev_loss: {1}\tnew_loss: {2}\tprev_DL: {3:.9f}, new_DL: {4:.9f}".format(
+                                mode_ele, criteria_result_prev["loss"], criteria_result_new["loss"],
+                                criteria_result_prev["DL"], criteria_result_new["DL"]))
+                    
+                    elif layer_struct_param[1] == "Sneuron_Layer":
+                        # Obtain loss before simplification:
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        
+                        new_layer = Sneuron_2_Symbolic(layer, prefix = prefix)
+                        model[model_id].reset_layer(layer_id, new_layer)
+                        
+                        # Calculate the loss again:
+                        criteria_new, criteria_result_new = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        if verbose >= 1:
+                            print("Prev_loss: {0}, new loss: {1}\tprev_DL: {2:.9f}, new DL: {3:.9f}".format(
+                                   criteria_result_prev["loss"], criteria_result_new["loss"], criteria_result_prev["DL"], criteria_result_new["DL"]))
+                            print()
+                        if criteria_new > criteria_prev * (1 + 0.05):  
+                            print("to_symbolic DL increase more than 5%! ", end = "")
+                            if not force_simplification:
+                                print("Reset layer.")
+                                model[model_id].reset_layer(layer_id, layer)
+                            else:
+                                print("Nevertheless, force simplification.")
+                        
+                        loss_list.append(criteria_result_new["loss"])
+                        event_list.append({mode_ele: (model_id, layer_id)})
+                        print("{0} succeed. Prev_loss: {1}\tnew_loss: {2}\tprev_DL: {3:.9f}, new_DL: {4:.9f}".format(
+                                mode_ele, criteria_result_prev["loss"], criteria_result_new["loss"],
+                                criteria_result_prev["DL"], criteria_result_new["DL"]))
+            mse_record_whole.append(to_np_array(nn.MSELoss()(pred_valid, y_valid)))
+            data_DL_whole.append(to_np_array(DL_criterion(pred_valid, y_valid)))
+            model_DL_whole.append(get_model_DL(model))
+            if "param" in record_keys:
+                param_record_whole.append(model[0].get_weights_bias(W_source = "core", b_source = "core"))
+            if "param_grad" in record_keys:
+                param_grad_record_whole.append(model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True))
+            iter_end_whole.append(1)
+
+        elif mode_ele == "symbolic_simplification":
+            """Collapse multi-layer symbolic expression"""
+            from sympy import Symbol, Poly, expand, prod
+            force_simplification = kwargs["force_simplification"] if "force_simplification" in kwargs else False
+            numerical_threshold = kwargs["numerical_threshold"] if "numerical_threshold" in kwargs else None
+            is_numerical = kwargs["is_numerical"] if "is_numerical" in kwargs else False
+            max_poly_degree = kwargs["max_poly_degree"] if "max_poly_degree" in kwargs else None
+            show_before_truncate = kwargs["show_before_truncate"] if "show_before_truncate" in kwargs else False
+            for model_id, model_ele in enumerate(model):
+                is_all_symbolic = True
+                for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
+                    if layer_struct_param[1] != "Symbolic_Layer":
+                        is_all_symbolic = False
+                if is_all_symbolic:
+                    criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                    variables = OrderedDict()
+                    for i in range(model[0].layer_0.input_size):
+                        variables["x{0}".format(i)] = Symbol("x{0}".format(i))
+                    expression = list(variables.values())
+                    param_dict_all = {}
+
+                    # Collapse multiple layers:
+                    for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        layer_expression = deepcopy(layer.numerical_expression)
+                        layer_expression_new = []
+                        for expr in layer_expression:
+                            new_expr = expr.subs({"x{0}".format(i): "t{0}".format(i) for i in range(len(expression))})  # Use a temporary variable to prevent overriding
+                            new_expr = new_expr.subs({"t{0}".format(i): expression[i] for i in range(len(expression))})
+                            layer_expression_new.append(expand(new_expr))
+                        expression = layer_expression_new
+                    
+                    # Show full expression before performing truncation:
+                    if show_before_truncate:
+                        for i, expr in enumerate(expression):
+                            print("Full expression {0}:".format(i))
+                            pp.pprint(Poly(expr, *list(variables.values())))
+                            print()
+
+                    model_ele_candidate = Net(input_size = model[0].layer_0.input_size,
+                                              struct_param = [[layer.output_size, "Symbolic_Layer", {"symbolic_expression": "x0"}]],
+                                              settings = {},
+                                              is_cuda = model_ele.is_cuda,
+                                             )
+                    # Setting maximul degree for polynomial:
+                    if max_poly_degree is not None:
+                        new_expression = []
+                        for expr in expression:
+                            expr = Poly(expr, *list(variables.values()))
+                            degree_list = []
+                            coeff_list = []
+                            for degree, coeff in expr.terms():
+                                # Only use monomials with degree not larger than max_poly_degree:
+                                if sum(degree) <= max_poly_degree: 
+                                    degree_list.append(degree)
+                                    coeff_list.append(coeff)
+
+                            new_expr = 0
+                            for degree, coeff in zip(degree_list, coeff_list):
+                                new_expr += prod([variables["x{0}".format(i)] ** degree[i] for i in range(len(degree))]) * coeff
+                            new_expression.append(new_expr)
+                        expression = new_expression
+
+                    # Update symbolic expression for model_ele_candidate:
+                    if not is_numerical:
+                        param_dict_all = {}
+                        expression_new_all = []
+                        for expr in expression:
+                            expression_new, param_dict = numerical_2_parameter(expr, idx = len(param_dict_all), threshold = numerical_threshold)
+                            expression_new_all.append(expression_new)
+                            param_dict_all.update(param_dict)
+                        model_ele_candidate.layer_0.set_symbolic_expression(expression_new_all, p_init = param_dict_all)
+                    else:
+                        model_ele_candidate.layer_0.set_symbolic_expression(expression)
+                        model_ele_candidate.layer_0.set_numerical(True)
+                    
+                    criteria_new, criteria_result_new = get_criteria_value(model_ele_candidate, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                    if criteria_new > criteria_prev * (1 + 0.05):                            
+                        print("to_symbolic DL increase more than 5%! ", end = "")
+                        if force_simplification:
+                            print("Nevertheless, force simplification.")
+                            model[model_id] = model_ele_candidate
+                        else:
+                            print("Revert.")
+                    else:
+                        model[model_id] = model_ele_candidate
+
+        elif mode_ele == "activation_snap":
+            from sympy import Function
+            def get_sign_snap_candidate(layer, activation_source, excluded_neurons = None):
+                coeff_dict = {}
+                for i in range(len(layer.symbolic_expression)):
+                    current_expression = [layer.symbolic_expression[i]]
+                    func_names = layer.get_function_name_list(current_expression)
+                    if activation_source in func_names:
+                        coeff = [element for element in layer.get_param_name_list(current_expression) if element[0] == "W"]
+                        coeff_dict[i] = np.mean([np.abs(value) for key, value in layer.get_param_dict().items() if key in coeff])
+                best_idx = None
+                best_value = 0
+                for key, value in coeff_dict.items():
+                    if value > best_value and key not in excluded_neurons:
+                        best_value = value
+                        best_idx = key
+                return best_idx, best_value
+
+            activation_source = kwargs["activation_source"] if "activation_source" in kwargs else "sigmoid"
+            activation_target = kwargs["activation_target"] if "activation_target" in kwargs else "heaviside"
+            activation_fun_source = Function(activation_source)
+            activation_fun_target = Function(activation_target)
+
+            for model_id, model_ele in enumerate(model):
+                for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
+                    if layer_struct_param[1] == "Symbolic_Layer":
+                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        excluded_neurons = []
+                        if activation_source not in layer.get_function_name_list():
+                            continue
+
+                        performance_monitor.reset()
+                        criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        to_stop, pivot_dict, log, _, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                        for i in range(layer_struct_param[0]):
+                            # Obtain loss before simplification:
+                            layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                            best_idx, _ = get_sign_snap_candidate(layer, activation_source, excluded_neurons = excluded_neurons)
+                            excluded_neurons.append(best_idx)
+                            
+                            new_expression = [expression.subs(activation_fun_source, activation_fun_target) if j == best_idx else expression for j, expression in enumerate(layer.symbolic_expression)]
+                            print("Pass {0}, candidate new expression: {1}".format(i, new_expression))
+                            layer.set_symbolic_expression(new_expression)
+
+                            # Train:
+                            _, loss_new, data_record = train(model, X, y, validation_data = validation_data, **kwargs)
+
+                            criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                            to_stop, pivot_dict, log, is_accept, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
+                            is_accept_whole.append(is_accept)
+                            # Check if the criterion after simplification and refit is worse. If it is worse than the simplify_epsilon, revert:
+                            if to_stop:
+                                model[model_id].load_model_dict(pivot_dict["model_dict"])
+                                if verbose >= 1:
+                                    print("Pass {0}, loss: {1}\tDL: {2}. New snap {3} is do not improve by {4} = {5} for {6} steps. Revert the simplification to pivot model. Continue".format(
+                                        i, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL")), info, simplify_criteria[0], simplify_epsilon, simplify_patience))
+                                continue   
+                                
+                            mse_record_whole += data_record["mse"]
+                            data_DL_whole += data_record["data_DL"]
+                            model_DL_whole += data_record["model_DL"]
+                            if "param" in record_keys:
+                                param_record_whole += data_record["param"]
+                            if "param_grad" in record_keys:
+                                param_grad_record_whole += data_record["param_grad"]
+                            iter_end_whole.append(len(data_record["mse"]))
+
+                            loss_list.append(loss_new)
+                            event_list.append({mode_ele: (model_id, layer_id)})
+                            if verbose >= 1:
+                                print("{0} succeed at (model {1}, layer {2}). loss: {3}\tDL: {4}".format(
+                                    mode_ele, model_id, layer_id, view_item(log, ("criteria_result", "loss")), view_item(log, ("criteria_result", "DL"))))
+                                print("symbolic_expression: ", layer.symbolic_expression)
+                                print("numerical_expression: ", layer.numerical_expression)
+                                print()
+                        model[model_id].load_model_dict(pivot_dict["model_dict"])
+        
+        elif mode_ele == "ramping-L1":
+            loss_list_specific = []
+            ramping_L1_list = kwargs["ramping_L1_list"] if "ramping_L1_list" in kwargs else np.logspace(-7, -1, 30)
+            ramping_mse_threshold = kwargs["ramping_mse_threshold"] if "ramping_mse_threshold" in kwargs else 1e-5
+            ramping_final_multiplier = kwargs["ramping_final_multiplier"] if "ramping_final_multiplier" in kwargs else 1e-2
+            layer_dict_dict = {}
+            for i, L1_amp in enumerate(ramping_L1_list):
+                reg_dict = {"weight": L1_amp, "bias": L1_amp, "param": L1_amp}
+                _, loss_end, data_record = train(model, X, y, reg_dict = reg_dict, patience = None, validation_data = validation_data, **kwargs)
+                layer_dict_dict[i] = model[0].layer_0.layer_dict
+                weight, bias = model[0].layer_0.get_weights_bias()
+                print("L1-amp: {0}\tloss: {1}\tweight: {2}\tbias: {3}".format(L1_amp, loss_end, weight, bias))
+                loss_list_specific.append(loss_end)
+                if "param" in record_keys:
+                    param_record_whole.append((weight, bias))
+                if loss_end > ramping_mse_threshold:
+                    if len(loss_list_specific) == 1:
+                        print("\nThe MSE after the first L1-amp={0} is already larger than the ramping_mse_threshold. Stop and use current L1-amp. The figures will look empty.".format(ramping_mse_threshold))
+                    else:
+                        print("\nThe MSE {0} is larger than the ramping_mse_threshold {1}, stop ramping-L1 simplification".format(loss_end, ramping_mse_threshold))
+                    break 
+                mse_record_whole.append(data_record["mse"][-1])
+                data_DL_whole.append(data_record["data_DL"][-1])
+                model_DL_whole.append(data_record["model_DL"][-1])
+                iter_end_whole.append(1)
+            final_L1_amp = L1_amp * ramping_final_multiplier
+            final_L1_idx = np.argmin(np.abs(np.array(ramping_L1_list) - final_L1_amp))
+            layer_dict_final = layer_dict_dict[final_L1_idx]
+            print("Final L1_amp used: {0}".format(ramping_L1_list[final_L1_idx]))
+            if "param" in record_keys:
+                print("Final param value:\nweights: {0}\nbias{1}".format(param_record_whole[final_L1_idx][0], param_record_whole[final_L1_idx][1]))
+            model[0].layer_0.load_layer_dict(layer_dict_final)
+            mse_record_whole = mse_record_whole[: final_L1_idx + 2]
+            data_DL_whole = data_DL_whole[: final_L1_idx + 2]
+            model_DL_whole = model_DL_whole[: final_L1_idx + 2]
+            iter_end_whole = iter_end_whole[: final_L1_idx + 2]
+
+            if isplot:
+                def dict_to_list(Dict):
+                    return np.array([value for value in Dict.values()])
+                weights_list = []
+                bias_list = []
+                for element in param_record_whole:
+                    if isinstance(element[0], dict):
+                        element_core = dict_to_list(element[0])
+                        weights_list.append(element_core)
+                    else:
+                        element_core = to_np_array(element[0]).squeeze(1)
+                        weights_list.append(element_core)
+                        bias_list.append(to_np_array(element[1]))
+                weights_list = np.array(weights_list)
+                bias_list = np.array(bias_list).squeeze(1)
+
+                import matplotlib.pylab as plt
+                plt.figure(figsize = (7,5))
+                plt.loglog(ramping_L1_list[: len(loss_list_specific)], loss_list_specific)
+                plt.xlabel("L1 amp", fontsize = 16)
+                plt.ylabel("mse", fontsize = 16)
+                plt.show()
+
+                plt.figure(figsize = (7,5))
+                plt.semilogx(ramping_L1_list[: len(loss_list_specific)], loss_list_specific)
+                plt.xlabel("L1 amp", fontsize = 16)
+                plt.ylabel("mse", fontsize = 16)
+                plt.show()
+
+                plt.figure(figsize = (7,5))
+                for i in range(weights_list.shape[1]):
+                    plt.semilogx(ramping_L1_list[: len(loss_list_specific)], weights_list[:,i], label = "weight_{0}".format(i))
+                if len(bias_list) > 0:
+                    plt.semilogx(ramping_L1_list[: len(loss_list_specific)], bias_list, label = "bias")
+                plt.xlabel("L1 amp", fontsize = 16)
+                plt.ylabel("parameter_values", fontsize = 16)
+                plt.legend()
+                plt.show()
+                plt.clf()
+                plt.close()
+        else:
+            raise Exception("mode {0} not recognized!".format(mode_ele))
+
+        loss_dict[mode_ele] = {}
+        loss_dict[mode_ele]["mse_record_whole"] = mse_record_whole
+        loss_dict[mode_ele]["data_DL_whole"] = data_DL_whole
+        loss_dict[mode_ele]["model_DL_whole"] = model_DL_whole
+        if "param" in record_keys:
+            loss_dict[mode_ele]["param_record_whole"] = param_record_whole
+        if "param_grad" in record_keys:
+            loss_dict[mode_ele]["param_grad_record_whole"] = param_grad_record_whole
+        loss_dict[mode_ele]["iter_end_whole"] = iter_end_whole
+        loss_dict[mode_ele]["{0}_test".format(loss_type)] = loss_list
+        loss_dict[mode_ele]["event_list"] = event_list
+        loss_dict[mode_ele]["is_accept_whole"] = is_accept_whole
+        if mode_ele == "ramping-L1":
+            loss_dict[mode_ele]["ramping_L1_list"] = ramping_L1_list
+            loss_dict[mode_ele]["loss_list_specific"] = loss_list_specific
+
+    if not is_list:
+        model = model[0]
+    
+    return model, loss_dict
+
+
 # ## Model_Ensemble:
 
 # In[2]:
