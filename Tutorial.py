@@ -82,10 +82,10 @@ layer_dict = {
     "layer_type": "SuperNet_Layer",
     "input_size": 1,
     "output_size": 2,
-    "settings": {"activation": "relu", # Choose from "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
-                 "W_available": ["dense", "Toeplitz"],
-                 "b_available": ["dense", "None", "arithmetic-series", "constant"],
-                 "A_availabel": ["linear", "relu"],
+    "settings": {
+                 "W_available": ["dense", "Toeplitz"], # Weight type. Choose subset of "dense", "Toeplitz", "arithmetic-series-in", "arithmetic-series-out", "arithmetic-series-2D-in", "arithmetic-series-2D-out"
+                 "b_available": ["dense", "None", "arithmetic-series", "constant"], # Bias type. Choose subsets of "None", "constant", "arithmetic-series", "arithmetic-series-2D"
+                 "A_available": ["linear", "relu"], # Activation. Choose subset of "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
                 }
 }
 SuperNet_Layer = get_Layer(**layer_dict)
