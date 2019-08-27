@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[7]:
 
 
 import numpy as np
@@ -15,11 +15,11 @@ import torch.utils.data as data_utils
 import matplotlib.pylab as plt
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
-from pytorch_net.net import MLP, ConvNet, load_model_dict_net, train
+from pytorch_net.net import MLP, ConvNet, load_model_dict_net, train, get_Layer
 from pytorch_net.util import Early_Stopping
 
 
-# ## Preparing dataset:
+# ## 1. Preparing dataset:
 
 # In[2]:
 
@@ -34,7 +34,7 @@ X_test = Variable(torch.FloatTensor(X_test))
 y_test = Variable(torch.FloatTensor(y_test))
 
 
-# ## Constuct the network:
+# ## 1. Constuct a simple MLP:
 
 # In[3]:
 
@@ -69,7 +69,72 @@ net(X_train)
 net.inspect_operation(X_train, operation_between = (0,2))
 
 
-# ## Training using explicit commands:
+# ## 2. SuperNet:
+
+# ### 2.1 Use SuperNet Layer in your own module:
+
+# In[32]:
+
+
+layer_dict = {
+    "layer_type": "SuperNet_Layer",
+    "input_size": 4,
+    "output_size": 2,
+    "settings": {"activation": "relu", # Choose from "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
+                 "W_available": ["dense", "Toeplitz"],
+                 "b_available": ["dense", "None", "arithmetic-series", "constant"],
+                 "A_availabel": ["linear", "relu"],
+                }
+}
+SuperNet_Layer = get_Layer(**layer_dict)
+
+
+# In[33]:
+
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.layer_0 = SuperNet_Layer
+        self.layer_1 = nn.Linear(2,4)
+    
+    def forward(self, X):
+        return self.layer_1(self.layer_0(X))
+
+
+# In[34]:
+
+
+net = Net()
+net(torch.randn(100,4))
+
+
+# ### 2.2 Construct an MLP containing SuperNet layer:
+
+# In[ ]:
+
+
+input_size = 4
+struct_param = [
+    [6, "Simple_Layer", {}],   # (number of neurons in each layer, layer_type, layer settings)
+    [4, "SuperNet_Layer", {"activation": "relu", # Choose from "linear", "relu", "leakyRelu", "softplus", "sigmoid", "tanh", "selu", "elu", "softmax"
+                           "W_available": ["dense", "Toeplitz"],
+                           "b_available": ["dense", "None", "arithmetic-series", "constant"],
+                           "A_availabel": ["linear", "relu"],
+                          }],
+    [1, "Simple_Layer", {"activation": "linear"}],
+]
+settings = {"activation": "relu"} # Default activation if the activation is not specified in "struct_param" in each layer.
+                                    # If the activation is specified, it will overwrite this default settings.
+
+net = MLP(input_size = input_size,
+          struct_param = struct_param,
+          settings = settings,
+         )
+net(torch.randn(100,4))
+
+
+# ## 3. Training using explicit commands:
 
 # In[4]:
 
@@ -125,7 +190,7 @@ net_loaded = load_model_dict_net(pickle.load(open("net.p", "rb")))
 net_loaded(X_train) - net(X_train)
 
 
-# ## Advanced example: training MNIST using given train() function:
+# ## 4. Advanced example: training MNIST using given train() function:
 
 # In[ ]:
 
@@ -196,7 +261,7 @@ loss_original, loss_value, data_record = train(model,
                                               )
 
 
-# ## An example callback code:
+# ## 5. An example callback code:
 
 # In[ ]:
 
