@@ -40,7 +40,15 @@ def get_Layer(layer_type, input_size, output_size, W_init = None, b_init = None,
                                b_init = b_init,
                                settings = settings,
                                is_cuda = is_cuda,
-                              )   
+                              )
+    elif layer_type == "Symbolic_Layer":
+        layer = Symbolic_Layer(input_size = input_size,
+                               output_size = output_size,
+                               W_init = W_init,
+                               b_init = b_init,
+                               settings = settings,
+                               is_cuda = is_cuda,
+                              )
     else:
         raise Exception("layer_type '{0}' not recognized!".format(layer_type))
     return layer
@@ -56,6 +64,62 @@ def load_layer_dict(layer_dict, layer_type, is_cuda = False):
                           is_cuda = is_cuda,
                          )
     return new_layer
+
+
+def Simple_2_Symbolic(simple_layer, settings = {}, mode = "normal", prefix = ""):
+    """Transform Simple Layer to Symbolic Layer."""
+    from sympy import Symbol, Function
+    input_size = simple_layer.input_size
+    output_size = simple_layer.output_size
+    symbolic_expression = []
+    W_core, b_core = simple_layer.get_weights_bias()
+    W_init = {}
+
+    if mode == "normal":
+        for j in range(output_size):
+            expression = 0
+            for i in range(input_size):
+                expression += Symbol("{0}W{1}{2}".format(prefix, i, j)) * Symbol("x{0}".format(i))
+                W_init["{0}W{1}{2}".format(prefix, i, j)] = W_core[i, j]
+            expression += Symbol("{0}b{1}".format(prefix, j))
+            W_init["{0}b{1}".format(prefix, j)] = b_core[j]
+            if "activation" in simple_layer.settings:
+                activation_name = simple_layer.settings["activation"]
+            elif "activation" in settings:
+                activation_name = settings["activation"]
+            else:
+                activation_name = Default_Activation
+            if activation_name != "linear":
+                expression = Function(activation_name)(expression)
+            symbolic_expression.append(expression)
+    elif mode == "separable":
+        vector_p, vector_q = snap(W_core, "separable")[0]
+        for j in range(output_size):
+            expression = 0
+            for i in range(input_size):
+                expression += Symbol("x{0}".format(i)) * Symbol("{0}p{1}".format(prefix, i)) * Symbol("{0}q{1}".format(prefix, j))
+                W_init["{0}p{1}".format(prefix, i)] = vector_p[i]
+            expression += Symbol("{0}b{1}".format(prefix, j))
+            W_init["{0}q{1}".format(prefix, j)] = vector_q[j]
+            W_init["{0}b{1}".format(prefix, j)] = b_core[j]
+            if "activation" in simple_layer.settings:
+                activation_name = simple_layer.settings["activation"]
+            elif "activation" in settings:
+                activation_name = settings["activation"]
+            else:
+                activation_name = Default_Activation        
+            if activation_name != "linear":
+                expression = Function(activation_name)(expression)
+            symbolic_expression.append(expression)   
+
+    return get_Layer(layer_type = "Symbolic_Layer",
+                     input_size = input_size,
+                     output_size = output_size,
+                     W_init = W_init,
+                     b_init = None,
+                     settings = {"symbolic_expression": str(symbolic_expression)},
+                     is_cuda = simple_layer.is_cuda,
+                    )
 
 
 # ## Simple Layer:
@@ -262,6 +326,8 @@ class Simple_Layer(nn.Module):
             self.W_core.requires_grad = False
             self.b_core.requires_grad = False
 
+
+# ## SuperNet Layer:
 
 # In[ ]:
 
@@ -546,5 +612,389 @@ class SuperNet_Layer(nn.Module):
             pass
         else:
             raise Exception("mode '{0}' not recognized!".format(mode))
+        return reg
+
+
+# ## Symbolic Layer:
+
+# In[ ]:
+
+
+class Symbolic_Layer(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        W_init = None,
+        b_init = None,
+        settings = {},
+        is_cuda = False,
+        ):
+        super(Symbolic_Layer, self).__init__()
+        from sympy.parsing.sympy_parser import parse_expr
+        self.input_size = input_size
+        self.output_size = output_size
+        self.W_init = W_init # Here we use W_init to represent all parameter initial values
+        self.is_cuda = is_cuda
+        self.is_numerical = False
+        assert isinstance(settings["symbolic_expression"], str)
+        self.set_symbolic_expression(settings["symbolic_expression"], p_init = self.W_init)
+
+
+    @property
+    def layer_dict(self):
+        return {
+            "input_size": self.input_size,
+            "output_size": self.output_size,
+            "weights": self.get_param_dict(),
+            "bias": None,
+            "settings": {"symbolic_expression": str(self.symbolic_expression)},
+        }
+
+
+    @property
+    def struct_param(self):
+        return [self.output_size, "Symbolic_Layer", {"symbolic_expression": str(self.symbolic_expression)}]
+
+
+    @property
+    def settings(self):
+        return {"symbolic_expression": str(self.symbolic_expression)}
+
+
+    @property
+    def numerical_expression(self):
+        from sympy import Symbol
+        """Replace the parameter in symbolic_expression by their numerical values"""
+        substitution = [(Symbol(param_name), to_np_array(getattr(self, param_name))) for param_name in self.param_name_list]
+        return [expression.subs(substitution) for expression in self.symbolic_expression]
+    
+    
+    def set_numerical(self, is_numerical):
+        self.is_numerical = is_numerical
+
+
+    @property
+    def DL(self):
+        snapped_list = []
+        non_snapped_list = []
+        for symbolic_expression in self.symbolic_expression:
+            coeffs, variables = get_coeffs(symbolic_expression)
+            coeffs_numerical, has_param = substitute(coeffs, self.get_param_dict())
+            for coeffs_numerical_indi, has_param_indi in zip(coeffs_numerical, has_param):
+                if has_param_indi or self.is_numerical:
+                    non_snapped_list.append(coeffs_numerical_indi)
+                else:
+                    snapped_list.append(coeffs_numerical_indi)
+        return get_list_DL(snapped_list, "snapped") + get_list_DL(non_snapped_list, "non-snapped")
+
+
+    def load_layer_dict(self, layer_dict):
+        new_layer = load_layer_dict(layer_dict, "Symbolic_Layer", self.is_cuda)
+        self.__dict__.update(new_layer.__dict__)
+
+
+    def prune_output_neurons(self, neuron_ids):
+        if not isinstance(neuron_ids, list):
+            neuron_ids = [neuron_ids]
+        variable_names = self.get_variable_name_list()
+        assert "x" not in variable_names, "In order to prune output_neurons, 'x' cannot be in the symbolic_expression!"
+        symbolic_expression = [expression for i, expression in enumerate(self.symbolic_expression) if i not in neuron_ids]
+        self.output_size = sum(self.get_expression_length(symbolic_expression))
+        self.set_symbolic_expression(symbolic_expression)
+    
+    
+    def standardize(self, mode = "b_mean_zero"):
+        from sympy import Function
+        if mode == "b_mean_zero":
+            param_dict = self.get_param_dict()
+            bias_list = []
+            for expression in self.symbolic_expression:
+                fun_name_list = self.get_function_name_list(expression)
+                if len(fun_name_list) == 1:
+                    expr = expression.args[0]
+                elif len(fun_name_list) == 0:
+                    expr = expression
+                else:
+                    raise Exception("There must be at most one activation function")
+
+                vars_subs = {element: 0 for element in self.get_variable_name_list(expr)}
+                bias = expr.subs(vars_subs).subs(param_dict)
+                bias_list.append(bias)
+            bias_mean = np.mean(bias_list)
+
+            new_symbolic_expression = []
+            for expression in self.symbolic_expression:
+                fun_name_list = self.get_function_name_list(expression)
+                if len(fun_name_list) == 1:
+                    fun = Function(fun_name_list[0])
+                    expr = expression.args[0]
+                elif len(fun_name_list) == 0:
+                    expr = expression
+                else:
+                    raise Exception("There must be at most one activation function")
+
+                expr = expr - bias_mean
+                if len(fun_name_list) == 1:
+                    expr = fun(expr)
+                new_symbolic_expression.append(expr)
+            self.set_symbolic_expression(new_symbolic_expression)            
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
+    
+    
+    def init_with_p_dict(self, p_dict):
+        self.set_param_values(p_dict)
+
+
+    def init_bias_with_input(self, input, mode = "std_sqrt"):
+        pass
+
+
+    def get_param_name_list(self, symbolic_expression = None):
+        """Get parameter names from a given symbolic expression"""
+        # Here in the Sympy_Net we assume that the input is always represented by Symbol("x"), so "x" is excluded from param_name_list:
+        symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
+        symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+        return get_param_name_list(symbolic_expression)
+
+
+    def get_variable_name_list(self, symbolic_expression = None):
+        symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
+        symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+        return get_variable_name_list(symbolic_expression)
+
+
+    def get_function_name_list(self, symbolic_expression = None):
+        from sympy import Function
+        from sympy.utilities.lambdify import implemented_function
+        symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
+        symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+        function_name_list = list({element.func.__name__ for expression in symbolic_expression for element in expression.atoms(Function) if element.func.__name__ not in ["linear"]})
+        self.implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
+        return function_name_list
+
+
+    def get_param_dict(self):
+        param_names = self.get_param_name_list()
+        return {param_name: to_np_array(getattr(self, param_name)) for param_name in param_names}
+
+
+    def set_param_values(self, new_param_values):
+        param_names = self.get_param_name_list()
+        for key, value in new_param_values.items():
+            if key in param_names:
+                if isinstance(value, Variable):
+                    value_core = value.data
+                elif isinstance(value, float) or isinstance(value, int):
+                    value_core = torch.FloatTensor(np.array([value]))
+                getattr(self, key).data.copy_(value_core.view(-1))
+
+
+    def get_weights_bias(self, is_grad = False):
+        if not is_grad:
+            return deepcopy(self.get_param_dict()), None
+        else:
+            param_names = self.get_param_name_list()
+            param_grad_dict = {}
+            for param_name in param_names:
+                grad = getattr(self, param_name).grad
+                if grad is not None:
+                    param_grad_dict[param_name] = grad.data[0]
+                else:
+                    param_grad_dict[param_name] = None
+            return param_grad_dict, None
+
+
+    def get_expression_length(self, symbolic_expression = None):
+        symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
+        symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+        length_list = []
+        for expression in symbolic_expression:
+            variable_list = self.get_variable_name_list([expression])
+            if "x" in variable_list:
+                assert len(variable_list) == 1, "x cannot coexist with x1, x2, etc. in a single expression, since the dimension is not compatible"
+                length = self.input_size
+            else:
+                length = 1
+            length_list.append(length)
+        return length_list
+
+
+    def set_symbolic_expression(self, symbolic_expression, p_init = None):
+        """Set a new symbolic expression and update the parameterss"""
+        symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+        assert sum(self.get_expression_length(symbolic_expression)) == self.output_size,                 "symbolic_expression's combined output length must be equal to self.output_size!"
+        self.old_param_name_list = self.get_param_name_list(self.symbolic_expression) if hasattr(self, "symbolic_expression") else []
+        self.symbolic_expression = symbolic_expression
+        self.param_name_list = self.get_param_name_list(symbolic_expression)
+        self.variable_name_list = self.get_variable_name_list(symbolic_expression)
+        self.get_function_name_list()
+
+        # If the new expression has parameter names that did not appear in previous expression, create it:
+        for param_name in self.param_name_list:            
+            if not hasattr(self, param_name):
+                if p_init is not None:
+                    param_init = p_init[param_name] if param_name in p_init else None
+                else:
+                    param_init = None
+
+                if param_init is None:
+                    setattr(self, param_name, nn.Parameter(torch.randn(1)))
+                else:
+                    setattr(self, param_name, nn.Parameter(torch.FloatTensor(np.array([param_init]))))
+
+        # Delete class parameters that do not appear in the new symbolic expression:
+        param_name_to_delete = set(self.old_param_name_list) - set(self.param_name_list)
+        for param_name in param_name_to_delete:
+            delattr(self, param_name)
+
+        if self.is_cuda:
+            self.cuda()
+
+
+    def set_trainable(self, is_trainable):
+        param_name_list = self.get_param_name_list()
+        for param_name in param_name_list:
+            if is_trainable:
+                getattr(self, param_name).requires_grad = True
+            else:
+                getattr(self, param_name).requires_grad = False
+
+
+    def forward(self, input, p_dict = None):
+        from sympy import Symbol, lambdify
+        symbols = [Symbol(variable_name) for variable_name in self.variable_name_list]
+        if p_dict is None:
+            symbols = tuple(symbols + [Symbol(param_name) for param_name in self.param_name_list])  # Get symbolic variables
+        else:
+            symbols = tuple(symbols + [Symbol(param_name) for param_name in sorted(list(p_dict.keys())) if "x" not in param_name])
+        f_list = [lambdify(symbols, expression, torch) for expression in self.symbolic_expression]    # Obtain the lambda function f(x0, x1,..., param0, param1, ...)
+        # Obtain the data that will be fed into (x0, x1,..., param0, param1, ...):
+        variables_feed = []
+        for variable_name in self.variable_name_list:
+            if variable_name == "x":
+                variable_feed = input
+            else:
+                idx = int(variable_name[1:])
+                variable_feed = input[:, idx: idx + 1]
+            variables_feed.append(variable_feed)
+        if p_dict is None:
+            symbols_feed = variables_feed + [getattr(self, param_name) for param_name in self.param_name_list]
+        else:
+            symbols_feed = variables_feed + [p_dict[param_name] for param_name in sorted(list(p_dict.keys())) if "x" not in param_name]
+        output_list = []
+        for f in f_list:
+            output_ele = f(*symbols_feed)
+            if not isinstance(output_ele, Variable):
+                output_ele = Variable(torch.ones(input.size(0), 1), requires_grad = False) * output_ele
+                if self.is_cuda:
+                    output_ele = output_ele.cuda()
+            elif len(output_ele.size()) < 2 or output_ele.size(0) != input.size(0):
+                multiplier = Variable(torch.ones(input.size(0), 1), requires_grad = False)
+                if self.is_cuda:
+                    multiplier = multiplier.cuda()
+                output_ele = output_ele * multiplier
+                if self.is_cuda:
+                    output_ele = output_ele.cuda()
+            output_list.append(output_ele)
+        return torch.cat(output_list, 1)
+
+
+    def simplify(self, mode = "form", **kwargs):
+        from sympy import simplify, Symbol
+        verbose = kwargs["verbose"] if "verbose" in kwargs else 0
+        info_list = []
+        if not isinstance(mode, list):
+            mode = [mode]
+        for mode_ele in mode:
+            if mode_ele == "form":
+                prev_expression = self.symbolic_expression
+                new_expression = [simplify(expression) for expression in self.symbolic_expression]
+                self.set_symbolic_expression(new_expression)
+                if verbose > 0:
+                    print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
+                    print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))                
+            elif mode_ele == "snap":
+                snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                param_names = list(self.get_param_dict().keys())
+                param_array = np.array(list(self.get_param_dict().values()))
+                snap_targets = snap(param_array, snap_mode = snap_mode)
+                if not (len(snap_targets) == 1 and snap_targets[0][1] is None):
+                    subs_targets = [(Symbol(param_names[idx]), new_value) for idx, new_value in snap_targets]
+                    prev_expression = self.symbolic_expression
+                    if verbose > 0:
+                        print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
+                        print("Substitution:  \t{0}".format(subs_targets))
+                    new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
+                    self.set_symbolic_expression(new_expression)
+                    info_list = info_list + [(param_names[idx], new_value) for idx, new_value in snap_targets]
+                    if verbose > 0:
+                        print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
+            elif mode_ele == "pair_snap":
+                if len(self.get_param_dict()) < 2:
+                    raise Exception("Less than 2 parameters. Cannot pair_snap!")
+                else:
+                    def get_param_inverse_dict(Dict):
+                        inverse_dict = {}
+                        i = 0
+                        param_list = []
+                        for key, value in Dict.items():
+                            param_list.append(value)
+                            inverse_dict[i] = key
+                            i += 1
+                        return param_list, inverse_dict
+                    snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                    if snap_mode == "integer":
+                        snap_mode_whole = "pair_integer"
+                    elif snap_mode == "rational":
+                        snap_mode_whole = "pair_rational"
+                    else:
+                        raise Exception("snap_mode {0} not recognized!".format(snap_mode))
+                    param_list, inverse_dict = get_param_inverse_dict(self.get_param_dict())
+
+                    snap_targets = snap(param_list, snap_mode = snap_mode_whole)
+                    subs_targets = [(Symbol(inverse_dict[replace_id]), Symbol(inverse_dict[ref_id]) * ratio) for (replace_id, ref_id), ratio in snap_targets]
+                    prev_expression = self.symbolic_expression
+                    new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
+                    self.set_symbolic_expression(new_expression)
+                    info_list = info_list + [(inverse_dict[replace_id], "{0} * ".format(ratio) + inverse_dict[ref_id]) for (replace_id, ref_id), ratio in snap_targets]
+                    if verbose > 0:
+                        print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
+                        print("Substitution:  \t{0}".format(subs_targets))
+                        print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
+            else:
+                raise Exception("mode {0} not recognized!".format(mode_ele))
+        return info_list
+
+
+    def get_regularization(self, mode, source = ["param"], **kwargs):
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        if not isinstance(source, list):
+            source = [source]
+        param_list = [param for param in self.parameters()]
+        if len(param_list) > 0:
+            params = torch.cat(param_list)
+            scale_factor = kwargs["reg_scale_factor"] if "reg_scale_factor" in kwargs else None
+            if mode == "L1":
+                if "param" in source:
+                    if scale_factor is not None:
+                        reg_indi = (params * to_Variable(scale_factor, is_cuda = self.is_cuda)).abs().sum()
+                    else:
+                        reg_indi = params.abs().sum()
+                    reg = reg + reg_indi                        
+            elif mode == "L2":
+                if "param" in source:
+                    if scale_factor is not None:
+                        reg_indi = torch.sum((params * to_Variable(scale_factor, is_cuda = self.is_cuda)) ** 2)
+                    else:
+                        reg_indi = torch.sum(params ** 2)
+                    reg = reg + reg_indi
+            elif mode in AVAILABLE_REG:
+                pass
+            else:
+                raise Exception("mode '{0}' not recognized!".format(mode))
         return reg
 
