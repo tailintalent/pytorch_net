@@ -561,6 +561,184 @@ def get_args(arg, arg_id = 1, type = "str"):
     return arg_return
 
 
+class Loss_Fun(nn.Module):
+    def __init__(self, core = "mse", epsilon = 1e-10, loss_precision_floor = PrecisionFloorLoss, DL_sum = False):
+        super(Loss_Fun, self).__init__()
+        self.name = "Loss_Fun"
+        self.core = core
+        self.epsilon = epsilon
+        self.loss_precision_floor = loss_precision_floor
+        self.DL_sum = DL_sum
+
+    def forward(self, pred, target, sample_weights = None, is_mean = True):
+        if len(pred.size()) == 3:
+            pred = pred.squeeze(1)
+        assert pred.size() == target.size(), "pred and target must have the same size!"
+        if self.core == "huber":
+            loss = nn.SmoothL1Loss(reduce = False)(pred, target)
+        elif self.core == "mse":
+            loss = get_criterion(self.core, reduce = False)(pred, target)
+        elif self.core == "mae":
+            loss = get_criterion(self.core, reduce = False)(pred, target)
+        elif self.core == "mse-conv":
+            loss = get_criterion(self.core, reduce = False)(pred, target).mean(-1).mean(-1)
+        elif self.core == "mlse":
+            loss = torch.log(nn.MSELoss(reduce = False)(pred, target) + self.epsilon)
+        elif self.core == "mse+mlse":
+            loss = torch.log(nn.MSELoss(reduce = False)(pred, target) + self.epsilon) + nn.MSELoss(reduce = False)(pred, target).mean()
+        elif self.core == "DL":
+            loss = logplus(MAELoss(reduce = False)(pred, target) / self.loss_precision_floor)
+        elif self.core == "DLs":
+            loss = torch.log(1 + nn.MSELoss(reduce = False)(pred, target) / self.loss_precision_floor ** 2) / np.log(4)
+        else:
+            raise Exception("loss mode {0} not recognized!".format(self.core))
+        if len(loss.shape) == 4:  # Dealing with pixel inputs of (num_examples, channels, height, width)
+            loss = loss.mean(-1).mean(-1)
+        if loss.size(-1) > 1:
+            loss = loss.sum(-1, keepdim = True)
+        if sample_weights is not None:
+            assert tuple(loss.size()) == tuple(sample_weights.size())
+            loss = loss * sample_weights
+        if is_mean:
+            if sample_weights is not None:
+                loss = loss * len(sample_weights) / sample_weights.sum()
+            if self.DL_sum:
+                loss = loss.sum()
+            else:
+                loss = loss.mean()
+        return loss
+
+
+class Loss_Fun_Cumu(nn.Module):
+    """Generalized-mean loss, introduced in AI Physicist work, Wu and Tegmark (2018)"""
+    def __init__(
+        self,
+        core,
+        cumu_mode,
+        neglect_threshold = None,
+        epsilon = 1e-10,
+        balance_model_influence = False,
+        balance_model_influence_epsilon = 0.03, 
+        loss_precision_floor = None,
+        ):
+        super(Loss_Fun_Cumu, self).__init__()
+        self.name = "Loss_Fun_Cumu"
+        self.loss_fun = Loss_Fun(core = core, epsilon = epsilon, loss_precision_floor = loss_precision_floor)
+        self.cumu_mode = cumu_mode
+        self.neglect_threshold = neglect_threshold
+        self.epsilon = epsilon
+        self.balance_model_influence = balance_model_influence
+        self.balance_model_influence_epsilon = balance_model_influence_epsilon
+        self.loss_precision_floor = loss_precision_floor
+
+    def forward(
+        self,
+        pred,
+        target,
+        model_weights = None,
+        sample_weights = None,
+        neglect_threshold_on = True,
+        is_mean = True,
+        cumu_mode = None,
+        balance_model_influence = None,
+        ):
+        num = pred.size(1)
+        if num == 1:
+            return self.loss_fun(pred, target, sample_weights = sample_weights, is_mean = is_mean)
+
+        if model_weights is not None:
+            model_weights = model_weights.float() / model_weights.float().sum(1, keepdim = True)
+        loss_list = torch.cat([self.loss_fun(pred[:, i:i+1], target, is_mean = False) for i in range(num)], 1)
+
+        # Modify model_weights according to neglect_threshold if stipulated:
+        if neglect_threshold_on:
+            neglect_threshold = self.neglect_threshold
+        else:
+            neglect_threshold = None
+        if neglect_threshold is not None:
+            valid_candidate = (loss_list <= neglect_threshold).long()
+            renew_id = valid_candidate.sum(1) < 1
+            valid_weights = valid_candidate.clone().masked_fill_(renew_id.unsqueeze(1), 1).float()
+            if model_weights is None:
+                model_weights = valid_weights
+            else:
+                model_weights = model_weights * valid_weights + self.epsilon
+
+        # Setting cumu_mode:
+        if cumu_mode is None:
+            cumu_mode = self.cumu_mode
+        if cumu_mode[0] == "generalized-mean" and cumu_mode[1] == 1:
+            cumu_mode = "mean"
+        elif cumu_mode[0] == "generalized-mean" and cumu_mode[1] == 0:
+            cumu_mode = "geometric"
+        elif cumu_mode[0] == "generalized-mean" and cumu_mode[1] == -1:
+            cumu_mode = "harmonic"
+
+        # Obtain loss:
+        if cumu_mode == "original":
+            loss = loss_list
+            if model_weights is not None:
+                loss = loss * model_weights
+        elif cumu_mode == "mean":
+            if model_weights is None:
+                loss = loss_list.mean(1)
+            else:
+                loss = (loss_list * model_weights).sum(1)
+        elif cumu_mode == "min":
+            loss = loss_list.min(1)[0]
+        elif cumu_mode == "max":
+            loss = loss_list.max(1)[0]
+        elif cumu_mode == "harmonic":
+            if model_weights is None:
+                loss = num / (1 / (loss_list + self.epsilon)).sum(1)
+            else:
+                loss = 1 / (model_weights / (loss_list + self.epsilon)).sum(1)
+        elif cumu_mode == "geometric":
+            if model_weights is None:
+                loss = (loss_list + self.epsilon).prod(1) ** (1 / float(num))
+            else:
+                loss = torch.exp((model_weights * torch.log(loss_list + self.epsilon)).sum(1))
+        elif cumu_mode[0] == "generalized-mean":
+            order = cumu_mode[1]
+            if model_weights is None:
+                loss = (((loss_list + self.epsilon) ** order).clamp(max = 1e30).mean(1)) ** (1 / float(order))
+            else:
+                loss = ((model_weights * (loss_list + self.epsilon) ** order).clamp(max = 1e30).sum(1)) ** (1 / float(order))
+        elif cumu_mode[0] == "DL-generalized-mean":
+            if self.loss_precision_floor is None:
+                loss_precision_floor = PrecisionFloorLoss
+            else:
+                loss_precision_floor = self.loss_precision_floor
+            order = cumu_mode[1]
+            if model_weights is None:
+                loss = logplus((((loss_list + self.epsilon) ** order).clamp(max = 1e30).mean(1)) ** (1 / float(order)) / loss_precision_floor)
+            else:
+                loss = logplus(((model_weights * (loss_list + self.epsilon) ** order).clamp(max = 1e30).sum(1)) ** (1 / float(order)) / loss_precision_floor)
+        else:
+            raise Exception("cumu_mode {0} not recognized!".format(cumu_mode))
+
+        # Balance model influence so that each model has the same total weights on the samples:
+        if balance_model_influence is None:
+            balance_model_influence = self.balance_model_influence
+        if model_weights is not None and balance_model_influence is True: 
+            num_examples = len(model_weights)
+            if sample_weights is None:
+                sample_weights = (model_weights.float() / (self.balance_model_influence_epsilon * num_examples + model_weights.float().sum(0, keepdim = True))).sum(1)
+            else:
+                sample_weights = (sample_weights * model_weights.float() / (self.balance_model_influence_epsilon * num_examples + product.sum(0, keepdim = True))).sum(1)
+            sample_weights = sample_weights / sample_weights.sum() * num_examples
+
+        # Multiply by sample weights:
+        if sample_weights is not None:
+            assert tuple(sample_weights.size()) == tuple(loss.size()), "sample_weights must have the same size as the accumulated loss!"
+            loss = loss * sample_weights
+
+        # Calculate the mean:
+        if is_mean:
+            loss = loss.mean()
+        return loss
+
+
 class Loss_with_uncertainty(nn.Module):
     def __init__(self, core = "mse", epsilon = 1e-6):
         super(Loss_with_uncertainty, self).__init__()
