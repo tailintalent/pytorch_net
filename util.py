@@ -13,6 +13,7 @@ import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
 from torch.optim.lr_scheduler import _LRScheduler
+PrecisionFloorLoss = 2 ** (-32)
 
 
 def plot_matrices(
