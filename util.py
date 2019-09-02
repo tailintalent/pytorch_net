@@ -1,5 +1,6 @@
 from __future__ import print_function
 import os
+from numbers import Number
 import numpy as np
 from copy import deepcopy
 import random
@@ -159,8 +160,10 @@ def to_np_array(*arrays, **kwargs):
             if array.is_cuda:
                 array = array.cpu()
             array = array.numpy()
-        if isinstance(array, int) or isinstance(array, float):
+        if isinstance(array, Number):
             pass
+        elif isinstance(array, list):
+            array = np.array(array)
         elif array.shape == (1,):
             if "full_reduce" in kwargs and kwargs["full_reduce"] is False:
                 pass
