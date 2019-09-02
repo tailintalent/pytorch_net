@@ -577,7 +577,7 @@ def train(
                 if co_kwargs is not None:
                     record_data(data_record, [co_model.model_dict], ["co_model_dict"])
                 if filename is not None:
-                    pickle.dump(data_record, open(filename[:-2] + "_{0}".format(i) + ".p", "wb"))
+                    pickle.dump(data_record, open(filename, "wb"))
         if to_stop:
             break
 
