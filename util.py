@@ -1337,3 +1337,13 @@ class RampupLR(_LRScheduler):
     def get_lr(self):
         return [base_lr * np.logspace(-12, 0, self.num_steps + 1)[self.last_epoch]
                 for base_lr in self.base_lrs]
+
+
+def isin(ar1, ar2):
+    ar2 = torch.LongTensor(ar2)
+    return (ar1[..., None] == ar2).any(-1)
+
+
+def filter_labels(X, y, labels):
+    idx = isin(y, labels)
+    return X[idx], y[idx]
