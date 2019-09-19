@@ -588,7 +588,9 @@ def train(
     loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, transform_label=transform_label, **kwargs)
     if isplot:
         import matplotlib.pylab as plt
-        for key in data_record:
+        for key, item in data_record.items():
+            if isinstance(item, Number) or len(data_record["iter"]) != len(item):
+                continue
             if key not in ["iter", "model_dict"]:
                 if key in ["accuracy"]:
                     plt.figure(figsize = (8,6))
