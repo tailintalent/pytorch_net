@@ -28,7 +28,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict
 from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
-from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR
+from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label
 
 
 # In[ ]:
@@ -102,7 +102,7 @@ def Zip(*data, **kwargs):
     return data
 
 
-def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **kwargs):
+def get_loss(model, data_loader = None, X = None, y = None, criterion = None, transform_label=None, **kwargs):
     """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
     if data_loader is not None:
         assert X is None and y is None
@@ -110,7 +110,7 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **
         count = 0
         # Taking the average of all metrics:
         for j, (X_batch, y_batch) in enumerate(data_loader):
-            loss_ele = to_np_array(model.get_loss(X_batch, y_batch, criterion = criterion, **kwargs))
+            loss_ele = to_np_array(model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, **kwargs))
             if j == 0:
                 all_info_dict = {key: 0 for key in model.info_dict.keys()}
             loss_record = loss_record + loss_ele
@@ -123,11 +123,11 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None, **
         model.info_dict = deepcopy(all_info_dict)
     else:
         assert X is not None and y is not None
-        loss = to_np_array(model.get_loss(X, y, criterion = criterion, **kwargs))
+        loss = to_np_array(model.get_loss(X, transform_label(y), criterion = criterion, **kwargs))
     return loss
 
 
-def plot_model(model, data_loader = None, X = None, y = None):
+def plot_model(model, data_loader = None, X = None, y = None, transform_label=None):
     if data_loader is not None:
         assert X is None and y is None
         X_all = []
@@ -140,17 +140,17 @@ def plot_model(model, data_loader = None, X = None, y = None):
         else:
             X_all = torch.cat(X_all, 0)
         y_all = torch.cat(y_all)
-        model.plot(X_all, y_all)
+        model.plot(X_all, transform_label(y_all))
     else:
         assert X is not None and y is not None
-        model.plot(X, y)
+        model.plot(X, transform_label(y))
 
 
-def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
+def prepare_inspection(model, data_loader = None, X = None, y = None, transform_label=None, **kwargs):
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     if data_loader is None:
         assert X is not None and y is not None
-        all_dict_summary = model.prepare_inspection(X, y, **kwargs)
+        all_dict_summary = model.prepare_inspection(X, transform_label(y), **kwargs)
         if inspect_functions is not None:
             for inspect_function_key, inspect_function in inspect_functions.items():
                 all_dict_summary[inspect_function_key] = inspect_function(model, X, y, **kwargs)
@@ -158,7 +158,7 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
         assert X is None and y is None
         all_dict = {}
         for X_batch, y_batch in data_loader:
-            info_dict = model.prepare_inspection(X_batch, y_batch, **kwargs)
+            info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
             for key, item in info_dict.items():
                 if key not in all_dict:
                     all_dict[key] = [item]
@@ -166,7 +166,7 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, **kwargs):
                     all_dict[key].append(item)
             if inspect_functions is not None:
                 for inspect_function_key, inspect_function in inspect_functions.items():
-                    inspect_function_result = inspect_function(model, X_batch, y_batch, **kwargs)
+                    inspect_function_result = inspect_function(model, X_batch, transform_label(y_batch), **kwargs)
                     if inspect_function_key not in all_dict:
                         all_dict[inspect_function_key] = [inspect_function_result]
                     else:
@@ -258,6 +258,10 @@ def train(
         X_valid, y_valid = validation_data
     else:
         X_valid, y_valid = X, y
+        
+    # Setting up dynamic label noise:
+    label_noise_matrix = kwargs["label_noise_matrix"] if "label_noise_matrix" in kwargs else None
+    transform_label = Transform_Label(label_noise_matrix = label_noise_matrix)
     
     # Setting up cotrain optimizer:
     co_kwargs = kwargs["co_kwargs"] if "co_kwargs" in kwargs else None
@@ -268,7 +272,7 @@ def train(
         co_multi_step = co_kwargs["co_multi_step"] if "co_multi_step" in co_kwargs else 1
     
     # Get original loss:
-    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs)
+    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
     if "param" in record_keys:
@@ -276,7 +280,7 @@ def train(
     if "param_grad" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
     if co_kwargs is not None:
-        co_loss_original = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **co_kwargs)
+        co_loss_original = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **co_kwargs)
         if "co_loss" in record_keys:
             record_data(data_record, [co_loss_original], ["co_loss"])
     if filename is not None and save_interval is not None:
@@ -287,7 +291,7 @@ def train(
     num_params = len(list(model.parameters()))
     if num_params == 0:
         print("No parameters to optimize!")
-        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **kwargs)
+        loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
         if "loss" in record_keys:
             record_data(data_record, [0, loss_value], ["iter", "loss"])
         if "param" in record_keys:
@@ -295,7 +299,7 @@ def train(
         if "param_grad" in record_keys:
             record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
         if co_kwargs is not None:
-            co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, **co_kwargs)
+            co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **co_kwargs)
             record_data(data_record, [co_loss_value], ["co_loss"])
         return loss_original, loss_value, data_record
     optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
@@ -333,7 +337,7 @@ def train(
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
         print("\tlr: {0:.3e}\t loss:{1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_original, inspect_loss_precision), end = "")
-        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
         if len(info_dict) > 0:
             for item in inspect_items:
                 if item in info_dict:
@@ -341,9 +345,9 @@ def train(
                     if item in record_keys and item != "loss":
                         record_data(data_record, [to_np_array(info_dict[item])], [item])
         if co_kwargs is not None:
-            co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
+            co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
             if "co_loss" in inspect_items:
-                co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch=-1, **co_kwargs)
+                co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch=-1, transform_label=transform_label, **co_kwargs)
                 print("\tco_loss: {}".format(formalize_value(co_loss_value, inspect_loss_precision)), end="")
             if len(co_info_dict) > 0:
                 for item in inspect_items:
@@ -388,7 +392,7 @@ def train(
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
                 reg = get_regularization(model, **kwargs)
-                loss = model.get_loss(X, y, criterion = criterion, loss_epoch = i, **kwargs) + reg
+                loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
                 loss.backward()
                 optimizer.step()
             else:
@@ -396,7 +400,7 @@ def train(
                 def closure():
                     optimizer.zero_grad()
                     reg = get_regularization(model, **kwargs)
-                    loss = model.get_loss(X, y, criterion = criterion, loss_epoch = i, **kwargs) + reg
+                    loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     return loss
                 optimizer.step(closure)
@@ -407,7 +411,7 @@ def train(
                     for _ in range(co_multi_step):
                         co_optimizer.zero_grad()
                         co_reg = get_regularization(co_model, **co_kwargs)
-                        co_loss = co_model.get_loss(X, y, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                        co_loss = co_model.get_loss(X, transform_label(y), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
                         co_loss.backward()
                         co_optimizer.step()
         else:
@@ -418,7 +422,7 @@ def train(
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
                     reg = get_regularization(model, **kwargs)
-                    loss = model.get_loss(X_batch, y_batch, criterion = criterion, loss_epoch = i, **kwargs) + reg
+                    loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     if logdir is not None:
                         batch_idx += 1
@@ -431,7 +435,7 @@ def train(
                     def closure():
                         optimizer.zero_grad()
                         reg = get_regularization(model, **kwargs)
-                        loss = model.get_loss(X_batch, y_batch, criterion = criterion, loss_epoch = i, **kwargs) + reg
+                        loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
                         loss.backward()
                         return loss
                     if logdir is not None:
@@ -452,7 +456,7 @@ def train(
                         for _ in range(co_multi_step):
                             co_optimizer.zero_grad()
                             co_reg = get_regularization(co_model, **co_kwargs)
-                            co_loss = co_model.get_loss(X_batch, y_batch, criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                            co_loss = co_model.get_loss(X_batch, transform_label(y_batch), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
                             co_loss.backward()
                             if logdir is not None:
                                 if len(co_info_dict) > 0:
@@ -465,7 +469,7 @@ def train(
                 if inspect_step is not None:
                     if k % inspect_step == 0:
                         print("s{}:".format(k), end = "")
-                        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs) 
+                        info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs) 
                         if "loss" in inspect_items:
                             info_dict_step["loss"].append(loss.item())
                             print("\tloss: {0:.{1}f}".format(loss.item(), inspect_loss_precision), end="")
@@ -476,7 +480,7 @@ def train(
                                     print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                         if co_kwargs is not None:
                             if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
-                                co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
+                                co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
                                 if "co_loss" in inspect_items:
                                     print("\tco_loss: {0:.{1}f}".format(co_loss.item(), inspect_loss_precision), end="")
                                     info_dict_step["co_loss"].append(co_loss.item())
@@ -500,7 +504,7 @@ def train(
 
         if i % inspect_interval == 0:
             model.eval()
-            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **kwargs)
+            loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **kwargs)
             if scheduler_type is not None:
                 if lr_rampup_steps is None or train_loader is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
                     if scheduler_type == "ReduceLROnPlateau":
@@ -519,13 +523,13 @@ def train(
                 if early_stopping_monitor == "loss":
                     to_stop = early_stopping.monitor(loss_value)
                 else:
-                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
                     to_stop = early_stopping.monitor(info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
                     print("{0}:".format(i), end = "")
                     print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
-                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, **kwargs)
+                    info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
                     if len(info_dict) > 0:
                         for item in inspect_items:
                             if item in info_dict:
@@ -533,8 +537,8 @@ def train(
                                 if item in record_keys and item != "loss":
                                     record_data(data_record, [to_np_array(info_dict[item])], [item])
                     if co_kwargs is not None:
-                        co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, **co_kwargs)
-                        co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, **co_kwargs)
+                        co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **co_kwargs)
+                        co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
                         if "co_loss" in inspect_items:
                             print("\tco_loss: {0:.{1}f}".format(co_loss_value, inspect_loss_precision), end="")
                         if len(co_info_dict) > 0:
@@ -567,10 +571,10 @@ def train(
                     if i % inspect_image_interval == 0:
                         if gradient_noise is not None:
                             print("gradient_noise: {0:.9f}".format(current_gradient_noise_scale))
-                        plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid)
+                        plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label)
                 if co_kwargs is not None and "inspect_image_interval" in co_kwargs and co_kwargs["inspect_image_interval"] and hasattr(co_model, "plot"):
                     if i % co_kwargs["inspect_image_interval"] == 0:
-                        plot_model(co_model, data_loader = validation_loader, X = X_valid, y = y_valid)
+                        plot_model(co_model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label)
         if save_interval is not None:
             if i % save_interval == 0:
                 record_data(data_record, [model.model_dict], ["model_dict"])
@@ -581,7 +585,7 @@ def train(
         if to_stop:
             break
 
-    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, **kwargs)
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, transform_label=transform_label, **kwargs)
     if isplot:
         import matplotlib.pylab as plt
         for key in data_record:

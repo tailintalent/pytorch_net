@@ -1347,3 +1347,24 @@ def isin(ar1, ar2):
 def filter_labels(X, y, labels):
     idx = isin(y, labels)
     return X[idx], y[idx]
+
+
+class Transform_Label(object):
+    def __init__(self, label_noise_matrix=None):
+        self.label_noise_matrix = label_noise_matrix
+        if self.label_noise_matrix is not None:
+            assert ((self.label_noise_matrix.sum(0) - 1) < 1e-10).all()
+
+    def __call__(self, y):
+        if self.label_noise_matrix is None:
+            return y
+        else:
+            noise_matrix = self.label_noise_matrix
+            dim = len(noise_matrix)
+            y_tilde = []
+            for y_ele in y:
+                flip_rate = noise_matrix[:, y_ele]
+                y_ele = np.random.choice(dim, p = flip_rate)
+                y_tilde.append(y_ele)
+            y_tilde = torch.LongTensor(y_tilde)
+            return y_tilde
