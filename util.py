@@ -386,6 +386,10 @@ class Early_Stopping(object):
         self.mode = mode
         self.best_value = None
         self.wait = 0
+
+    def reset(self, value=None):
+        self.best_value = value
+        self.wait = 0
         
     def monitor(self, value):
         to_stop = False
