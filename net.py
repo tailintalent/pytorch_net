@@ -302,7 +302,7 @@ def train(
             co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **co_kwargs)
             record_data(data_record, [co_loss_value], ["co_loss"])
         return loss_original, loss_value, data_record
-    optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
+    optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs) if "optimizer" not in kwargs or ("optimizer" in kwargs and kwargs["optimizer"] is None) else kwargs["optimizer"]
 
     
     # Setting up gradient noise:
