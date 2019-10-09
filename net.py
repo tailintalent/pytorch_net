@@ -74,7 +74,7 @@ def fill_triangular(vec, dim, mode = "lower"):
 def matrix_diag_transform(matrix, fun):
     """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
     num_examples = len(matrix)
-    idx = torch.eye(matrix.size(-1)).byte().unsqueeze(0)
+    idx = torch.eye(matrix.size(-1)).bool().unsqueeze(0)
     idx = idx.repeat(num_examples, 1, 1)
     new_matrix = matrix.clone()
     new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
