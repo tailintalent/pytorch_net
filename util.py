@@ -326,13 +326,64 @@ def get_criterion(loss_type, reduce = True, **kwargs):
         criterion = nn.MSELoss(reduce = reduce)
     elif loss_type == "mae":
         criterion = MAELoss(reduce = reduce)
+    elif loss_type == "DL":
+        criterion = Loss_Fun(core = "DL", 
+            loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss, 
+            DL_sum = kwargs["DL_sum"] if "DL_sum" in kwargs else False,
+        )
+    elif loss_type == "DLs":
+        criterion = Loss_Fun(core = "DLs", 
+            loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss,
+            DL_sum = kwargs["DL_sum"] if "DL_sum" in kwargs else False,
+        )
+    elif loss_type == "mlse":
+        epsilon = 1e-10
+        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce = reduce)(pred, target) + epsilon)
+    elif loss_type == "mse+mlse":
+        epsilon = 1e-10
+        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce = reduce)(pred, target) + epsilon) + nn.MSELoss(reduce = reduce)(pred, target).mean()
     elif loss_type == "cross-entropy":
         criterion = nn.CrossEntropyLoss(reduce = reduce)
     elif loss_type == "Loss_with_uncertainty":
         criterion = Loss_with_uncertainty(core = kwargs["loss_core"] if "loss_core" in kwargs else "mse", epsilon = 1e-6)
+    elif loss_type[:11] == "Contrastive":
+        criterion_name = loss_type.split("-")[1]
+        beta = eval(loss_type.split("-")[2])
+        criterion = ContrastiveLoss(get_criterion(criterion_name, reduce = reduce, **kwargs), beta = beta)
     else:
         raise Exception("loss_type {0} not recognized!".format(loss_type))
     return criterion
+
+
+def get_criteria_value(model, X, y, criteria_type, criterion, **kwargs):
+    loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs else PrecisionFloorLoss
+    pred = forward(model, X, **kwargs)
+    
+    # Get loss:
+    loss = to_np_array(criterion(pred, y))
+    result = {"loss": loss}
+    
+    # Get DL:
+    DL_type = criteria_type if "DL" in criteria_type else "DLs"
+    data_DL = get_criterion(loss_type = DL_type, loss_precision_floor = loss_precision_floor, DL_sum = True)(pred, y)
+    data_DL = to_np_array(data_DL)
+    if not isinstance(model, list):
+        model = [model]
+    model_DL = np.sum([model_ele.DL for model_ele in model])
+    DL = data_DL + model_DL
+    result["DL"] = DL
+    result["model_DL"] = model_DL
+    result["data_DL"] = data_DL
+    
+    # Specify criteria_value:
+    if criteria_type == "loss":
+        criteria_value = loss
+    elif "DL" in criteria_type:
+        criteria_value = DL
+    else:
+        raise Exception("criteria type {0} not valid".format(criteria_type))
+    print(result)
+    return criteria_value, result
 
 
 def get_optimizer(optim_type, lr, parameters, **kwargs):
@@ -408,6 +459,51 @@ class Early_Stopping(object):
                     else:
                         self.wait += 1
         return to_stop
+    
+    
+class Performance_Monitor(object):
+    def __init__(self, patience = 100, epsilon = 0, compare_mode = "absolute"):
+        self.patience = patience
+        self.epsilon = epsilon
+        self.compare_mode = compare_mode
+        self.reset()    
+    
+    def reset(self):
+        self.best_value = None
+        self.model_list = []
+        self.wait = 0
+        self.pivot_id = 0
+
+    def monitor(self, value, **kwargs):
+        to_stop = False
+        is_accept = False
+        if self.best_value is None:
+            self.best_value = value
+            self.wait = 0
+            self.model_list = [deepcopy(kwargs)]
+            log = deepcopy(self.model_list)
+            is_accept = True
+        else:
+            self.model_list.append(deepcopy(kwargs))
+            log = deepcopy(self.model_list)
+            if self.compare_mode == "absolute":
+                is_better = (value <= self.best_value + self.epsilon)
+            elif self.compare_mode == "relative":
+                is_better = (value <= self.best_value * (1 + self.epsilon))
+            else:
+                raise
+            if is_better:
+                self.best_value = value
+                self.pivot_id = self.pivot_id + 1 + self.wait
+                self.wait = 0
+                self.model_list = [deepcopy(kwargs)]
+                is_accept = True
+            else:
+                if self.wait >= self.patience:
+                    to_stop = True
+                else:
+                    self.wait += 1
+        return to_stop, deepcopy(self.model_list[0]), log, is_accept, deepcopy(self.pivot_id)
 
     
 def flatten(*tensors):
@@ -569,6 +665,30 @@ def get_args(arg, arg_id = 1, type = "str"):
     return arg_return
 
 
+def forward(model, X, **kwargs):
+    autoencoder = kwargs["autoencoder"] if "autoencoder" in kwargs else None
+    is_Lagrangian = kwargs["is_Lagrangian"] if "is_Lagrangian" in kwargs else False
+    output = X
+    if not is_Lagrangian:
+        if isinstance(model, list) or isinstance(model, tuple):
+            for model_ele in model:
+                output = model_ele(output)
+        else:
+            output = model(output)
+    else:
+        if isinstance(model, list) or isinstance(model, tuple):
+            for i, model_ele in enumerate(model):
+                if i != len(model) - 1:
+                    output = model_ele(output)
+                else:
+                    output = get_Lagrangian_loss(model_ele, output)
+        else:
+            output = get_Lagrangian_loss(model, output)
+    if autoencoder is not None:
+        output = autoencoder.decode(output)
+    return output
+
+
 class Loss_Fun(nn.Module):
     def __init__(self, core = "mse", epsilon = 1e-10, loss_precision_floor = PrecisionFloorLoss, DL_sum = False):
         super(Loss_Fun, self).__init__()
@@ -614,136 +734,6 @@ class Loss_Fun(nn.Module):
                 loss = loss.sum()
             else:
                 loss = loss.mean()
-        return loss
-
-
-class Loss_Fun_Cumu(nn.Module):
-    """Generalized-mean loss, introduced in AI Physicist work, Wu and Tegmark (2018)"""
-    def __init__(
-        self,
-        core,
-        cumu_mode,
-        neglect_threshold = None,
-        epsilon = 1e-10,
-        balance_model_influence = False,
-        balance_model_influence_epsilon = 0.03, 
-        loss_precision_floor = None,
-        ):
-        super(Loss_Fun_Cumu, self).__init__()
-        self.name = "Loss_Fun_Cumu"
-        self.loss_fun = Loss_Fun(core = core, epsilon = epsilon, loss_precision_floor = loss_precision_floor)
-        self.cumu_mode = cumu_mode
-        self.neglect_threshold = neglect_threshold
-        self.epsilon = epsilon
-        self.balance_model_influence = balance_model_influence
-        self.balance_model_influence_epsilon = balance_model_influence_epsilon
-        self.loss_precision_floor = loss_precision_floor
-
-    def forward(
-        self,
-        pred,
-        target,
-        model_weights = None,
-        sample_weights = None,
-        neglect_threshold_on = True,
-        is_mean = True,
-        cumu_mode = None,
-        balance_model_influence = None,
-        ):
-        num = pred.size(1)
-        if num == 1:
-            return self.loss_fun(pred, target, sample_weights = sample_weights, is_mean = is_mean)
-
-        if model_weights is not None:
-            model_weights = model_weights.float() / model_weights.float().sum(1, keepdim = True)
-        loss_list = torch.cat([self.loss_fun(pred[:, i:i+1], target, is_mean = False) for i in range(num)], 1)
-
-        # Modify model_weights according to neglect_threshold if stipulated:
-        if neglect_threshold_on:
-            neglect_threshold = self.neglect_threshold
-        else:
-            neglect_threshold = None
-        if neglect_threshold is not None:
-            valid_candidate = (loss_list <= neglect_threshold).long()
-            renew_id = valid_candidate.sum(1) < 1
-            valid_weights = valid_candidate.clone().masked_fill_(renew_id.unsqueeze(1), 1).float()
-            if model_weights is None:
-                model_weights = valid_weights
-            else:
-                model_weights = model_weights * valid_weights + self.epsilon
-
-        # Setting cumu_mode:
-        if cumu_mode is None:
-            cumu_mode = self.cumu_mode
-        if cumu_mode[0] == "generalized-mean" and cumu_mode[1] == 1:
-            cumu_mode = "mean"
-        elif cumu_mode[0] == "generalized-mean" and cumu_mode[1] == 0:
-            cumu_mode = "geometric"
-        elif cumu_mode[0] == "generalized-mean" and cumu_mode[1] == -1:
-            cumu_mode = "harmonic"
-
-        # Obtain loss:
-        if cumu_mode == "original":
-            loss = loss_list
-            if model_weights is not None:
-                loss = loss * model_weights
-        elif cumu_mode == "mean":
-            if model_weights is None:
-                loss = loss_list.mean(1)
-            else:
-                loss = (loss_list * model_weights).sum(1)
-        elif cumu_mode == "min":
-            loss = loss_list.min(1)[0]
-        elif cumu_mode == "max":
-            loss = loss_list.max(1)[0]
-        elif cumu_mode == "harmonic":
-            if model_weights is None:
-                loss = num / (1 / (loss_list + self.epsilon)).sum(1)
-            else:
-                loss = 1 / (model_weights / (loss_list + self.epsilon)).sum(1)
-        elif cumu_mode == "geometric":
-            if model_weights is None:
-                loss = (loss_list + self.epsilon).prod(1) ** (1 / float(num))
-            else:
-                loss = torch.exp((model_weights * torch.log(loss_list + self.epsilon)).sum(1))
-        elif cumu_mode[0] == "generalized-mean":
-            order = cumu_mode[1]
-            if model_weights is None:
-                loss = (((loss_list + self.epsilon) ** order).clamp(max = 1e30).mean(1)) ** (1 / float(order))
-            else:
-                loss = ((model_weights * (loss_list + self.epsilon) ** order).clamp(max = 1e30).sum(1)) ** (1 / float(order))
-        elif cumu_mode[0] == "DL-generalized-mean":
-            if self.loss_precision_floor is None:
-                loss_precision_floor = PrecisionFloorLoss
-            else:
-                loss_precision_floor = self.loss_precision_floor
-            order = cumu_mode[1]
-            if model_weights is None:
-                loss = logplus((((loss_list + self.epsilon) ** order).clamp(max = 1e30).mean(1)) ** (1 / float(order)) / loss_precision_floor)
-            else:
-                loss = logplus(((model_weights * (loss_list + self.epsilon) ** order).clamp(max = 1e30).sum(1)) ** (1 / float(order)) / loss_precision_floor)
-        else:
-            raise Exception("cumu_mode {0} not recognized!".format(cumu_mode))
-
-        # Balance model influence so that each model has the same total weights on the samples:
-        if balance_model_influence is None:
-            balance_model_influence = self.balance_model_influence
-        if model_weights is not None and balance_model_influence is True: 
-            num_examples = len(model_weights)
-            if sample_weights is None:
-                sample_weights = (model_weights.float() / (self.balance_model_influence_epsilon * num_examples + model_weights.float().sum(0, keepdim = True))).sum(1)
-            else:
-                sample_weights = (sample_weights * model_weights.float() / (self.balance_model_influence_epsilon * num_examples + product.sum(0, keepdim = True))).sum(1)
-            sample_weights = sample_weights / sample_weights.sum() * num_examples
-
-        # Multiply by sample weights:
-        if sample_weights is not None:
-            assert tuple(sample_weights.size()) == tuple(loss.size()), "sample_weights must have the same size as the accumulated loss!"
-            loss = loss * sample_weights
-
-        # Calculate the mean:
-        if is_mean:
-            loss = loss.mean()
         return loss
 
 
@@ -975,6 +965,13 @@ def to_string(List, connect = "-", num_digits = None, num_strings = None):
             return connect.join([str(element)[:num_strings] for element in List])
         else:
             return connect.join(["{0:.{1}f}".format(element, num_digits)[:num_strings] for element in List])
+
+
+def view_item(dict_list, key):
+    if not isinstance(key, tuple):
+        return [element[key] for element in dict_list]
+    else:
+        return [element[key[0]][key[1]] for element in dict_list]
 
         
 def filter_filename(dirname, include = [], exclude = [], array_id = None):
@@ -1372,3 +1369,483 @@ class Transform_Label(object):
                 y_tilde.append(y_ele)
             y_tilde = torch.LongTensor(y_tilde)
             return y_tilde
+
+        
+def base_repr(n, base, length):
+    assert n < base ** length, "n should be smaller than b ** length"
+    base_repr_str = np.base_repr(n, base, padding = length)[-length:]
+    return [int(ele) for ele in base_repr_str]
+
+
+def base_repr_2_int(List, base):
+    if len(List) == 1:
+        return List[0]
+    elif len(List) == 0:
+        return 0
+    else:
+        return base * base_repr_2_int(List[:-1], base) + List[-1]
+
+
+def get_variable_name_list(expressions):
+    """Get variable names from a given expressions list"""
+    return sorted(list({symbol.name for expression in expressions for symbol in expression.free_symbols if "x" in symbol.name}))
+
+
+def get_param_name_list(expressions):
+    """Get parameter names from a given expressions list"""
+    return sorted(list({symbol.name for expression in expressions for symbol in expression.free_symbols if "x" not in symbol.name}))
+
+
+def substitute(expressions, param_dict):
+    """Substitute each expression in the expression using the param_dict"""
+    new_expressions = []
+    has_param_list = []
+    for expression in expressions:
+        has_param = len(get_param_name_list([expression])) > 0
+        has_param_list.append(has_param)
+        new_expressions.append(expression.subs(param_dict))
+    return new_expressions, has_param_list
+
+
+def get_coeffs(expression):
+    """Get coefficients as a list from an expression, w.r.t. its sorted variable name list"""
+    from sympy import Poly
+    variable_names = get_variable_name_list([expression])
+    variables = standardize_symbolic_expression(variable_names)
+    if len(variables) > 0:
+        poly = Poly(expression, *variables)
+        return poly.coeffs(), variable_names
+    else:
+        return [expression], []
+
+
+def standardize_symbolic_expression(symbolic_expression):
+    """Standardize symbolic expression to be a list of SymPy expressions"""
+    from sympy.parsing.sympy_parser import parse_expr
+    if isinstance(symbolic_expression, str):
+        symbolic_expression = parse_expr(symbolic_expression)
+    if not (isinstance(symbolic_expression, list) or isinstance(symbolic_expression, tuple)):
+        symbolic_expression = [symbolic_expression]
+    symbolic_expression = [parse_expr(expression) if isinstance(expression, str) else expression for expression in symbolic_expression]
+    return symbolic_expression
+
+
+def get_number_DL(n, status):
+#     def rank(n):
+#         assert isinstance(n, int)
+#         if n == 0:
+#             return 1
+#         else:
+#             return 2 * abs(n) + int((1 - np.sign(n)) / 2)
+    epsilon = 1e-10
+    n = float(n)
+    if status == "snapped":
+        if np.abs(n - int(n)) < epsilon:
+            return np.log2(1 + abs(int(n)))
+        else:
+            snapped = snap_core([n], "rational")[1]
+            if snapped is not None and abs(n - snapped) < epsilon:
+                _, numerator, denominator, _ = bestApproximation(n, 100)
+                return np.log2((1 + abs(numerator)) * abs(denominator))
+            else:
+                raise Exception("{0} is not a rational number!".format(n))
+    elif status == "non-snapped":
+        return np.log2(1 + (float(n) / PrecisionFloorLoss) ** 2) / 2
+    else:
+        raise Exception("status {0} not valid!".format(status))
+
+
+def get_list_DL(List, status):
+    if not (isinstance(List, list) or (isinstance(List, np.ndarray) and (len(List.shape) > 1 or (len(List.shape) ==1 and List.shape[0] > 1)))):
+        return get_number_DL(List, status)
+    else:
+        return np.sum([get_list_DL(element, status) for element in List])
+
+
+def get_model_DL(model):
+    if not(isinstance(model, list) or isinstance(model, tuple)):
+        model = [model]
+    return np.sum([model_ele.DL for model_ele in model])
+
+
+def zero_grad_hook(idx):
+    def hook_function(grad):
+        grad[idx] = 0
+        return grad
+    return hook_function
+
+
+## The following are snap functions for finding a best approximated integer or rational number for a real number:
+def bestApproximation(x,imax):
+    # The input is a numpy parameter vector p.
+    # The output is an integer specifying which parameter to change,
+    # and a float specifying the new value.
+    def float2contfrac(x,nmax):
+        c = [np.floor(x)];
+        y = x - np.floor(x)
+        k = 0
+        while np.abs(y)!=0 and k<nmax:
+            y = 1 / float(y)
+            i = np.floor(y)
+            c.append(i)
+            y = y - i
+            k = k + 1
+        return c
+
+    def contfrac2frac(seq):
+        ''' Convert the simple continued fraction in `seq` 
+            into a fraction, num / den
+        '''
+        num, den = 1, 0
+        for u in reversed(seq):
+            num, den = den + num*u, num
+        return num, den
+
+    def contFracRationalApproximations(c):
+        return np.array(list(contfrac2frac(c[:i+1]) for i in range(len(c))))
+
+    def contFracApproximations(c):
+        q = contFracRationalApproximations(c)
+        return q[:,0] / float(q[:,1])
+
+    def truncateContFrac(q,imax):
+        k = 0
+        while k < len(q) and np.maximum(np.abs(q[k,0]), q[k,1]) <= imax:
+            k = k + 1
+        return q[:k]
+
+    def pval(p):
+        return 1 - np.exp(-p ** 0.87 / 0.36)
+
+    xsign = np.sign(x)
+    q = truncateContFrac(contFracRationalApproximations(float2contfrac(abs(x),20)),imax)
+    
+    if len(q) > 0:
+        p = np.abs(q[:,0] / q[:,1] - abs(x)).astype(float) * (1 + np.abs(q[:,0])) * q[:,1]
+        p = pval(p)
+        i = np.argmin(p)
+        return (xsign * q[i,0] / float(q[i,1]), xsign* q[i,0], q[i,1], p[i])
+    else:
+        return (None, 0, 0, 1)
+
+def integerSnap(p):
+    i = np.argmin(np.abs(p - np.round(p)))
+    return (i, np.round(p[i]))
+
+def rationalSnap(p):
+    snaps = np.array(list(bestApproximation(x,100) for x in p))
+    i = np.argmin(snaps[:,3])
+    return (i, snaps[i,0])
+
+def vectorSnap(p):
+    tiny = 0.001
+    huge = 1000000.
+    ap = np.abs(p)
+    for i in range(len(p)):
+        if ap[i] < tiny:
+            ap[i] = huge
+    i = np.argmin(ap)
+    apmin = ap[i] * np.sign(p[i])
+    if apmin >= huge:
+        return (-1, p)
+    else:
+        q = p / apmin.astype(float)
+        q[i] = 0.5  # It's q[i] = 1, so we don't want to select it
+        (i, qnew) = integerSnap(q)
+        return (i, apmin*qnew)
+
+def pairSnap(p, snap_mode = "integer"):
+    p = np.array(p)
+    n = p.shape[0]
+    pairs = []
+    for i in range(1,n):
+        for j in range(i):
+            pairs.append([i,j,p[i]/p[j]])
+            pairs.append([j,i,p[j]/p[i]])
+    pairs = np.array(pairs)
+    if snap_mode == "integer":
+        (k,ratio) = integerSnap(pairs[:,2])
+    elif snap_mode == "rational":
+        (k,ratio) = rationalSnap(pairs[:,2])
+    else:
+        raise Exception("snap_mode {0} not recognized!".format(snap_mode))
+    return (int(pairs[k,0]), int(pairs[k,1])), int(ratio)
+
+# Finds best separable approximation of a matrix as M=ab^t.
+# There's a degeneracy between rescaling a and rescaling b, which we fix by setting the smallest non-zero element of a equal to 1.
+def separableSnap(M):
+    (U,w,V) = np.linalg.svd(M)
+    Mnew = w[0]*np.matmul(U[:,:1],V[:1,:])
+    a = U[:,0]*w[0]
+    b = V[0,:]
+    tiny = 0.001
+    huge = 1000000.
+    aa = np.abs(a)
+    for i in range(len(aa)):
+        if aa[i] < tiny:
+            aa[i] = huge
+    i = np.argmin(aa)
+    aamin = aa[i] * np.sign(aa[i])
+    aa = aa/aamin
+    return (a/aamin,b*aamin)
+
+def snap_core(p, snap_mode):
+    if len(p) == 0:
+        return (None, None)
+    else:
+        if snap_mode == "integer":
+            return integerSnap(p)
+        elif snap_mode == "rational":
+            return rationalSnap(p)
+        elif snap_mode == "vector":
+            return vectorSnap(p)
+        elif snap_mode == "pair_integer":
+            return pairSnap(p, snap_mode = "integer")
+        elif snap_mode == "pair_rational":
+            return pairSnap(p, snap_mode = "rational")
+        elif snap_mode == "separable":
+            return separableSnap(p)
+        else:
+            raise Exception("Snap mode {0} not recognized!".format(snap_mode))
+
+def snap(param, snap_mode, excluded_idx = None):
+    if excluded_idx is None:
+        idx, new_value = snap_core(param, snap_mode = snap_mode)
+    else:
+        full_idx = list(range(len(param)))
+        full_idx = list(range(len(param)))
+        valid_idx = sorted(list(set(full_idx) - set(excluded_idx)))
+        valid_dict = list(enumerate(valid_idx))
+        param_valid = [param[i] for i in valid_idx]
+        idx_valid, new_value = snap_core(param_valid, snap_mode = snap_mode)
+        idx = valid_dict[idx_valid][1] if idx_valid is not None else None
+    return [(idx, new_value)]
+##
+
+    
+class Batch_Generator(object):
+    def __init__(self, X, y, batch_size = 50, target_one_hot_off = False):
+        """
+        Initilize the Batch_Generator class
+        """
+        if isinstance(X, tuple):
+            self.binary_X = True
+        else:
+            self.binary_X = False
+        if isinstance(X, Variable):
+            X = X.cpu().data.numpy()
+        if isinstance(y, Variable):
+            y = y.data.numpy()
+        self.target_one_hot_off = target_one_hot_off
+
+        if self.binary_X:
+            X1, X2 = X
+            self.sample_length = len(y)
+            assert len(X1) == len(X2) == self.sample_length, "X and y must have the same length!"
+            assert batch_size <= self.sample_length, "batch_size must not be larger than \
+                    the number of samples!"
+            self.batch_size = int(batch_size)
+
+            X1_len = [element.shape[-1] for element in X1]
+            X2_len = [element.shape[-1] for element in X2]
+            y_len = [element.shape[-1] for element in y]
+            if len(np.unique(X1_len)) == 1 and len(np.unique(X2_len)) == 1:
+                assert len(np.unique(y_len)) == 1, \
+                    "when X1 and X2 has only one size, the y should also have only one size!"
+                self.combine_size = False
+                self.X1 = np.array(X1)
+                self.X2 = np.array(X2)
+                self.y = np.array(y)
+                self.index = np.array(range(self.sample_length))
+                self.idx_batch = 0
+                self.idx_epoch = 0
+            else:
+                self.combine_size = True
+                self.X1 = X1
+                self.X2 = X2
+                self.y = y
+                self.input_dims_list = zip(X1_len, X2_len)
+                self.input_dims_dict = {}
+                for i, input_dims in enumerate(self.input_dims_list):
+                    if input_dims not in self.input_dims_dict:
+                        self.input_dims_dict[input_dims] = {"idx":[i]}
+                    else:
+                        self.input_dims_dict[input_dims]["idx"].append(i)
+                for input_dims in self.input_dims_dict:
+                    idx = np.array(self.input_dims_dict[input_dims]["idx"])
+                    self.input_dims_dict[input_dims]["idx"] = idx
+                    self.input_dims_dict[input_dims]["X1"] = [X1[i] for i in idx]
+                    self.input_dims_dict[input_dims]["X2"] = [X2[i] for i in idx]
+                    self.input_dims_dict[input_dims]["y"] = [y[i] for i in idx]
+                    self.input_dims_dict[input_dims]["idx_batch"] = 0
+                    self.input_dims_dict[input_dims]["idx_epoch"] = 0
+                    self.input_dims_dict[input_dims]["index"] = np.array(range(len(idx))).astype(int)
+        else:
+            self.sample_length = len(y)
+            assert batch_size <= self.sample_length, "batch_size must not be larger than \
+                    the number of samples!"
+            self.batch_size = int(batch_size)
+
+            X_len = [element.shape[-1] for element in X]
+            y_len = [element.shape[-1] for element in y]
+
+            if len(np.unique(X_len)) == 1 and len(np.unique(y_len)) == 1:
+                assert len(np.unique(y_len)) == 1, \
+                    "when X has only one size, the y should also have only one size!"
+                self.combine_size = False
+                self.X = np.array(X)
+                self.y = np.array(y)
+                self.index = np.array(range(self.sample_length))
+                self.idx_batch = 0
+                self.idx_epoch = 0
+            else:
+                self.combine_size = True
+                self.X = X
+                self.y = y
+                self.input_dims_list = zip(X_len, y_len)
+                self.input_dims_dict = {}
+                for i, input_dims in enumerate(self.input_dims_list):
+                    if input_dims not in self.input_dims_dict:
+                        self.input_dims_dict[input_dims] = {"idx":[i]}
+                    else:
+                        self.input_dims_dict[input_dims]["idx"].append(i)
+                for input_dims in self.input_dims_dict:
+                    idx = np.array(self.input_dims_dict[input_dims]["idx"])
+                    self.input_dims_dict[input_dims]["idx"] = idx
+                    self.input_dims_dict[input_dims]["X"] = [X[i] for i in idx]
+                    self.input_dims_dict[input_dims]["y"] = [y[i] for i in idx]
+                    self.input_dims_dict[input_dims]["idx_batch"] = 0
+                    self.input_dims_dict[input_dims]["idx_epoch"] = 0
+                    self.input_dims_dict[input_dims]["index"] = np.array(range(len(idx))).astype(int)
+
+
+    def reset(self):
+        """Reset the index and batch iteration to the initialization state"""
+        if not self.combine_size:
+            self.index = np.array(range(self.sample_length))
+            self.idx_batch = 0
+            self.idx_epoch = 0
+        else:
+            for input_dims in self.input_dims_dict:
+                self.input_dims_dict[input_dims]["idx_batch"] = 0
+                self.input_dims_dict[input_dims]["idx_epoch"] = 0
+                self.input_dims_dict[input_dims]["index"] = np.array(range(len(idx))).astype(int)
+
+
+    def next_batch(self, mode = "random", isTorch = False, is_cuda = False, given_dims = None):
+        """Generate each batch with the same size (even if the examples and target may have variable size)"""
+        if self.binary_X:
+            if not self.combine_size:
+                start = self.idx_batch * self.batch_size
+                end = (self.idx_batch + 1) * self.batch_size
+
+                if end > self.sample_length:
+                    self.idx_epoch += 1
+                    self.idx_batch = 0
+                    np.random.shuffle(self.index)
+                    start = 0
+                    end = self.batch_size
+
+                self.idx_batch += 1
+                chosen_index = self.index[start:end]
+                y_batch = deepcopy(self.y[chosen_index])
+                if self.target_one_hot_off:
+                    y_batch = y_batch.argmax(-1)
+                X1_batch = deepcopy(self.X1[chosen_index])
+                X2_batch = deepcopy(self.X2[chosen_index])
+            else: # If the input_dims have variable size
+                if mode == "random":
+                    if given_dims is None:
+                        rand = np.random.choice(self.sample_length)
+                        input_dims = self.input_dims_list[rand]
+                    else:
+                        input_dims = given_dims
+                    length = len(self.input_dims_dict[input_dims]["idx"])
+                    if self.batch_size >= length:
+                        chosen_index = np.random.choice(length, size = self.batch_size, replace = True)
+                    else:
+                        start = self.input_dims_dict[input_dims]["idx_batch"] * self.batch_size
+                        end = (self.input_dims_dict[input_dims]["idx_batch"] + 1) * self.batch_size
+                        if end > length:
+                            self.input_dims_dict[input_dims]["idx_epoch"] += 1
+                            self.input_dims_dict[input_dims]["idx_batch"] = 0
+                            np.random.shuffle(self.input_dims_dict[input_dims]["index"])
+                            start = 0
+                            end = self.batch_size
+                        self.input_dims_dict[input_dims]["idx_batch"] += 1
+                        chosen_index = self.input_dims_dict[input_dims]["index"][start:end]
+                    y_batch = deepcopy(np.array([self.input_dims_dict[input_dims]["y"][j] for j in chosen_index]))
+                    if self.target_one_hot_off:
+                        y_batch = y_batch.argmax(-1)
+                    X1_batch = deepcopy(np.array([self.input_dims_dict[input_dims]["X1"][j] for j in chosen_index]))
+                    X2_batch = deepcopy(np.array([self.input_dims_dict[input_dims]["X2"][j] for j in chosen_index]))
+
+            if isTorch:
+                X1_batch = Variable(torch.from_numpy(X1_batch), requires_grad = False).type(torch.FloatTensor)
+                X2_batch = Variable(torch.from_numpy(X2_batch), requires_grad = False).type(torch.FloatTensor)
+                if self.target_one_hot_off:
+                    y_batch = Variable(torch.from_numpy(y_batch), requires_grad = False).type(torch.LongTensor)
+                else:
+                    y_batch = Variable(torch.from_numpy(y_batch), requires_grad = False).type(torch.FloatTensor)
+
+                if is_cuda:
+                    X1_batch = X1_batch.cuda()
+                    X2_batch = X2_batch.cuda()
+                    y_batch = y_batch.cuda()
+
+            return (X1_batch, X2_batch), y_batch
+        else:
+            if not self.combine_size:
+                start = self.idx_batch * self.batch_size
+                end = (self.idx_batch + 1) * self.batch_size
+
+                if end > self.sample_length:
+                    self.idx_epoch += 1
+                    self.idx_batch = 0
+                    np.random.shuffle(self.index)
+                    start = 0
+                    end = self.batch_size
+
+                self.idx_batch += 1
+                chosen_index = self.index[start:end]
+                y_batch = deepcopy(self.y[chosen_index])
+                if self.target_one_hot_off:
+                    y_batch = y_batch.argmax(-1)
+                X_batch = deepcopy(self.X[chosen_index])
+            else: # If the input_dims have variable size
+                if mode == "random":
+                    if given_dims is None:
+                        rand = np.random.choice(self.sample_length)
+                        input_dims = self.input_dims_list[rand]
+                    else:
+                        input_dims = given_dims
+                    length = len(self.input_dims_dict[input_dims]["idx"])
+                    if self.batch_size >= length:
+                        chosen_index = np.random.choice(length, size = self.batch_size, replace = True)
+                    else:
+                        start = self.input_dims_dict[input_dims]["idx_batch"] * self.batch_size
+                        end = (self.input_dims_dict[input_dims]["idx_batch"] + 1) * self.batch_size
+                        if end > length:
+                            self.input_dims_dict[input_dims]["idx_epoch"] += 1
+                            self.input_dims_dict[input_dims]["idx_batch"] = 0
+                            np.random.shuffle(self.input_dims_dict[input_dims]["index"])
+                            start = 0
+                            end = self.batch_size
+                        self.input_dims_dict[input_dims]["idx_batch"] += 1
+                        chosen_index = self.input_dims_dict[input_dims]["index"][start:end]
+                    y_batch = deepcopy(np.array([self.input_dims_dict[input_dims]["y"][j] for j in chosen_index]))
+                    if self.target_one_hot_off:
+                        y_batch = y_batch.argmax(-1)
+                    X_batch = deepcopy(np.array([self.input_dims_dict[input_dims]["X"][j] for j in chosen_index]))
+            if isTorch:
+                X_batch = Variable(torch.from_numpy(X_batch), requires_grad = False).type(torch.FloatTensor)
+                if self.target_one_hot_off:
+                    y_batch = Variable(torch.from_numpy(y_batch), requires_grad = False).type(torch.LongTensor)
+                else:
+                    y_batch = Variable(torch.from_numpy(y_batch), requires_grad = False).type(torch.FloatTensor)
+
+                if is_cuda:
+                    X_batch = X_batch.cuda()
+                    y_batch = y_batch.cuda()
+
+            return X_batch, y_batch

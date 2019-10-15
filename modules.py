@@ -14,7 +14,8 @@ from copy import deepcopy
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array
+from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, zero_grad_hook
+from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
 
@@ -168,6 +169,13 @@ class Simple_Layer(nn.Module):
         init_bias(self.b_core, init = self.b_init)
         if is_cuda:
             self.cuda()
+        
+        # Initialize parameter freeze if stipulated:
+        if "snap_dict" in self.settings:
+            self.snap_dict = self.settings["snap_dict"]
+            self.initialize_param_freeze(update_values = True)
+        else:
+            self.snap_dict = {}
 
 
     @property
@@ -187,6 +195,27 @@ class Simple_Layer(nn.Module):
         }
         Layer_dict["weights"], Layer_dict["bias"] = self.get_weights_bias()
         return Layer_dict
+
+
+    @property
+    def DL(self):
+        shape = self.W_core.shape
+        # Weight:
+        non_snapped_list = []
+        snapped_list = []
+        for i in range(shape[0]):
+            for j in range(shape[1]):
+                if ("weight", (i, j)) in self.snap_dict:
+                    snapped_list.append(self.snap_dict[("weight", (i, j))]["new_value"])
+                else:
+                    non_snapped_list.append(to_np_array(self.W_core[i, j]))
+        # Bias:
+        for i in range(shape[1]):
+            if ("bias", i) in self.snap_dict:
+                snapped_list.append(self.snap_dict[("bias", i)]["new_value"])
+            else:
+                non_snapped_list.append(to_np_array(self.b_core[i]))
+        return get_list_DL(snapped_list, "snapped") + get_list_DL(non_snapped_list, "non-snapped")
 
 
     def load_layer_dict(self, layer_dict):
@@ -240,19 +269,23 @@ class Simple_Layer(nn.Module):
         preserved_ids = torch.LongTensor(np.array(list(set(range(self.input_size)) - set(neuron_ids))))
         self.W_core = nn.Parameter(self.W_core.data[preserved_ids, :])
         self.input_size = self.W_core.size(0)
-    
+
     
     def add_output_neurons(self, num_neurons, mode = "imitation"):
         if mode == "imitation":
-            W_core_mean = self.W_core.mean().data[0]
-            W_core_std = self.W_core.std().data[0]
-            b_core_mean = self.b_core.mean().data[0]
-            b_core_std = self.b_core.std().data[0]
+            W_core_mean = to_np_array(self.W_core.mean())
+            W_core_std = to_np_array(self.W_core.std())
+            b_core_mean = to_np_array(self.b_core.mean())
+            b_core_std = to_np_array(self.b_core.std())
             new_W_core = torch.randn(self.input_size, num_neurons) * W_core_std + W_core_mean
             new_b_core = torch.randn(num_neurons) * b_core_std + b_core_mean
         elif mode == "zeros":
             new_W_core = torch.zeros(self.input_size, num_neurons)
             new_b_core = torch.zeros(num_neurons)
+        elif mode[0] == "copy":
+            neuron_id = mode[1]
+            new_W_core = self.W_core[:, neuron_id: neuron_id + 1].detach().data
+            new_b_core = self.b_core[neuron_id: neuron_id + 1].detach().data
         else:
             raise Exception("mode {0} not recognized!".format(mode))
         self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 1))
@@ -273,15 +306,125 @@ class Simple_Layer(nn.Module):
             raise Exception("mode {0} not recognized!".format(mode))
         self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 0))
         self.input_size += num_neurons
+        
+
+    def standardize(self, mode = "b_mean_zero"):
+        if mode == "b_mean_zero":
+            b_mean = to_np_array(self.b_core.mean())
+            self.b_core.data.copy_(self.b_core.data - b_mean)
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
 
 
+    def simplify(self, mode = "snap", excluded_idx = [], **kwargs):
+        def get_idx_list(key_list, input_size, output_size):
+            idx_list = []
+            for pos, true_idx in key_list:
+                if pos == "weight":
+                    idx_list.append(true_idx[0] * output_size + true_idx[1])
+                elif pos == "bias":
+                    idx_list.append(true_idx + input_size * output_size)
+                else:
+                    raise
+            return sorted(idx_list)
+
+        def get_true_idx(idx, input_size, output_size):
+            """Get (pos, true_idx) from idx"""
+            if idx < input_size * output_size:
+                pos = "weight"
+                true_idx = (int(idx / output_size), idx % output_size)
+            else:
+                pos = "bias"
+                true_idx = idx - input_size * output_size
+            return pos, true_idx
+
+        if mode == "snap":
+            snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+            # Identify the parameters to freeze:
+            if self.is_cuda:
+                param = np.concatenate([self.W_core.cpu().view(-1).data.numpy(), self.b_core.cpu().view(-1).data.numpy()])
+            else:
+                param = np.concatenate([self.W_core.view(-1).data.numpy(), self.b_core.view(-1).data.numpy()])
+            if "snap_targets" in kwargs and kwargs["snap_targets"] is not None:
+                snap_targets = kwargs["snap_targets"]
+                is_target_given = True
+            else:
+                excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), self.input_size, self.output_size)
+                snap_targets = snap(param, snap_mode = snap_mode, excluded_idx = excluded_idx_combined)
+                is_target_given = False
+            
+            info_list = []
+            for idx, new_value in snap_targets:
+                if new_value is not None:
+                    if is_target_given:
+                        pos, true_idx = idx
+                        new_value = float(new_value)
+                    else:
+                        pos, true_idx = get_true_idx(idx, self.input_size, self.output_size)
+                        new_value = new_value.astype(float)
+                    info_list.append(((pos, true_idx), new_value))
+                    if pos == "weight":
+                        new_W_core = self.W_core.data
+                        new_W_core[true_idx] = new_value
+                        self.W_core = nn.Parameter(new_W_core)
+                    elif pos == "bias":
+                        new_b_core = self.b_core.data
+                        new_b_core[true_idx] = new_value
+                        self.b_core = nn.Parameter(new_b_core)
+                    self.snap_dict[(pos, true_idx)] = {"new_value": new_value}
+                    self.initialize_param_freeze(update_values = False)
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
+        return info_list
+
+
+    def initialize_param_freeze(self, update_values = True):
+        if update_values:
+            new_W_core = self.W_core.data
+            new_b_core = self.b_core.data
+            # Update weight and bias values:
+            for (pos, true_idx), item in self.snap_dict.items():
+                if pos == "weight":
+                    new_W_core[true_idx] = item["new_value"]
+                elif pos == "bias":
+                    new_b_core[true_idx] = item["new_value"]
+                else:
+                    raise
+            self.W_core = nn.Parameter(new_W_core)
+            self.b_core = nn.Parameter(new_b_core)
+        
+        # Initialize hook:
+        for pos, true_idx in self.snap_dict.keys():
+            hook_function = zero_grad_hook(true_idx)
+            if pos == "weight":
+                h = self.W_core.register_hook(hook_function)
+            elif pos == "bias":
+                h = self.b_core.register_hook(hook_function)
     
-    def get_weights_bias(self):
-        W_core, b_core = self.W_core, self.b_core
-        if self.is_cuda:
-            W_core = W_core.cpu()
-            b_core = b_core.cpu()
-        return deepcopy(W_core.data.numpy()), deepcopy(b_core.data.numpy())
+
+    def remove_param_freeze(self, index_list):
+        for key in index_list:
+            self.snap_dict.pop(key)
+        self.initialize_param_freeze(update_values = True)
+
+
+    def get_param_names(self, source):
+        if source == "modules":
+            param_names = ["W_core", "b_core"]
+        if source == "attention":
+            param_names = []
+        return param_names
+
+
+    def get_weights_bias(self, is_grad = False):
+        if not is_grad:
+            W_core, b_core = self.W_core, self.b_core
+            return deepcopy(to_np_array(W_core, full_reduce = False)), deepcopy(to_np_array(b_core, full_reduce = False))
+        else:
+            W_grad, b_grad = self.W_core.grad, self.b_core.grad
+            W_grad = deepcopy(to_np_array(W_grad, full_reduce = False)) if W_grad is not None else None
+            b_grad = deepcopy(to_np_array(b_grad, full_reduce = False)) if b_grad is not None else None
+            return W_grad, b_grad
 
     
     def get_regularization(self, mode, source = ["weight", "bias"]):

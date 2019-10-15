@@ -26,10 +26,12 @@ from torch.distributions.utils import broadcast_all
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from pytorch_net.modules import get_Layer, load_layer_dict
-from pytorch_net.util import get_activation, get_criterion, get_optimizer, get_full_struct_param, plot_matrices
-from pytorch_net.util import Early_Stopping, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label
+from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
+from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss
+from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item
 
+
+# ## Training functionality:
 
 # In[ ]:
 
@@ -176,7 +178,6 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, transform_
             all_dict_summary[key] = np.mean(all_dict[key])
     model.info_dict = all_dict_summary
     return all_dict_summary
-    
 
 
 def train(
@@ -609,6 +610,165 @@ def train(
     return loss_original, loss_value, data_record
 
 
+def train_simple(model, X, y, validation_data = None, inspect_interval = 5, **kwargs):
+    """minimal version of training. "model" can be a single model or a ordered list of models"""
+    def get_regularization(model, **kwargs):
+        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
+        reg = to_Variable([0], is_cuda = X.is_cuda)
+        for model_ele in model:
+            for reg_type, reg_coeff in reg_dict.items():
+                reg = reg + model_ele.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff
+        return reg
+    if not(isinstance(model, list) or isinstance(model, tuple)):
+        model = [model]
+    epochs = kwargs["epochs"] if "epochs" in kwargs else 2000
+    lr = kwargs["lr"] if "lr" in kwargs else 5e-3
+    optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
+    optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
+    loss_type = kwargs["loss_type"] if "loss_type" in kwargs else "mse"
+    early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
+    patience = kwargs["patience"] if "patience" in kwargs else 40
+    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss", "mse", "data_DL", "model_DL"]
+    scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+    loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs else PrecisionFloorLoss
+    autoencoder = kwargs["autoencoder"] if "autoencoder" in kwargs else None
+    data_record = {key: [] for key in record_keys}
+    isplot = kwargs["isplot"] if "isplot" in kwargs else False
+    if patience is not None:
+        early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
+    
+    if validation_data is not None:
+        X_valid, y_valid = validation_data
+    else:
+        X_valid, y_valid = X, y
+    
+    # Get original loss:
+    criterion = get_criterion(loss_type, loss_precision_floor = loss_precision_floor)
+    DL_criterion = Loss_Fun(core = "DLs", loss_precision_floor = loss_precision_floor, DL_sum = True)
+    DL_criterion_absolute = Loss_Fun(core = "DLs", loss_precision_floor = PrecisionFloorLoss, DL_sum = True)
+    pred_valid = forward(model, X_valid, **kwargs)
+    loss_original = to_np_array(criterion(pred_valid, y_valid))
+    if "loss" in record_keys:
+        record_data(data_record, [-1, loss_original], ["iter","loss"])
+    if "mse" in record_keys:
+        record_data(data_record, [to_np_array(nn.MSELoss()(pred_valid, y_valid))], ["mse"])
+    if "data_DL" in record_keys:
+        record_data(data_record, [to_np_array(DL_criterion(pred_valid, y_valid))], ["data_DL"])
+    if "data_DL_absolute" in record_keys:
+        record_data(data_record, [to_np_array(DL_criterion_absolute(pred_valid, y_valid))], ["data_DL_absolute"])
+    if "model_DL" in record_keys:
+        record_data(data_record, [get_model_DL(model)], ["model_DL"])
+    if "param" in record_keys:
+        record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+    if "param_grad" in record_keys:
+        record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+    if "param_collapse_layers" in record_keys:
+        record_data(data_record, [simplify(deepcopy(model[0]), X, y, "collapse_layers", verbose = 0)[0]                                  .get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+
+    # Setting up optimizer:
+    parameters = itertools.chain(*[model_ele.parameters() for model_ele in model])
+    num_params = np.sum([[len(list(model_ele.parameters())) for model_ele in model]])
+    if num_params == 0:
+        print("No parameters to optimize!")
+        pred_valid = forward(model, X_valid, **kwargs)
+        loss_value = to_np_array(criterion(pred_valid, y_valid))
+        if "loss" in record_keys:
+            record_data(data_record, [0, loss_value], ["iter", "loss"])
+        if "mse" in record_keys:
+            record_data(data_record, [to_np_array(nn.MSELoss()(pred_valid, y_valid))], ["mse"])
+        if "data_DL" in record_keys:
+            record_data(data_record, [to_np_array(DL_criterion(pred_valid, y_valid))], ["data_DL"])
+        if "data_DL_absolute" in record_keys:
+            record_data(data_record, [to_np_array(DL_criterion_absolute(pred_valid, y_valid))], ["data_DL_absolute"])
+        if "model_DL" in record_keys:
+            record_data(data_record, [get_model_DL(model)], ["model_DL"])
+        if "param" in record_keys:
+            record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+        if "param_grad" in record_keys:
+            record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+        if "param_collapse_layers" in record_keys:
+            record_data(data_record, [simplify(deepcopy(model[0]), X, y, "collapse_layers", verbose = 0)[0]                                      .get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+        return loss_original, loss_value, data_record
+    optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
+    
+    # Set up learning rate scheduler:
+    if scheduler_type is not None:
+        if scheduler_type == "ReduceLROnPlateau":
+            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 10
+            scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
+            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience)
+        elif scheduler_type == "LambdaLR":
+            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
+            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
+        else:
+            raise
+
+    # Training:
+    to_stop = False
+    for i in range(epochs + 1):
+        if optim_type != "LBFGS":
+            optimizer.zero_grad()
+            pred = forward(model, X, **kwargs)
+            reg = get_regularization(model, **kwargs)
+            loss = criterion(pred, y) + reg
+            loss.backward()
+            optimizer.step()
+        else:
+            # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
+            def closure():
+                optimizer.zero_grad()
+                pred = forward(model, X, **kwargs)
+                reg = get_regularization(model, **kwargs)
+                loss = criterion(pred, y) + reg
+                loss.backward()
+                return loss
+            optimizer.step(closure)
+        if i % inspect_interval == 0:
+            pred_valid = forward(model, X_valid, **kwargs)
+            loss_value = to_np_array(criterion(pred_valid, y_valid))
+            if scheduler_type is not None:
+                if scheduler_type == "ReduceLROnPlateau":
+                    scheduler.step(loss_value)
+                else:
+                    scheduler.step()
+            if "loss" in record_keys:
+                record_data(data_record, [i, loss_value], ["iter", "loss"])
+            if "mse" in record_keys:
+                record_data(data_record, [to_np_array(nn.MSELoss()(pred_valid, y_valid))], ["mse"])
+            if "data_DL" in record_keys:
+                record_data(data_record, [to_np_array(DL_criterion(pred_valid, y_valid))], ["data_DL"])
+            if "data_DL_absolute" in record_keys:
+                record_data(data_record, [to_np_array(DL_criterion_absolute(pred_valid, y_valid))], ["data_DL_absolute"])
+            if "model_DL" in record_keys:
+                record_data(data_record, [get_model_DL(model)], ["model_DL"])
+            if "param" in record_keys:
+                record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+            if "param_grad" in record_keys:
+                record_data(data_record, [model[0].get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+            if "param_collapse_layers" in record_keys:
+                record_data(data_record, [simplify(deepcopy(model[0]), X, y, "collapse_layers", verbose = 0)[0]                                          .get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+            if patience is not None:
+                to_stop = early_stopping.monitor(loss_value)
+        if to_stop:
+            break
+
+    pred_valid = forward(model, X_valid, **kwargs)
+    loss_value = to_np_array(criterion(pred_valid, y_valid))
+    if isplot:
+        import matplotlib.pylab as plt
+        if "mse" in data_record:
+            plt.semilogy(data_record["iter"], data_record["mse"])
+            plt.xlabel("epochs")
+            plt.title("MSE")
+            plt.show()
+        if "loss" in data_record:
+            plt.plot(data_record["iter"], data_record["loss"])
+            plt.xlabel("epochs")
+            plt.title("Loss")
+            plt.show()
+    return loss_original, loss_value, data_record
+
+
 def load_model_dict_net(model_dict, is_cuda = False):
     net_type = model_dict["type"]
     if net_type == "MLP":
@@ -731,13 +891,13 @@ def load_model_dict(model_dict, is_cuda = False):
         raise Exception("net_type {0} not recognized!".format(net_type))
 
 
-# ## Simplify function:
+# ## Simplify functionality:
 
 # In[ ]:
 
 
 def simplify(model, X, y, mode = "full", isplot = False, target_name = None, validation_data = None, **kwargs):
-    """Simplify function. "model" can be a single model or a ordered list of models"""
+    """Simplify a neural network model in various ways. "model" can be a single model or a ordered list of models"""
     verbose = kwargs["verbose"] if "verbose" in kwargs else 1
     if validation_data is None:
         X_valid, y_valid = X, y
@@ -883,7 +1043,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                                     struct_param.append(all_collapse_dict[model_id]["new_layer_info"][k]["layer_struct_param"])
                                     W_init_list.append(all_collapse_dict[model_id]["new_layer_info"][k]["W_init"])
                                     b_init_list.append(all_collapse_dict[model_id]["new_layer_info"][k]["b_init"])
-                        model_ele_new = Net(input_size = model_ele.input_size,
+                        model_ele_new = MLP(input_size = model_ele.input_size,
                                             struct_param = struct_param,
                                             W_init_list = W_init_list,
                                             b_init_list = b_init_list,
@@ -957,7 +1117,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                         break
                     excluded_idx_dict[(model_id, layer_id)] = excluded_idx_dict[(model_id, layer_id)] + info
 
-                    _, loss_new, data_record = train(model, X, y, optim_type = "adam", validation_data = validation_data, **kwargs)
+                    _, loss_new, data_record = train_simple(model, X, y, optim_type = "adam", validation_data = validation_data, **kwargs)
                     if verbose >= 2:
                         print("=" * 8)
                         model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True) 
@@ -1023,7 +1183,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                                 target_layer_ids_exclude.append((model_id, layer_id))
                                 print("Pass {0}, (model {1}, layer {2}) has no parameters to pair_snap. Revert to pivot model. Go to next layer".format(i, model_id, layer_id))
                                 break
-                            _, loss, data_record = train(model, X, y, optim_type = "adam", epochs = 1000, validation_data = validation_data, **kwargs)
+                            _, loss, data_record = train_simple(model, X, y, optim_type = "adam", epochs = 1000, validation_data = validation_data, **kwargs)
                             criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
                             to_stop, pivot_dict, log, is_accept, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
                             is_accept_whole.append(is_accept)
@@ -1184,7 +1344,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                             pp.pprint(Poly(expr, *list(variables.values())))
                             print()
 
-                    model_ele_candidate = Net(input_size = model[0].layer_0.input_size,
+                    model_ele_candidate = MLP(input_size = model[0].layer_0.input_size,
                                               struct_param = [[layer.output_size, "Symbolic_Layer", {"symbolic_expression": "x0"}]],
                                               settings = {},
                                               is_cuda = model_ele.is_cuda,
@@ -1277,7 +1437,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                             layer.set_symbolic_expression(new_expression)
 
                             # Train:
-                            _, loss_new, data_record = train(model, X, y, validation_data = validation_data, **kwargs)
+                            _, loss_new, data_record = train_simple(model, X, y, validation_data = validation_data, **kwargs)
 
                             criteria_value, criteria_result = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
                             to_stop, pivot_dict, log, is_accept, pivot_id = performance_monitor.monitor(criteria_value, model_dict = model[model_id].model_dict, criteria_result = criteria_result)
@@ -1317,7 +1477,7 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
             layer_dict_dict = {}
             for i, L1_amp in enumerate(ramping_L1_list):
                 reg_dict = {"weight": L1_amp, "bias": L1_amp, "param": L1_amp}
-                _, loss_end, data_record = train(model, X, y, reg_dict = reg_dict, patience = None, validation_data = validation_data, **kwargs)
+                _, loss_end, data_record = train_simple(model, X, y, reg_dict = reg_dict, patience = None, validation_data = validation_data, **kwargs)
                 layer_dict_dict[i] = model[0].layer_0.layer_dict
                 weight, bias = model[0].layer_0.get_weights_bias()
                 print("L1-amp: {0}\tloss: {1}\tweight: {2}\tbias: {3}".format(L1_amp, loss_end, weight, bias))
@@ -1410,6 +1570,8 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
     
     return model, loss_dict
 
+
+# ## The following are different model architectures:
 
 # ## Model_Ensemble:
 
@@ -1557,7 +1719,7 @@ class Model_with_uncertainty(nn.Module):
         self.model_logstd.set_trainable(is_trainable)
 
 
-# ## Multi_MLP:
+# ## Multi_MLP (MLPs in series):
 
 # In[ ]:
 
@@ -1814,7 +1976,7 @@ class MLP(nn.Module):
 
 
 
-    def get_weights_bias(self, W_source = None, b_source = None, layer_ids = None, isplot = False, raise_error = True):
+    def get_weights_bias(self, W_source = "core", b_source = "core", layer_ids = None, is_grad = False, isplot = False, verbose = False, raise_error = True):
         layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
         W_list = []
         b_list = []
@@ -1823,7 +1985,7 @@ class MLP(nn.Module):
                 if k in layer_ids:
                     if W_source == "core":
                         try:
-                            W, _ = getattr(self, "layer_{0}".format(k)).get_weights_bias()
+                            W, _ = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
                         except Exception as e:
                             if raise_error:
                                 raise
@@ -1839,7 +2001,7 @@ class MLP(nn.Module):
                 if k in layer_ids:
                     if b_source == "core":
                         try:
-                            _, b = getattr(self, "layer_{0}".format(k)).get_weights_bias()
+                            _, b = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
                         except Exception as e:
                             if raise_error:
                                 raise
@@ -1849,6 +2011,15 @@ class MLP(nn.Module):
                     else:
                         raise Exception("b_source '{0}' not recognized!".format(b_source))
                 b_list.append(b)
+
+        if verbose:
+            import pprint as pp
+            if W_source is not None:
+                print("weight:")
+                pp.pprint(W_list)
+            if b_source is not None:
+                print("bias:")
+                pp.pprint(b_list)
                 
         if isplot:
             if W_source is not None:
@@ -1857,7 +2028,24 @@ class MLP(nn.Module):
             if b_source is not None:
                 print("bias {0}:".format(b_source))
                 plot_matrices(b_list)
+        
         return W_list, b_list
+
+
+    def split_to_net_ensemble(self, mode = "standardize"):
+        num_models = self.struct_param[-1][0]
+        model_core = deepcopy(self)
+        if mode == "standardize":
+            last_layer = getattr(model_core, "layer_{0}".format(model_core.num_layers - 1))
+            last_layer.standardize(mode = "b_mean_zero")
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
+        model_list = [deepcopy(model_core) for i in range(num_models)]
+        for i, model in enumerate(model_list):
+            to_prune = list(range(num_models))
+            to_prune.pop(i)
+            model.prune_neurons(-1, to_prune)
+        return construct_net_ensemble_from_nets(model_list)
     
     
     @property
@@ -1869,6 +2057,10 @@ class MLP(nn.Module):
         model_dict["settings"] = deepcopy(self.settings)
         model_dict["net_type"] = "MLP"
         return model_dict
+    
+    @property
+    def DL(self):
+        return np.sum([getattr(self, "layer_{0}".format(i)).DL for i in range(self.num_layers)])
 
 
     def load_model_dict(self, model_dict):
@@ -1894,6 +2086,45 @@ class MLP(nn.Module):
     def set_trainable(self, is_trainable):
         for k in range(self.num_layers):
             getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
+
+
+    def get_snap_dict(self):
+        snap_dict = {}
+        for k in range(len(self.struct_param)):
+            layer = getattr(self, "layer_{0}".format(k))
+            if hasattr(layer, "snap_dict"):
+                recorded_layer_snap_dict = {}
+                for key, item in layer.snap_dict.items():
+                    recorded_layer_snap_dict[key] = {"new_value": item["new_value"]}
+                if len(recorded_layer_snap_dict) > 0:
+                    snap_dict[k] = recorded_layer_snap_dict
+        return snap_dict
+
+
+    def synchronize_settings(self):
+        snap_dict = self.get_snap_dict()
+        if len(snap_dict) > 0:
+            self.settings["snap_dict"] = snap_dict
+        return self.settings
+
+
+    def get_sympy_expression(self, verbose = True):
+        expressions = {i: {} for i in range(self.num_layers)}
+        for i in range(self.num_layers):
+            layer = getattr(self, "layer_{0}".format(i))
+            if layer.struct_param[1] == "Symbolic_Layer":
+                if verbose:
+                    print("Layer {0}, symbolic_expression:  {1}".format(i, layer.symbolic_expression))
+                    print("         numerical_expression: {1}".format(i, layer.numerical_expression))
+                expressions[i]["symbolic_expression"] = layer.symbolic_expression
+                expressions[i]["numerical_expression"] = layer.numerical_expression
+                expressions[i]["param_dict"] = layer.get_param_dict()
+                expressions[i]["DL"] = layer.DL
+            else:
+                if verbose:
+                    print("Layer {0} is not a symbolic layer.".format(i))
+                expressions[i] = None
+        return expressions
 
 
 # In[ ]:
@@ -2002,6 +2233,379 @@ class Fan_in_MLP(nn.Module):
         model_dict["model_dict_branch2"] = self.net_branch2.model_dict if self.net_branch2 is not None else None
         model_dict["model_dict_joint"] = self.net_joint.model_dict
         return model_dict
+
+
+# In[ ]:
+
+
+class Net_Ensemble(nn.Module):
+    def __init__(
+        self,
+        num_models,
+        input_size,
+        struct_param,
+        W_init_list = None,
+        b_init_list = None,
+        settings = None,
+        net_type = "Net",
+        is_cuda = False,
+        ):
+        super(Net_Ensemble, self).__init__()
+        self.num_models = num_models
+        self.input_size = input_size
+        self.net_type = net_type
+        self.is_cuda = is_cuda
+        for i in range(self.num_models):
+            if settings is None:
+                settings_model = {}
+            elif isinstance(settings, list) or isinstance(settings, tuple):
+                settings_model = settings[i]
+            else:
+                settings_model = settings
+            if isinstance(struct_param, tuple):
+                struct_param_model = struct_param[i]
+            else:
+                struct_param_model = struct_param
+            if net_type == "Net":
+                net = MLP(input_size = self.input_size,
+                          struct_param = deepcopy(struct_param_model),
+                          W_init_list = deepcopy(W_init_list[i]) if W_init_list is not None else None,
+                          b_init_list = deepcopy(b_init_list[i]) if b_init_list is not None else None,
+                          settings = deepcopy(settings_model),
+                          is_cuda = is_cuda,
+                         )
+            elif net_type == "ConvNet":
+                net = ConvNet(input_channels = self.input_size,
+                              struct_param = deepcopy(struct_param_model),
+                              settings = deepcopy(settings_model),
+                              is_cuda = is_cuda,
+                             )
+            else:
+                raise Exception("Net_type {0} not recognized!".format(net_type))
+            setattr(self, "model_{0}".format(i), net)
+
+
+    @property
+    def struct_param(self):
+        return tuple(getattr(self, "model_{0}".format(i)).struct_param for i in range(self.num_models))
+
+
+    @property
+    def settings(self):
+        return [getattr(self, "model_{0}".format(i)).settings for i in range(self.num_models)]
+    
+    
+    def get_all_models(self):
+        return [getattr(self, "model_{0}".format(i)) for i in range(self.num_models)]
+
+
+    def init_bias_with_input(self, input, mode = "std_sqrt", neglect_last_layer = True):
+        for i in range(self.num_models):
+            model = getattr(self, "model_{0}".format(i))
+            model.init_bias_with_input(input, mode = mode, neglect_last_layer = neglect_last_layer)
+    
+    
+    def initialize_param_freeze(self, update_values = True):
+        for i in range(self.num_models):
+            model = getattr(self, "model_{0}".format(i))
+            model.initialize_param_freeze(update_values = update_values)
+    
+    
+    def apply_model(self, input, model_id):
+        return fetch_model(self, model_id)(input)
+
+
+    def fetch_model(self, model_id):
+        return getattr(self, "model_{0}".format(model_id))
+
+
+    def set_trainable(self, is_trainable):
+        for i in range(self.num_models):
+            getattr(self, "model_{0}".format(i)).set_trainable(is_trainable)
+
+
+    def forward(self, input):
+        output_list = []
+        for i in range(self.num_models):
+            if self.net_type == "Net":
+                output = getattr(self, "model_{0}".format(i))(input)
+            elif self.net_type == "ConvNet":
+                output = getattr(self, "model_{0}".format(i))(input)[0]
+            else:
+                raise Exception("Net_type {0} not recognized!".format(self.net_type))
+            output_list.append(output)
+        return torch.stack(output_list, 1)
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        if not isinstance(source, list):
+            source = [source]
+        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        model0 = self.model_0
+        # Elastic_weight_reg:
+        if "elastic_weight" in source or "elastic_bias" in source:
+            # Setting up excluded layer:
+            excluded_layer = kwargs["excluded_layer"] if "excluded_layer" in kwargs else [-1]
+            if not isinstance(excluded_layer, list):
+                excluded_layer = [excluded_layer]
+            excluded_layer = [element + model0.num_layers if element < 0 else element for element in excluded_layer]
+            elastic_mode = kwargs["elastic_mode"] if "elastic_mode" in kwargs else "var"
+            
+            # Compute the elastic_weight_reg:
+            for k in range(model0.num_layers):
+                if k in excluded_layer:
+                    continue
+                W_accum_k = []
+                b_accum_k = []
+                num_neurons_prev = model0.struct_param[k - 1][0] if k > 0 else self.input_size
+                num_neurons = model0.struct_param[k][0]
+                for i in range(self.num_models):
+                    model = getattr(self, "model_{0}".format(i))
+                    assert model0.num_layers == model.num_layers
+                    assert num_neurons_prev == model.struct_param[k - 1][0] if k > 0 else model.input_size,                             "all models' input/output size at each layer must be identical!"
+                    assert num_neurons == model.struct_param[k][0],                             "all models' input/output size at each layer must be identical!"
+                    layer_k = getattr(model, "layer_{0}".format(k))
+                    if "elastic_weight" in source:
+                        W_accum_k.append(layer_k.W_core)
+                    if "elastic_bias" in source:
+                        b_accum_k.append(layer_k.b_core)
+                if "elastic_weight" in source:
+                    if elastic_mode == "var":
+                        reg = reg + torch.stack(W_accum_k, -1).var(-1).sum()
+                    elif elastic_mode == "std":
+                        reg = reg + torch.stack(W_accum_k, -1).std(-1).sum()
+                    else:
+                        raise
+                if "elastic_bias" in source:
+                    if elastic_mode == "var":
+                        reg = reg + torch.stack(b_accum_k, -1).var(-1).sum()
+                    elif elastic_mode == "std":
+                        reg = reg + torch.stack(b_accum_k, -1).std(-1).sum()
+                    else:
+                        raise
+            source_core = deepcopy(source)
+            if "elastic_weight" in source_core:
+                source_core.remove("elastic_weight")
+            if "elastic_bias" in source_core:
+                source_core.remove("elastic_bias")
+        else:
+            source_core = source
+        
+        # Other regularizations:
+        for k in range(self.num_models):
+            reg = reg + getattr(self, "model_{0}".format(k)).get_regularization(source = source_core, mode = mode, **kwargs)
+        return reg
+    
+    
+    def get_weights_bias(self, W_source = None, b_source = None, verbose = False, isplot = False):
+        W_list_dict = {}
+        b_list_dict = {}
+        for i in range(self.num_models):
+            if verbose:
+                print("\nmodel {0}:".format(i))
+            W_list_dict[i], b_list_dict[i] = getattr(self, "model_{0}".format(i)).get_weights_bias(
+                W_source = W_source, b_source = b_source, verbose = verbose, isplot = isplot)
+        return W_list_dict, b_list_dict
+    
+    
+    def combine_to_net(self, mode = "mean", last_layer_mode = "concatenate"):
+        model0 = self.model_0
+        if mode == "mean":
+            struct_param = deepcopy(model0.struct_param)
+            settings = deepcopy(model0.settings)
+            W_init_list = []
+            b_init_list = []
+            for k in range(model0.num_layers):
+                num_neurons_prev = model0.struct_param[k - 1][0] if k > 0 else self.input_size
+                num_neurons = model0.struct_param[k][0]
+                W_accum_k = []
+                b_accum_k = []
+                for i in range(self.num_models):
+                    model = getattr(self, "model_{0}".format(i))
+                    assert model0.num_layers == model.num_layers
+                    assert num_neurons_prev == model.struct_param[k - 1][0] if k > 0 else model.input_size,                             "If mode == 'mean', all models' input/output size at each layer must be identical!"
+                    assert num_neurons == model.struct_param[k][0],                             "If mode == 'mean', all models' input/output size at each layer must be identical!"
+                    layer_k = getattr(model, "layer_{0}".format(k))
+                    W_accum_k.append(layer_k.W_core)
+                    b_accum_k.append(layer_k.b_core)
+
+                if k == model0.num_layers - 1:
+                    current_mode = last_layer_mode
+                else:
+                    current_mode = mode
+
+                if current_mode == "mean":
+                    W_accum_k = torch.stack(W_accum_k, -1).mean(-1)
+                    b_accum_k = torch.stack(b_accum_k, -1).mean(-1)
+                elif current_mode == "concatenate":
+                    W_accum_k = torch.cat(W_accum_k, -1)
+                    b_accum_k = torch.cat(b_accum_k, -1)
+                    struct_param[-1][0] = sum([self.struct_param[i][-1][0] for i in range(self.num_models)])
+                else:
+                    raise Exception("mode {0} not recognized!".format(last_layer_mode))
+                W_init_list.append(W_accum_k.data.numpy())
+                b_init_list.append(b_accum_k.data.numpy())
+            
+            # Build the net:
+            net = MLP(input_size = self.input_size,
+                      struct_param = struct_param,
+                      W_init_list = W_init_list, 
+                      b_init_list = b_init_list,
+                      settings = settings,
+                     )
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
+        return net
+        
+    
+    def remove_models(self, model_ids):
+        if not isinstance(model_ids, list):
+            model_ids = [model_ids]
+        model_list = []
+        k = 0
+        for i in range(self.num_models):
+            if i not in model_ids:
+                if k != i:
+                    setattr(self, "model_{0}".format(k), getattr(self, "model_{0}".format(i)))
+                k += 1
+        num_models_new = k
+        for i in range(num_models_new, self.num_models):
+            delattr(self, "model_{0}".format(i))
+        self.num_models = num_models_new
+
+
+    def add_models(self, models):
+        if not isinstance(models, list):
+            models = [models]
+        for i, model in enumerate(models):
+            setattr(self, "model_{0}".format(i + self.num_models), model)
+        self.num_models += len(models)
+
+
+    def simplify(self, X, y, idx, mode = "full", validation_data = None, isplot = False, **kwargs):
+        def process_idx(idx):
+            idx = idx.byte()
+            if len(idx.size()) == 1:
+                idx = idx.unqueeze(1)
+            if idx.size(1) == 1:
+                idx = idx.repeat(1, self.num_models)
+            return idx
+        idx = process_idx(idx)
+        if validation_data is not None:
+            X_valid, y_valid, idx_valid = validation_data
+            idx_valid = process_idx(idx_valid)        
+        
+        loss_dict = {}
+        for i in range(self.num_models):
+            model = getattr(self, "model_{0}".format(i))
+            X_chosen = torch.masked_select(X, idx[:, i:i+1]).view(-1, X.size(1))
+            y_chosen = torch.masked_select(y, idx[:, i:i+1]).view(-1, y.size(1))
+            if validation_data is not None:
+                X_valid_chosen = torch.masked_select(X_valid, idx_valid[:, i:i+1]).view(-1, X_valid.size(1))
+                y_valid_chosen = torch.masked_select(y_valid, idx_valid[:, i:i+1]).view(-1, y_valid.size(1))
+                if len(X_valid_chosen) == 0:
+                    validation_data_chosen = None
+                else:
+                    validation_data_chosen = (X_valid_chosen, y_valid_chosen)
+            else:
+                validation_data_chosen = None
+            if len(X_chosen) == 0:
+                print("The {0}'th model has no corresponding data to simplify with, skip.".format(i))
+            else:
+                new_model, loss_dict["model_{0}".format(i)] = simplify(model, X_chosen, y_chosen, mode = mode, validation_data = validation_data_chosen, isplot = isplot, target_name = "model_{0}".format(i), **kwargs)
+                setattr(self, "model_{0}".format(i), new_model)
+        return loss_dict
+    
+    
+    def get_sympy_expression(self):
+        expressions = {}
+        for k in range(self.num_models):
+            print("\nmodel {0}:".format(k))
+            expressions["model_{0}".format(k)] = getattr(self, "model_{0}".format(k)).get_sympy_expression()
+        return expressions
+
+
+    @property
+    def DL(self):
+        return np.sum([getattr(self, "model_{0}".format(i)).DL for i in range(self.num_models)])
+
+
+    def get_weights_bias(self, W_source = None, b_source = None, verbose = False, isplot = False):
+        W_list_dict = {}
+        b_list_dict = {}
+        for i in range(self.num_models):
+            if verbose:
+                print("\nmodel {0}:".format(i))
+            W_list_dict[i], b_list_dict[i] = getattr(self, "model_{0}".format(i)).get_weights_bias(W_source = W_source, b_source = b_source, verbose = verbose, isplot = isplot)
+        return W_list_dict, b_list_dict
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Net_Ensemble"}
+        for i in range(self.num_models):
+            model_dict["model_{0}".format(i)] = getattr(self, "model_{0}".format(i)).model_dict
+        model_dict["input_size"] = self.input_size
+        model_dict["struct_param"] = self.struct_param
+        model_dict["num_models"] = self.num_models
+        model_dict["net_type"] = self.net_type
+        return model_dict
+
+
+    def load_model_dict(self, model_dict):
+        new_net_ensemble = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net_ensemble.__dict__)
+
+        
+def load_model_dict_net_ensemble(model_dict, is_cuda = False):
+    num_models = len([model_name for model_name in model_dict if model_name[:6] == "model_"])
+    return Net_Ensemble(num_models = num_models,
+                        input_size = model_dict["input_size"],
+                        struct_param = tuple([deepcopy(model_dict["model_{0}".format(i)]["struct_param"]) for i in range(num_models)]),
+                        W_init_list = [deepcopy(model_dict["model_{0}".format(i)]["weights"]) for i in range(num_models)],
+                        b_init_list = [deepcopy(model_dict["model_{0}".format(i)]["bias"]) for i in range(num_models)],
+                        settings = [deepcopy(model_dict["model_{0}".format(i)]["settings"]) for i in range(num_models)],
+                        net_type = model_dict["net_type"] if "net_type" in model_dict else "Net",
+                        is_cuda = is_cuda,
+                       )
+
+
+def combine_net_ensembles(net_ensembles, input_size):
+    net_ensembles = deepcopy(net_ensembles)
+    net_ensemble_combined = None
+    model_id = 0
+    for k, net_ensemble in enumerate(net_ensembles):
+        if net_ensemble.input_size == input_size:
+            if net_ensemble_combined is None:
+                net_ensemble_combined = net_ensemble
+        else:
+            continue  
+        for i in range(net_ensemble.num_models):
+            model = getattr(net_ensemble, "model_{0}".format(i))
+            setattr(net_ensemble_combined, "model_{0}".format(model_id), model)
+            model_id += 1
+    net_ensemble_combined.num_models = model_id
+    return net_ensemble_combined
+
+
+def construct_net_ensemble_from_nets(nets):
+    num_models = len(nets)
+    if num_models is None:
+        return None
+    input_size = nets[0].input_size
+    struct_param = tuple(net.struct_param for net in nets)
+    is_cuda = False
+    for net in nets:
+        if net.input_size != input_size:
+            raise Exception("The input_size for all nets must be the same!")
+        if net.is_cuda:
+            is_cuda = True
+    net_ensemble = Net_Ensemble(num_models = num_models, input_size = input_size, struct_param = struct_param, is_cuda = is_cuda)
+    for i, net in enumerate(nets):
+        setattr(net_ensemble, "model_{0}".format(i), net)
+    return net_ensemble
 
 
 # ## RNN:
@@ -2485,6 +3089,20 @@ class ConvNet(nn.Module):
         model_dict["return_indices"] = self.return_indices
         return model_dict
     
+    
+    def DL(self):
+        DL = 0
+        for k in range(self.num_layers):
+            layer_type = self.struct_param[k][1]
+            if layer_type in self.param_available:
+                layer = getattr(self, "layer_{0}".format(k))
+                if layer_type == "Simple_Layer":
+                    DL += layer.DL
+                else:
+                    DL += get_list_DL(to_np_array(layer.weight), "non-snapped")
+                    DL += get_list_DL(to_np_array(layer.bias), "non-snapped")
+        return DL
+    
 
     def load_model_dict(self, model_dict):
         new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
@@ -2707,6 +3325,9 @@ class Conv_Autoencoder(nn.Module):
     def load_model_dict(self, model_dict):
         model = load_model_dict(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(model.__dict__)
+
+    def DL(self):
+        return self.encoder.DL + self.decoder.DL
 
 
 
