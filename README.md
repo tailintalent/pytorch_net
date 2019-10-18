@@ -9,3 +9,4 @@ See [tutorial.ipynb](https://github.com/tailintalent/pytorch_net/blob/master/Tut
 ## Requirements:
 - [PyTorch](https://pytorch.org/) >= 0.4.1
 - scikit-learn
+- sympy >= 1.3
