@@ -197,6 +197,16 @@ def to_Variable(*arrays, **kwargs):
     return array_list
 
 
+def to_Boolean(tensor):
+    """Transform to Boolean tensor. For PyTorch version >= 1.2, use bool(). Otherwise use byte()"""
+    version = torch.__version__
+    version = eval(".".join(version.split(".")[:-1]))
+    if version >= 1.2:
+        return tensor.bool()
+    else:
+        return tensor.byte()
+
+
 def init_module_weights(module_list, init_weights_mode = "glorot-normal"):
     if not isinstance(module_list, list):
         module_list = [module_list]
