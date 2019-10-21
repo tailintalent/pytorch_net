@@ -1362,12 +1362,20 @@ def filter_labels(X, y, labels):
 
 def argmin_random(tensor):
     """Returns the flattened argmin of the tensor, and tie-breaks using random choice."""
-    return np.random.choice(np.flatnonzero(tensor == tensor.min()))
+    argmins = np.flatnonzero(tensor == tensor.min())
+    if len(argmins) > 0:
+        return np.random.choice(argmins)
+    else:
+        return np.NaN
 
 
 def argmax_random(tensor):
     """Returns the flattened argmax of the tensor, and tie-breaks using random choice."""
-    return np.random.choice(np.flatnonzero(tensor == tensor.max()))
+    argmaxs = np.flatnonzero(tensor == tensor.max())
+    if len(argmins) > 0:
+        return np.random.choice(argmaxs)
+    else:
+        return np.NaN
 
 
 class Transform_Label(object):
