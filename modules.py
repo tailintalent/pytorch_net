@@ -967,7 +967,7 @@ class Symbolic_Layer(nn.Module):
     def set_symbolic_expression(self, symbolic_expression, p_init = None):
         """Set a new symbolic expression and update the parameterss"""
         symbolic_expression = standardize_symbolic_expression(symbolic_expression)
-        assert sum(self.get_expression_length(symbolic_expression)) == self.output_size,                 "symbolic_expression's combined output length must be equal to self.output_size!"
+        assert sum(self.get_expression_length(symbolic_expression)) == self.output_size, "symbolic_expression's combined output length must be equal to self.output_size!"
         self.old_param_name_list = self.get_param_name_list(self.symbolic_expression) if hasattr(self, "symbolic_expression") else []
         self.symbolic_expression = symbolic_expression
         self.param_name_list = self.get_param_name_list(symbolic_expression)

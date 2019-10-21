@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[5]:
 
 
 import numpy as np
@@ -16,7 +16,7 @@ import matplotlib.pylab as plt
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 from pytorch_net.net import MLP, ConvNet, load_model_dict, train, get_Layer
-from pytorch_net.util import Early_Stopping
+from pytorch_net.util import Early_Stopping, get_param_name_list, get_variable_name_list, standardize_symbolic_expression
 
 
 # ### Apart from section 0, each section is independent on its own
@@ -71,9 +71,38 @@ net(X_train)
 net.inspect_operation(X_train, operation_between = (0,2))
 
 
-# ## 2. SuperNet:
+# ## 2. Using symbolic layers:
 
-# ### 2.1 Use SuperNet Layer in your own module:
+# In[ ]:
+
+
+symbolic_expression1 = standardize_symbolic_expression("[3 * x0 ** 2 + p0 * x1 * x2 + p1 * x3, 5 * x0 ** 2 + p2 * x1 + p3 * x3 * x2]")
+symbolic_expression2 = standardize_symbolic_expression("[3 * x0 ** 2 + p2 * x1]")
+
+# Construct the network:
+model_dict = {
+    "type": "MLP",
+    "input_size": len(get_variable_name_list(symbolic_expression1)),
+    "struct_param": [[len(symbolic_expression1), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression1),
+                                                                    
+                                                                   }],
+                     [len(symbolic_expression2), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression2)}], 
+                    ]
+    # Here the optional "weights" sets up the initial values for the parameters. If not set, will initialize with N(0, 1):
+    'weights': [{'p0': -1.3,
+                 'p1': 1.0,
+                 'p2': 2.3,
+                 'p3': -0.4},
+                {'p2': -1.5},
+               ]
+}
+net = load_model_dict(model_dict)
+net(torch.rand(100, len(variable_name_list)))
+
+
+# ## 3. SuperNet:
+
+# ### 3.1 Use SuperNet Layer in your own module:
 
 # In[9]:
 
@@ -111,7 +140,7 @@ net = Net()
 net(X_train)
 
 
-# ### 2.2 Construct an MLP containing SuperNet layer:
+# ### 3.2 Construct an MLP containing SuperNet layer:
 
 # In[ ]:
 
@@ -136,7 +165,7 @@ net = MLP(input_size = input_size,
 net(X_train)
 
 
-# ## 3. Training using explicit commands:
+# ## 4. Training using explicit commands:
 
 # In[34]:
 
@@ -192,7 +221,7 @@ net_loaded = load_model_dict(pickle.load(open("net.p", "rb")))
 net_loaded(X_train) - net(X_train)
 
 
-# ## 4. Advanced example: training MNIST using given train() function:
+# ## 5. Advanced example: training MNIST using given train() function:
 
 # In[ ]:
 
@@ -263,7 +292,7 @@ loss_original, loss_value, data_record = train(model,
                                               )
 
 
-# ## 5. An example callback code:
+# ## 6. An example callback code:
 
 # In[ ]:
 
