@@ -1360,6 +1360,16 @@ def filter_labels(X, y, labels):
     return X[idx], y[idx]
 
 
+def argmin_random(tensor):
+    """Returns the flattened argmin of the tensor, and tie-breaks using random choice."""
+    return np.random.choice(np.flatnonzero(tensor == tensor.min()))
+
+
+def argmax_random(tensor):
+    """Returns the flattened argmax of the tensor, and tie-breaks using random choice."""
+    return np.random.choice(np.flatnonzero(tensor == tensor.max()))
+
+
 class Transform_Label(object):
     def __init__(self, label_noise_matrix=None):
         self.label_noise_matrix = label_noise_matrix
