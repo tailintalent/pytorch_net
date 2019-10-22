@@ -470,294 +470,6 @@ class Simple_Layer(nn.Module):
             self.b_core.requires_grad = False
 
 
-# ## SuperNet Layer:
-
-# In[ ]:
-
-
-class SuperNet_Layer(nn.Module):
-    def __init__(
-        self,
-        input_size,
-        output_size,
-        W_init = None,     # initialization for weights
-        b_init = None,     # initialization for bias
-        settings = {},
-        is_cuda = False,
-        ):
-        super(SuperNet_Layer, self).__init__()
-        # Saving the attribuites:
-        if isinstance(input_size, tuple):
-            self.input_size = reduce(lambda x, y: x * y, input_size)
-            self.input_size_original = input_size
-        else:
-            self.input_size = input_size
-        if isinstance(output_size, tuple):
-            self.output_size = reduce(lambda x, y: x * y, output_size)
-            self.output_size_original = output_size
-        else:
-            self.output_size = output_size
-        self.W_init = W_init
-        self.b_init = b_init
-        self.is_cuda = is_cuda
-        self.device = torch.device("cuda" if is_cuda else "cpu")
-        
-        # Obtain additional initialization settings if provided:
-        self.W_available = settings["W_available"] if "W_available" in settings else ["dense", "Toeplitz"]
-        self.b_available = settings["b_available"] if "b_available" in settings else ["dense", "None"]
-        self.A_available = settings["A_available"] if "A_available" in settings else ["linear", "relu"]
-        self.W_sig_init  = settings["W_sig_init"] if "W_sig_init" in settings else None # initialization for the significance for the weights
-        self.b_sig_init  = settings["b_sig_init"] if "b_sig_init" in settings else None # initialization for the significance for the bias
-        self.A_sig_init  = settings["A_sig_init"] if "A_sig_init" in settings else None # initialization for the significance for the activations
-        for W_candidate in self.W_available:
-            if "2D-in" in W_candidate:
-                self.input_size_2D = settings["input_size_2D"]
-            if "2D-out" in W_candidate:
-                self.output_size_2D = settings["output_size_2D"]
-        for b_candidate in self.b_available:
-            if "2D" in b_candidate:
-                self.output_size_2D = settings["output_size_2D"]
-        
-        # Initialize layer:
-        self.init_layer()
-        if is_cuda:
-            self.cuda()
-    
-    
-    @property
-    def settings(self):
-        layer_settings = {}
-        layer_settings["W_available"] = deepcopy(self.W_available)
-        layer_settings["b_available"] = deepcopy(self.b_available)
-        layer_settings["A_available"] = deepcopy(self.A_available)
-        layer_settings["W_sig_init"] = to_np_array(self.W_sig)
-        layer_settings["b_sig_init"] = to_np_array(self.b_sig)
-        layer_settings["A_sig_init"] = to_np_array(self.A_sig)
-        return layer_settings
-    
-    @property
-    def struct_param(self):
-        return [self.output_size, "SuperNet_Layer", self.settings]
-
-        
-    def init_layer(self):
-        self.W_layer_seed = nn.Parameter(torch.FloatTensor(np.random.randn(self.input_size, self.output_size)))
-        self.b_layer_seed = nn.Parameter(torch.zeros(self.output_size))
-        init_weight(self.W_layer_seed, init = self.W_init)
-        init_bias(self.b_layer_seed, init = self.b_init)
-        if "arithmetic-series-in" in self.W_available:
-            self.W_interval_j = nn.Parameter(torch.randn(self.output_size) / np.sqrt(self.input_size + self.output_size))
-        if "arithmetic-series-out" in self.W_available:
-            self.W_interval_i = nn.Parameter(torch.randn(self.input_size) / np.sqrt(self.input_size + self.output_size))
-        if "arithmetic-series-2D-in" in self.W_available:
-            self.W_mean_2D_in = nn.Parameter(torch.randn(self.output_size) / np.sqrt(self.input_size_2D[0] + self.input_size_2D[1] + self.output_size))
-            self.W_interval_2D_in = nn.Parameter(torch.randn(2, self.output_size) / np.sqrt(self.input_size_2D[0] + self.input_size_2D[1] + self.output_size))
-        if "arithmetic-series-2D-out" in self.W_available:
-            self.W_mean_2D_out = nn.Parameter(torch.randn(self.input_size) / np.sqrt(self.input_size + self.output_size_2D[0] + self.output_size_2D[1]))
-            self.W_interval_2D_out = nn.Parameter(torch.randn(2, self.input_size) / np.sqrt(self.input_size + self.output_size_2D[0] + self.output_size_2D[1]))
-        if "arithmetic-series" in self.b_available:
-            self.b_interval = nn.Parameter(torch.randn(1) / np.sqrt(self.output_size))
-        if "arithmetic-series-2D" in self.b_available:
-            self.b_mean_2D = nn.Parameter(torch.randn(1) / np.sqrt(self.output_size))
-            self.b_interval_2D = nn.Parameter(torch.randn(2) / np.sqrt(self.output_size_2D[0] + self.output_size_2D[1]))
-        
-        if self.W_sig_init is None:
-            self.W_sig = nn.Parameter(torch.zeros(len(self.W_available)))
-        else:
-            self.W_sig = nn.Parameter(torch.FloatTensor(self.W_sig_init))
-        if self.b_sig_init is None:
-            self.b_sig = nn.Parameter(torch.zeros(len(self.b_available)))
-        else:
-            self.b_sig = nn.Parameter(torch.FloatTensor(self.b_sig_init))
-        if self.A_sig_init is None:
-            self.A_sig = nn.Parameter(torch.zeros(len(self.A_available)))
-        else:
-            self.A_sig = nn.Parameter(torch.FloatTensor(self.A_sig_init))
-
-
-    def get_layers(self, source = ["weight", "bias"]):
-        """All the different SuperNet layers are based on the same W_seed matrices. 
-        For example, W_seed is based on the full self.W_layer_seed; "Toeplitz" is based on
-        the first row and first column of self.W_layer_seed to construct the Toeplitz matrix, etc.
-        """
-        # Superimpose different weights:
-        if "weight" in source:
-            self.W_list = []
-            for weight_type in self.W_available:
-                if weight_type == "dense":
-                    W_layer = self.W_layer_seed
-                elif weight_type == "Toeplitz":
-                    W_layer_stacked = []
-                    if self.output_size > 1:
-                        inv_idx = torch.arange(self.output_size - 1, 0, -1).long().to(self.device)
-                        W_seed = torch.cat([self.W_layer_seed[0][inv_idx], self.W_layer_seed[:,0]])
-                    else:
-                        W_seed = self.W_layer_seed[:,0]
-                    for j in range(self.output_size):
-                        W_layer_stacked.append(W_seed[self.output_size - j - 1: self.output_size - j - 1 + self.input_size])
-                    W_layer = torch.stack(W_layer_stacked, 1)
-                elif weight_type == "arithmetic-series-in":
-                    mean_j = self.W_layer_seed.mean(0)
-                    idx_i = torch.FloatTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
-                    idx_j = torch.LongTensor(range(self.output_size) * self.input_size).to(self.device)
-                    offset = self.input_size / float(2) - 0.5
-                    W_layer = (mean_j[idx_j] + self.W_interval_j[idx_j] * Variable(idx_i - offset, requires_grad = False)).view(self.input_size, self.output_size)
-                elif weight_type == "arithmetic-series-out":
-                    mean_i = self.W_layer_seed.mean(1)
-                    idx_i = torch.LongTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
-                    idx_j = torch.FloatTensor(range(self.output_size) * self.input_size).to(self.device)
-                    offset = self.output_size / float(2) - 0.5
-                    W_layer = (mean_i[idx_i] + self.W_interval_i[idx_i] * Variable(idx_j - offset, requires_grad = False)).view(self.input_size, self.output_size)
-                elif weight_type == "arithmetic-series-2D-in":
-                    idx_i, idx_j, idx_k = np.meshgrid(range(self.input_size_2D[0]), range(self.input_size_2D[1]), range(self.output_size), indexing = "ij")
-                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
-                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
-                    offset_i = self.input_size_2D[0] / float(2) - 0.5
-                    offset_j = self.input_size_2D[1] / float(2) - 0.5
-                    W_layer = (self.W_mean_2D_in[idx_k] +                                self.W_interval_2D_in[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_in[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
-                elif weight_type == "arithmetic-series-2D-out":
-                    idx_k, idx_i, idx_j = np.meshgrid(range(self.input_size), range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
-                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
-                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
-                    offset_i = self.output_size_2D[0] / float(2) - 0.5
-                    offset_j = self.output_size_2D[1] / float(2) - 0.5
-                    W_layer = (self.W_mean_2D_out[idx_k] +                                self.W_interval_2D_out[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_out[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
-                else:
-                    raise Exception("weight_type '{0}' not recognized!".format(weight_type))
-                self.W_list.append(W_layer)
-
-            if len(self.W_available) == 1:
-                self.W_core = W_layer
-            else:
-                self.W_list = torch.stack(self.W_list, dim = 2)
-                W_sig_softmax = nn.Softmax(dim = -1)(self.W_sig.unsqueeze(0))
-                self.W_core = torch.matmul(self.W_list, W_sig_softmax.transpose(1,0)).squeeze(2)
-    
-        # Superimpose different biases:
-        if "bias" in source:
-            self.b_list = []
-            for bias_type in self.b_available:
-                if bias_type == "None":
-                    b_layer = Variable(torch.zeros(self.output_size).to(self.device), requires_grad = False)
-                elif bias_type == "constant":
-                    b_layer = self.b_layer_seed[0].repeat(self.output_size)
-                elif bias_type == "arithmetic-series":
-                    mean = self.b_layer_seed.mean()
-                    offset = self.output_size / float(2) - 0.5
-                    idx = Variable(torch.FloatTensor(range(self.output_size)).to(self.device), requires_grad = False)
-                    b_layer = mean + self.b_interval * (idx - offset)
-                elif bias_type == "arithmetic-series-2D":
-                    idx_i, idx_j = np.meshgrid(range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
-                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
-                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
-                    offset_i = self.output_size_2D[0] / float(2) - 0.5
-                    offset_j = self.output_size_2D[1] / float(2) - 0.5
-                    b_layer = (self.b_mean_2D +                                self.b_interval_2D[0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.b_interval_2D[1] * Variable(idx_j - offset_j, requires_grad = False)).view(-1)
-                elif bias_type == "dense":
-                    b_layer = self.b_layer_seed
-                else:
-                    raise Exception("bias_type '{0}' not recognized!".format(bias_type))
-                self.b_list.append(b_layer)
-
-            if len(self.b_available) == 1:
-                self.b_core = b_layer
-            else:
-                self.b_list = torch.stack(self.b_list, dim = 1)
-                b_sig_softmax = nn.Softmax(dim = -1)(self.b_sig.unsqueeze(0))
-                self.b_core = torch.matmul(self.b_list, b_sig_softmax.transpose(1,0)).squeeze(1)
-
-
-    def forward(self, X, p_dict = None):
-        del p_dict
-        output = X
-        if hasattr(self, "input_size_original"):
-            output = output.view(-1, self.input_size)
-        # Get superposition of layers:
-        self.get_layers(source = ["weight", "bias"])
-
-        # Perform dot(X, W) + b:
-        output = torch.matmul(output, self.W_core) + self.b_core
-        
-        # Exert superposition of activation functions:
-        if len(self.A_available) == 1:
-            output = get_activation(self.A_available[0])(output)
-        else:
-            self.A_list = []
-            A_sig_softmax = nn.Softmax(dim = -1)(self.A_sig.unsqueeze(0))
-            for i, activation in enumerate(self.A_available):
-                A = get_activation(activation)(output)
-                self.A_list.append(A)
-            self.A_list = torch.stack(self.A_list, 2)
-            output = torch.matmul(self.A_list, A_sig_softmax.transpose(1,0)).squeeze(2)
-
-        if hasattr(self, "output_size_original"):
-            output = output.view(*((-1,) + self.output_size_original))
-        return output
-    
-    
-    def get_param_names(self, source):
-        if source == "modules":
-            param_names = ["W_layer_seed", "b_layer_seed"]
-            if "arithmetic-series-in" in self.W_available:
-                param_names.append("W_interval_j")
-            if "arithmetic-series-out" in self.W_available:
-                param_names.append("W_interval_i")
-            if "arithmetic-series-2D-in" in self.W_available:
-                param_names = param_names + ["W_mean_2D_in", "W_interval_2D_in"]
-            if "arithmetic-series-2D-out" in self.W_available:
-                param_names = param_names + ["W_mean_2D_out", "W_interval_2D_out"]
-            if "arithmetic-series" in self.b_available:
-                param_names.append("b_interval")
-        if source == "attention":
-            param_names = ["W_sig", "b_sig", "A_sig"]
-        return param_names
-    
-    
-    def get_weights_bias(self):
-        self.get_layers(source = ["weight", "bias"])
-        return to_np_array(self.W_layer_seed), to_np_array(self.b_layer_seed)
-
-
-    def get_regularization(self, mode, source = ["weight", "bias"]):
-        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False).to(self.device)
-        if not isinstance(source, list):
-            source = [source]
-        if mode == "L1":
-            if "weight" in source:
-                reg = reg + self.W_core.abs().sum()
-            if "bias" in source:
-                reg = reg + self.b_core.abs().sum()
-        elif mode == "layer_L1":
-            if "weight" in source:
-                self.get_layers(source = ["weight"])
-                reg = reg + self.W_list.abs().sum()
-            if "bias" in source:
-                self.get_layers(source = ["bias"])
-                reg = reg + self.b_list.abs().sum()
-        elif mode == "L2":
-            if "weight" in source:
-                reg = reg + torch.sum(self.W_core ** 2)
-            if "bias" in source:
-                reg = reg + torch.sum(self.b_core ** 2)
-        elif mode == "S_entropy":
-            if "weight" in source:
-                W_sig_softmax = nn.Softmax(dim = -1)(self.W_sig.unsqueeze(0))
-                reg = reg - torch.sum(W_sig_softmax * torch.log(W_sig_softmax))
-            if "bias" in source:
-                b_sig_softmax = nn.Softmax(dim = -1)(self.b_sig.unsqueeze(0))
-                reg = reg - torch.sum(b_sig_softmax * torch.log(b_sig_softmax))
-        elif mode == "S_entropy_activation":
-            A_sig_softmax = nn.Softmax(dim = -1)(self.A_sig.unsqueeze(0))
-            reg = reg - torch.sum(A_sig_softmax * torch.log(A_sig_softmax))
-        elif mode in AVAILABLE_REG:
-            pass
-        else:
-            raise Exception("mode '{0}' not recognized!".format(mode))
-        return reg
-
-
 # ## Symbolic Layer:
 
 # In[ ]:
@@ -1139,5 +851,293 @@ class Symbolic_Layer(nn.Module):
                 pass
             else:
                 raise Exception("mode '{0}' not recognized!".format(mode))
+        return reg
+
+
+# ## SuperNet Layer:
+
+# In[ ]:
+
+
+class SuperNet_Layer(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        W_init = None,     # initialization for weights
+        b_init = None,     # initialization for bias
+        settings = {},
+        is_cuda = False,
+        ):
+        super(SuperNet_Layer, self).__init__()
+        # Saving the attribuites:
+        if isinstance(input_size, tuple):
+            self.input_size = reduce(lambda x, y: x * y, input_size)
+            self.input_size_original = input_size
+        else:
+            self.input_size = input_size
+        if isinstance(output_size, tuple):
+            self.output_size = reduce(lambda x, y: x * y, output_size)
+            self.output_size_original = output_size
+        else:
+            self.output_size = output_size
+        self.W_init = W_init
+        self.b_init = b_init
+        self.is_cuda = is_cuda
+        self.device = torch.device("cuda" if is_cuda else "cpu")
+        
+        # Obtain additional initialization settings if provided:
+        self.W_available = settings["W_available"] if "W_available" in settings else ["dense", "Toeplitz"]
+        self.b_available = settings["b_available"] if "b_available" in settings else ["dense", "None"]
+        self.A_available = settings["A_available"] if "A_available" in settings else ["linear", "relu"]
+        self.W_sig_init  = settings["W_sig_init"] if "W_sig_init" in settings else None # initialization for the significance for the weights
+        self.b_sig_init  = settings["b_sig_init"] if "b_sig_init" in settings else None # initialization for the significance for the bias
+        self.A_sig_init  = settings["A_sig_init"] if "A_sig_init" in settings else None # initialization for the significance for the activations
+        for W_candidate in self.W_available:
+            if "2D-in" in W_candidate:
+                self.input_size_2D = settings["input_size_2D"]
+            if "2D-out" in W_candidate:
+                self.output_size_2D = settings["output_size_2D"]
+        for b_candidate in self.b_available:
+            if "2D" in b_candidate:
+                self.output_size_2D = settings["output_size_2D"]
+        
+        # Initialize layer:
+        self.init_layer()
+        if is_cuda:
+            self.cuda()
+    
+    
+    @property
+    def settings(self):
+        layer_settings = {}
+        layer_settings["W_available"] = deepcopy(self.W_available)
+        layer_settings["b_available"] = deepcopy(self.b_available)
+        layer_settings["A_available"] = deepcopy(self.A_available)
+        layer_settings["W_sig_init"] = to_np_array(self.W_sig)
+        layer_settings["b_sig_init"] = to_np_array(self.b_sig)
+        layer_settings["A_sig_init"] = to_np_array(self.A_sig)
+        return layer_settings
+    
+    @property
+    def struct_param(self):
+        return [self.output_size, "SuperNet_Layer", self.settings]
+
+        
+    def init_layer(self):
+        self.W_layer_seed = nn.Parameter(torch.FloatTensor(np.random.randn(self.input_size, self.output_size)))
+        self.b_layer_seed = nn.Parameter(torch.zeros(self.output_size))
+        init_weight(self.W_layer_seed, init = self.W_init)
+        init_bias(self.b_layer_seed, init = self.b_init)
+        if "arithmetic-series-in" in self.W_available:
+            self.W_interval_j = nn.Parameter(torch.randn(self.output_size) / np.sqrt(self.input_size + self.output_size))
+        if "arithmetic-series-out" in self.W_available:
+            self.W_interval_i = nn.Parameter(torch.randn(self.input_size) / np.sqrt(self.input_size + self.output_size))
+        if "arithmetic-series-2D-in" in self.W_available:
+            self.W_mean_2D_in = nn.Parameter(torch.randn(self.output_size) / np.sqrt(self.input_size_2D[0] + self.input_size_2D[1] + self.output_size))
+            self.W_interval_2D_in = nn.Parameter(torch.randn(2, self.output_size) / np.sqrt(self.input_size_2D[0] + self.input_size_2D[1] + self.output_size))
+        if "arithmetic-series-2D-out" in self.W_available:
+            self.W_mean_2D_out = nn.Parameter(torch.randn(self.input_size) / np.sqrt(self.input_size + self.output_size_2D[0] + self.output_size_2D[1]))
+            self.W_interval_2D_out = nn.Parameter(torch.randn(2, self.input_size) / np.sqrt(self.input_size + self.output_size_2D[0] + self.output_size_2D[1]))
+        if "arithmetic-series" in self.b_available:
+            self.b_interval = nn.Parameter(torch.randn(1) / np.sqrt(self.output_size))
+        if "arithmetic-series-2D" in self.b_available:
+            self.b_mean_2D = nn.Parameter(torch.randn(1) / np.sqrt(self.output_size))
+            self.b_interval_2D = nn.Parameter(torch.randn(2) / np.sqrt(self.output_size_2D[0] + self.output_size_2D[1]))
+        
+        if self.W_sig_init is None:
+            self.W_sig = nn.Parameter(torch.zeros(len(self.W_available)))
+        else:
+            self.W_sig = nn.Parameter(torch.FloatTensor(self.W_sig_init))
+        if self.b_sig_init is None:
+            self.b_sig = nn.Parameter(torch.zeros(len(self.b_available)))
+        else:
+            self.b_sig = nn.Parameter(torch.FloatTensor(self.b_sig_init))
+        if self.A_sig_init is None:
+            self.A_sig = nn.Parameter(torch.zeros(len(self.A_available)))
+        else:
+            self.A_sig = nn.Parameter(torch.FloatTensor(self.A_sig_init))
+
+
+    def get_layers(self, source = ["weight", "bias"]):
+        """All the different SuperNet layers are based on the same W_seed matrices. 
+        For example, W_seed is based on the full self.W_layer_seed; "Toeplitz" is based on
+        the first row and first column of self.W_layer_seed to construct the Toeplitz matrix, etc.
+        """
+        # Superimpose different weights:
+        if "weight" in source:
+            self.W_list = []
+            for weight_type in self.W_available:
+                if weight_type == "dense":
+                    W_layer = self.W_layer_seed
+                elif weight_type == "Toeplitz":
+                    W_layer_stacked = []
+                    if self.output_size > 1:
+                        inv_idx = torch.arange(self.output_size - 1, 0, -1).long().to(self.device)
+                        W_seed = torch.cat([self.W_layer_seed[0][inv_idx], self.W_layer_seed[:,0]])
+                    else:
+                        W_seed = self.W_layer_seed[:,0]
+                    for j in range(self.output_size):
+                        W_layer_stacked.append(W_seed[self.output_size - j - 1: self.output_size - j - 1 + self.input_size])
+                    W_layer = torch.stack(W_layer_stacked, 1)
+                elif weight_type == "arithmetic-series-in":
+                    mean_j = self.W_layer_seed.mean(0)
+                    idx_i = torch.FloatTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
+                    idx_j = torch.LongTensor(range(self.output_size) * self.input_size).to(self.device)
+                    offset = self.input_size / float(2) - 0.5
+                    W_layer = (mean_j[idx_j] + self.W_interval_j[idx_j] * Variable(idx_i - offset, requires_grad = False)).view(self.input_size, self.output_size)
+                elif weight_type == "arithmetic-series-out":
+                    mean_i = self.W_layer_seed.mean(1)
+                    idx_i = torch.LongTensor(np.repeat(np.arange(self.input_size), self.output_size)).to(self.device)
+                    idx_j = torch.FloatTensor(range(self.output_size) * self.input_size).to(self.device)
+                    offset = self.output_size / float(2) - 0.5
+                    W_layer = (mean_i[idx_i] + self.W_interval_i[idx_i] * Variable(idx_j - offset, requires_grad = False)).view(self.input_size, self.output_size)
+                elif weight_type == "arithmetic-series-2D-in":
+                    idx_i, idx_j, idx_k = np.meshgrid(range(self.input_size_2D[0]), range(self.input_size_2D[1]), range(self.output_size), indexing = "ij")
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
+                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
+                    offset_i = self.input_size_2D[0] / float(2) - 0.5
+                    offset_j = self.input_size_2D[1] / float(2) - 0.5
+                    W_layer = (self.W_mean_2D_in[idx_k] +                                self.W_interval_2D_in[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_in[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
+                elif weight_type == "arithmetic-series-2D-out":
+                    idx_k, idx_i, idx_j = np.meshgrid(range(self.input_size), range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
+                    idx_k = torch.from_numpy(idx_k).long().view(-1).to(self.device)
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
+                    offset_i = self.output_size_2D[0] / float(2) - 0.5
+                    offset_j = self.output_size_2D[1] / float(2) - 0.5
+                    W_layer = (self.W_mean_2D_out[idx_k] +                                self.W_interval_2D_out[:, idx_k][0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.W_interval_2D_out[:, idx_k][1] * Variable(idx_j - offset_j, requires_grad = False)).view(self.input_size, self.output_size)
+                else:
+                    raise Exception("weight_type '{0}' not recognized!".format(weight_type))
+                self.W_list.append(W_layer)
+
+            if len(self.W_available) == 1:
+                self.W_core = W_layer
+            else:
+                self.W_list = torch.stack(self.W_list, dim = 2)
+                W_sig_softmax = nn.Softmax(dim = -1)(self.W_sig.unsqueeze(0))
+                self.W_core = torch.matmul(self.W_list, W_sig_softmax.transpose(1,0)).squeeze(2)
+    
+        # Superimpose different biases:
+        if "bias" in source:
+            self.b_list = []
+            for bias_type in self.b_available:
+                if bias_type == "None":
+                    b_layer = Variable(torch.zeros(self.output_size).to(self.device), requires_grad = False)
+                elif bias_type == "constant":
+                    b_layer = self.b_layer_seed[0].repeat(self.output_size)
+                elif bias_type == "arithmetic-series":
+                    mean = self.b_layer_seed.mean()
+                    offset = self.output_size / float(2) - 0.5
+                    idx = Variable(torch.FloatTensor(range(self.output_size)).to(self.device), requires_grad = False)
+                    b_layer = mean + self.b_interval * (idx - offset)
+                elif bias_type == "arithmetic-series-2D":
+                    idx_i, idx_j = np.meshgrid(range(self.output_size_2D[0]), range(self.output_size_2D[1]), indexing = "ij")
+                    idx_i = torch.from_numpy(idx_i).float().view(-1).to(self.device)
+                    idx_j = torch.from_numpy(idx_j).float().view(-1).to(self.device)
+                    offset_i = self.output_size_2D[0] / float(2) - 0.5
+                    offset_j = self.output_size_2D[1] / float(2) - 0.5
+                    b_layer = (self.b_mean_2D +                                self.b_interval_2D[0] * Variable(idx_i - offset_i, requires_grad = False) +                                self.b_interval_2D[1] * Variable(idx_j - offset_j, requires_grad = False)).view(-1)
+                elif bias_type == "dense":
+                    b_layer = self.b_layer_seed
+                else:
+                    raise Exception("bias_type '{0}' not recognized!".format(bias_type))
+                self.b_list.append(b_layer)
+
+            if len(self.b_available) == 1:
+                self.b_core = b_layer
+            else:
+                self.b_list = torch.stack(self.b_list, dim = 1)
+                b_sig_softmax = nn.Softmax(dim = -1)(self.b_sig.unsqueeze(0))
+                self.b_core = torch.matmul(self.b_list, b_sig_softmax.transpose(1,0)).squeeze(1)
+
+
+    def forward(self, X, p_dict = None):
+        del p_dict
+        output = X
+        if hasattr(self, "input_size_original"):
+            output = output.view(-1, self.input_size)
+        # Get superposition of layers:
+        self.get_layers(source = ["weight", "bias"])
+
+        # Perform dot(X, W) + b:
+        output = torch.matmul(output, self.W_core) + self.b_core
+        
+        # Exert superposition of activation functions:
+        if len(self.A_available) == 1:
+            output = get_activation(self.A_available[0])(output)
+        else:
+            self.A_list = []
+            A_sig_softmax = nn.Softmax(dim = -1)(self.A_sig.unsqueeze(0))
+            for i, activation in enumerate(self.A_available):
+                A = get_activation(activation)(output)
+                self.A_list.append(A)
+            self.A_list = torch.stack(self.A_list, 2)
+            output = torch.matmul(self.A_list, A_sig_softmax.transpose(1,0)).squeeze(2)
+
+        if hasattr(self, "output_size_original"):
+            output = output.view(*((-1,) + self.output_size_original))
+        return output
+    
+    
+    def get_param_names(self, source):
+        if source == "modules":
+            param_names = ["W_layer_seed", "b_layer_seed"]
+            if "arithmetic-series-in" in self.W_available:
+                param_names.append("W_interval_j")
+            if "arithmetic-series-out" in self.W_available:
+                param_names.append("W_interval_i")
+            if "arithmetic-series-2D-in" in self.W_available:
+                param_names = param_names + ["W_mean_2D_in", "W_interval_2D_in"]
+            if "arithmetic-series-2D-out" in self.W_available:
+                param_names = param_names + ["W_mean_2D_out", "W_interval_2D_out"]
+            if "arithmetic-series" in self.b_available:
+                param_names.append("b_interval")
+        if source == "attention":
+            param_names = ["W_sig", "b_sig", "A_sig"]
+        return param_names
+    
+    
+    def get_weights_bias(self):
+        self.get_layers(source = ["weight", "bias"])
+        return to_np_array(self.W_layer_seed), to_np_array(self.b_layer_seed)
+
+
+    def get_regularization(self, mode, source = ["weight", "bias"]):
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False).to(self.device)
+        if not isinstance(source, list):
+            source = [source]
+        if mode == "L1":
+            if "weight" in source:
+                reg = reg + self.W_core.abs().sum()
+            if "bias" in source:
+                reg = reg + self.b_core.abs().sum()
+        elif mode == "layer_L1":
+            if "weight" in source:
+                self.get_layers(source = ["weight"])
+                reg = reg + self.W_list.abs().sum()
+            if "bias" in source:
+                self.get_layers(source = ["bias"])
+                reg = reg + self.b_list.abs().sum()
+        elif mode == "L2":
+            if "weight" in source:
+                reg = reg + torch.sum(self.W_core ** 2)
+            if "bias" in source:
+                reg = reg + torch.sum(self.b_core ** 2)
+        elif mode == "S_entropy":
+            if "weight" in source:
+                W_sig_softmax = nn.Softmax(dim = -1)(self.W_sig.unsqueeze(0))
+                reg = reg - torch.sum(W_sig_softmax * torch.log(W_sig_softmax))
+            if "bias" in source:
+                b_sig_softmax = nn.Softmax(dim = -1)(self.b_sig.unsqueeze(0))
+                reg = reg - torch.sum(b_sig_softmax * torch.log(b_sig_softmax))
+        elif mode == "S_entropy_activation":
+            A_sig_softmax = nn.Softmax(dim = -1)(self.A_sig.unsqueeze(0))
+            reg = reg - torch.sum(A_sig_softmax * torch.log(A_sig_softmax))
+        elif mode in AVAILABLE_REG:
+            pass
+        else:
+            raise Exception("mode '{0}' not recognized!".format(mode))
         return reg
 
