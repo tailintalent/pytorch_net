@@ -1,10 +1,11 @@
 
 # coding: utf-8
 
-# In[5]:
+# In[1]:
 
 
 import numpy as np
+import pprint as pp
 from sklearn.model_selection import train_test_split
 import pickle
 import torch
@@ -68,26 +69,44 @@ net(X_train)
 
 
 # Get intermediate activation of the net:
-net.inspect_operation(X_train, operation_between = (0,2))
+net.inspect_operation(X_train,                   # Input
+                      operation_between = (0,2), # Operation_between selects the subgraph. 
+                                                 # Here (0, 2) means that the inputs feeds into layer_0 (first layer)
+                                                 # and before the layer_2 (third layer).
+                     )
 
-
-# ## 2. Using symbolic layers:
 
 # In[ ]:
 
 
+# Save model:
+pickle.dump(net.model_dict, open("net.p", "wb"))  # net.model_dict constains all the information (structural and parameters) of the network
+
+# Load model:
+net_loaded = load_model_dict(pickle.load(open("net.p", "rb")))
+
+# Check the loaded net and the original net is identical:
+net_loaded(X_train) - net(X_train)
+
+
+# ## 2. Using symbolic layers, and simplification:
+# ### 2.1 Constructing MLP consisting of symbolic layers:
+
+# In[ ]:
+
+
+# Setting up symbolic expression for layer 1 and layer 2:
 symbolic_expression1 = standardize_symbolic_expression("[3 * x0 ** 2 + p0 * x1 * x2 + p1 * x3, 5 * x0 ** 2 + p2 * x1 + p3 * x3 * x2]")
 symbolic_expression2 = standardize_symbolic_expression("[3 * x0 ** 2 + p2 * x1]")
+variable_name_list = get_variable_name_list(symbolic_expression1)
 
 # Construct the network:
 model_dict = {
     "type": "MLP",
-    "input_size": len(get_variable_name_list(symbolic_expression1)),
-    "struct_param": [[len(symbolic_expression1), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression1),
-                                                                    
-                                                                   }],
+    "input_size": len(variable_name_list),
+    "struct_param": [[len(symbolic_expression1), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression1)}],
                      [len(symbolic_expression2), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression2)}], 
-                    ]
+                    ],
     # Here the optional "weights" sets up the initial values for the parameters. If not set, will initialize with N(0, 1):
     'weights': [{'p0': -1.3,
                  'p1': 1.0,
@@ -97,14 +116,52 @@ model_dict = {
                ]
 }
 net = load_model_dict(model_dict)
+pp.pprint(net.model_dict)
+print("\nOutput:")
 net(torch.rand(100, len(variable_name_list)))
+
+
+# ### 2.1 Simplification of an MLP from Simple_Layer to Symbolic_Layer:
+
+# In[4]:
+
+
+input_size = 1
+struct_param = [
+    [2, "Simple_Layer", {}],   # (number of neurons in each layer, layer_type, layer settings)
+    [10, "Simple_Layer", {"activation": "linear"}],
+    [1, "Simple_Layer", {"activation": "linear"}],
+]
+
+net = MLP(input_size = input_size,
+          struct_param = struct_param,
+          settings = {},
+         )
+
+
+# In[ ]:
+
+
+net.simplify(X=X_train,
+             y=y_train,
+             mode=['collapse_layers', 'snap', 'to_symbolic'], 
+             # The mode is a list of consecutive simplification methods, choosing from:
+             # 'collapse_layers': collapse multiple Simple_Layer with linear activation into a single Simple_Layer; 
+             # 'local': greedily try reducing the input dimension by removing input dimension from the beginning
+             # 'snap': greedily snap each float parameter into an integer or rational number. Set argument 'snap_mode' == 'integer' or 'rational';
+             # 'pair_snap': greedily trying if the ratio of a pair of parameters is an integer or rational number (by setting snap_mode)
+             # 'activation_snap': snap the activation;
+             # 'to_symbolic': transform the Simple_Layer into Symbolic_layer;
+             # 'symbolic_simplification': collapse multiple layers of Symbolic_Layer into a single Symbolic_Layer;
+             # 'ramping-L1': increasing L1 regularization for the parameters and train. When some parameter is below a threshold, snap it to 0.
+            )
 
 
 # ## 3. SuperNet:
 
 # ### 3.1 Use SuperNet Layer in your own module:
 
-# In[9]:
+# In[7]:
 
 
 layer_dict = {
@@ -120,7 +177,7 @@ layer_dict = {
 SuperNet_Layer = get_Layer(**layer_dict)
 
 
-# In[10]:
+# In[8]:
 
 
 class Net(nn.Module):

@@ -36,150 +36,6 @@ from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, t
 # In[ ]:
 
 
-def get_accuracy(pred, target):
-    """Get accuracy from prediction and target"""
-    assert len(pred.shape) == len(target.shape) == 1
-    assert len(pred) == len(target)
-    pred, target = to_np_array(pred, target)
-    accuracy = ((pred == target).sum().astype(float) / len(pred))
-    return accuracy
-
-
-def flatten(*tensors):
-    """Flatten the tensor except the first dimension"""
-    new_tensors = []
-    for tensor in tensors:
-        new_tensors.append(tensor.view(tensor.size(0), -1))
-    if len(new_tensors) == 1:
-        new_tensors = new_tensors[0]
-    return new_tensors
-
-
-def fill_triangular(vec, dim, mode = "lower"):
-    """Fill an lower or upper triangular matrices with given vectors"""
-    num_examples, size = vec.shape
-    assert size == dim * (dim + 1) // 2
-    matrix = torch.zeros(num_examples, dim, dim)
-    if vec.is_cuda:
-        matrix = matrix.cuda()
-    idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
-    idx = idx.repeat(num_examples,1,1)
-    if mode == "lower":
-        matrix[idx] = vec.contiguous().view(-1)
-    elif mode == "upper":
-        matrix[idx] = vec.contiguous().view(-1)
-    else:
-        raise Exception("mode {0} not recognized!".format(mode))
-    return matrix
-
-
-def matrix_diag_transform(matrix, fun):
-    """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
-    num_examples = len(matrix)
-    idx = torch.eye(matrix.size(-1)).bool().unsqueeze(0)
-    idx = idx.repeat(num_examples, 1, 1)
-    new_matrix = matrix.clone()
-    new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
-    return new_matrix
-
-
-def Zip(*data, **kwargs):
-    """Recursive unzipping of data structure
-    Example: Zip(*[(('a',2), 1), (('b',3), 2), (('c',3), 3), (('d',2), 4)])
-    ==> [[['a', 'b', 'c', 'd'], [2, 3, 3, 2]], [1, 2, 3, 4]]
-    Each subtree in the original data must be in the form of a tuple.
-    In the **kwargs, you can set the function that is applied to each fully unzipped subtree.
-    """
-    import collections
-    function = kwargs["function"] if "function" in kwargs else None
-    if len(data) == 1:
-        return data[0]
-    data = [list(element) for element in zip(*data)]
-    for i, element in enumerate(data):
-        if isinstance(element[0], tuple):
-            data[i] = Zip(*element, **kwargs)
-        elif isinstance(element, list):
-            if function is not None:
-                data[i] = function(element)
-    return data
-
-
-def get_loss(model, data_loader = None, X = None, y = None, criterion = None, transform_label=None, **kwargs):
-    """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
-    if data_loader is not None:
-        assert X is None and y is None
-        loss_record = 0
-        count = 0
-        # Taking the average of all metrics:
-        for j, (X_batch, y_batch) in enumerate(data_loader):
-            loss_ele = to_np_array(model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, **kwargs))
-            if j == 0:
-                all_info_dict = {key: 0 for key in model.info_dict.keys()}
-            loss_record = loss_record + loss_ele
-            count += 1
-            for key in model.info_dict:
-                all_info_dict[key] = all_info_dict[key] + model.info_dict[key]
-        for key in model.info_dict:
-            all_info_dict[key] = all_info_dict[key] / count
-        loss = loss_record / count
-        model.info_dict = deepcopy(all_info_dict)
-    else:
-        assert X is not None and y is not None
-        loss = to_np_array(model.get_loss(X, transform_label(y), criterion = criterion, **kwargs))
-    return loss
-
-
-def plot_model(model, data_loader = None, X = None, y = None, transform_label=None):
-    if data_loader is not None:
-        assert X is None and y is None
-        X_all = []
-        y_all = []
-        for X_batch, y_batch in data_loader:
-            X_all.append(X_batch)
-            y_all.append(y_batch)
-        if not isinstance(X_all[0], torch.Tensor):
-            X_all = Zip(*X_all, function = torch.cat)
-        else:
-            X_all = torch.cat(X_all, 0)
-        y_all = torch.cat(y_all)
-        model.plot(X_all, transform_label(y_all))
-    else:
-        assert X is not None and y is not None
-        model.plot(X, transform_label(y))
-
-
-def prepare_inspection(model, data_loader = None, X = None, y = None, transform_label=None, **kwargs):
-    inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
-    if data_loader is None:
-        assert X is not None and y is not None
-        all_dict_summary = model.prepare_inspection(X, transform_label(y), **kwargs)
-        if inspect_functions is not None:
-            for inspect_function_key, inspect_function in inspect_functions.items():
-                all_dict_summary[inspect_function_key] = inspect_function(model, X, y, **kwargs)
-    else:
-        assert X is None and y is None
-        all_dict = {}
-        for X_batch, y_batch in data_loader:
-            info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
-            for key, item in info_dict.items():
-                if key not in all_dict:
-                    all_dict[key] = [item]
-                else:
-                    all_dict[key].append(item)
-            if inspect_functions is not None:
-                for inspect_function_key, inspect_function in inspect_functions.items():
-                    inspect_function_result = inspect_function(model, X_batch, transform_label(y_batch), **kwargs)
-                    if inspect_function_key not in all_dict:
-                        all_dict[inspect_function_key] = [inspect_function_result]
-                    else:
-                        all_dict[inspect_function_key].append(inspect_function_result)
-        all_dict_summary = {}
-        for key, item in all_dict.items():
-            all_dict_summary[key] = np.mean(all_dict[key])
-    model.info_dict = all_dict_summary
-    return all_dict_summary
-
-
 def train(
     model,
     X = None,
@@ -891,7 +747,152 @@ def load_model_dict(model_dict, is_cuda = False):
         raise Exception("net_type {0} not recognized!".format(net_type))
 
 
-# ## Simplify functionality:
+## Helper functions:
+def get_accuracy(pred, target):
+    """Get accuracy from prediction and target"""
+    assert len(pred.shape) == len(target.shape) == 1
+    assert len(pred) == len(target)
+    pred, target = to_np_array(pred, target)
+    accuracy = ((pred == target).sum().astype(float) / len(pred))
+    return accuracy
+
+
+def flatten(*tensors):
+    """Flatten the tensor except the first dimension"""
+    new_tensors = []
+    for tensor in tensors:
+        new_tensors.append(tensor.view(tensor.size(0), -1))
+    if len(new_tensors) == 1:
+        new_tensors = new_tensors[0]
+    return new_tensors
+
+
+def fill_triangular(vec, dim, mode = "lower"):
+    """Fill an lower or upper triangular matrices with given vectors"""
+    num_examples, size = vec.shape
+    assert size == dim * (dim + 1) // 2
+    matrix = torch.zeros(num_examples, dim, dim)
+    if vec.is_cuda:
+        matrix = matrix.cuda()
+    idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
+    idx = idx.repeat(num_examples,1,1)
+    if mode == "lower":
+        matrix[idx] = vec.contiguous().view(-1)
+    elif mode == "upper":
+        matrix[idx] = vec.contiguous().view(-1)
+    else:
+        raise Exception("mode {0} not recognized!".format(mode))
+    return matrix
+
+
+def matrix_diag_transform(matrix, fun):
+    """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
+    num_examples = len(matrix)
+    idx = torch.eye(matrix.size(-1)).bool().unsqueeze(0)
+    idx = idx.repeat(num_examples, 1, 1)
+    new_matrix = matrix.clone()
+    new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
+    return new_matrix
+
+
+def Zip(*data, **kwargs):
+    """Recursive unzipping of data structure
+    Example: Zip(*[(('a',2), 1), (('b',3), 2), (('c',3), 3), (('d',2), 4)])
+    ==> [[['a', 'b', 'c', 'd'], [2, 3, 3, 2]], [1, 2, 3, 4]]
+    Each subtree in the original data must be in the form of a tuple.
+    In the **kwargs, you can set the function that is applied to each fully unzipped subtree.
+    """
+    import collections
+    function = kwargs["function"] if "function" in kwargs else None
+    if len(data) == 1:
+        return data[0]
+    data = [list(element) for element in zip(*data)]
+    for i, element in enumerate(data):
+        if isinstance(element[0], tuple):
+            data[i] = Zip(*element, **kwargs)
+        elif isinstance(element, list):
+            if function is not None:
+                data[i] = function(element)
+    return data
+
+
+def get_loss(model, data_loader = None, X = None, y = None, criterion = None, transform_label=None, **kwargs):
+    """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
+    if data_loader is not None:
+        assert X is None and y is None
+        loss_record = 0
+        count = 0
+        # Taking the average of all metrics:
+        for j, (X_batch, y_batch) in enumerate(data_loader):
+            loss_ele = to_np_array(model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, **kwargs))
+            if j == 0:
+                all_info_dict = {key: 0 for key in model.info_dict.keys()}
+            loss_record = loss_record + loss_ele
+            count += 1
+            for key in model.info_dict:
+                all_info_dict[key] = all_info_dict[key] + model.info_dict[key]
+        for key in model.info_dict:
+            all_info_dict[key] = all_info_dict[key] / count
+        loss = loss_record / count
+        model.info_dict = deepcopy(all_info_dict)
+    else:
+        assert X is not None and y is not None
+        loss = to_np_array(model.get_loss(X, transform_label(y), criterion = criterion, **kwargs))
+    return loss
+
+
+def plot_model(model, data_loader = None, X = None, y = None, transform_label=None):
+    if data_loader is not None:
+        assert X is None and y is None
+        X_all = []
+        y_all = []
+        for X_batch, y_batch in data_loader:
+            X_all.append(X_batch)
+            y_all.append(y_batch)
+        if not isinstance(X_all[0], torch.Tensor):
+            X_all = Zip(*X_all, function = torch.cat)
+        else:
+            X_all = torch.cat(X_all, 0)
+        y_all = torch.cat(y_all)
+        model.plot(X_all, transform_label(y_all))
+    else:
+        assert X is not None and y is not None
+        model.plot(X, transform_label(y))
+
+
+def prepare_inspection(model, data_loader = None, X = None, y = None, transform_label=None, **kwargs):
+    inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
+    if data_loader is None:
+        assert X is not None and y is not None
+        all_dict_summary = model.prepare_inspection(X, transform_label(y), **kwargs)
+        if inspect_functions is not None:
+            for inspect_function_key, inspect_function in inspect_functions.items():
+                all_dict_summary[inspect_function_key] = inspect_function(model, X, y, **kwargs)
+    else:
+        assert X is None and y is None
+        all_dict = {}
+        for X_batch, y_batch in data_loader:
+            info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
+            for key, item in info_dict.items():
+                if key not in all_dict:
+                    all_dict[key] = [item]
+                else:
+                    all_dict[key].append(item)
+            if inspect_functions is not None:
+                for inspect_function_key, inspect_function in inspect_functions.items():
+                    inspect_function_result = inspect_function(model, X_batch, transform_label(y_batch), **kwargs)
+                    if inspect_function_key not in all_dict:
+                        all_dict[inspect_function_key] = [inspect_function_result]
+                    else:
+                        all_dict[inspect_function_key].append(inspect_function_result)
+        all_dict_summary = {}
+        for key, item in all_dict.items():
+            all_dict_summary[key] = np.mean(all_dict[key])
+    model.info_dict = all_dict_summary
+    return all_dict_summary
+
+
+# ## Simplifying functionality:
 
 # In[ ]:
 
@@ -1573,48 +1574,257 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
 
 # ## The following are different model architectures:
 
-# ## Model_Ensemble:
+# ## MLP:
 
-# In[2]:
+# In[3]:
 
 
-class Model_Ensemble(nn.Module):
-    """Model_Ensemble is a collection of models with the same architecture 
-       but independent parameters"""
+class MLP(nn.Module):
     def __init__(
         self,
-        num_models,
         input_size,
-        model_type,
+        struct_param,
+        W_init_list = None,     # initialization for weights
+        b_init_list = None,     # initialization for bias
+        settings = {},          # Default settings for each layer, if the settings for the layer is not provided in struct_param
         is_cuda = False,
-        **kwargs
         ):
-        super(Model_Ensemble, self).__init__()
-        self.num_models = num_models
+        super(MLP, self).__init__()
         self.input_size = input_size
+        self.num_layers = len(struct_param)
+        self.W_init_list = W_init_list
+        self.b_init_list = b_init_list
+        self.settings = deepcopy(settings)
         self.is_cuda = is_cuda
-        for i in range(self.num_models):
-            if model_type == "MLP":
-                model = MLP(input_size = self.input_size, is_cuda = is_cuda, **kwargs)
-            elif model_type == "LSTM":
-                model = LSTM(input_size = self.input_size, is_cuda = is_cuda, **kwargs)
+        self.info_dict = {}
+
+        self.init_layers(deepcopy(struct_param))
+
+
+    @property
+    def struct_param(self):
+        return [getattr(self, "layer_{0}".format(i)).struct_param for i in range(self.num_layers)]
+
+
+    def init_layers(self, struct_param):
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+        for k, layer_struct_param in enumerate(struct_param):
+            if res_forward:
+                num_neurons_prev = struct_param[k - 1][0] + self.input_size if k > 0 else self.input_size
             else:
-                raise Exception("Net_type {0} not recognized!".format(net_type))
-            setattr(self, "model_{0}".format(i), model)
+                num_neurons_prev = struct_param[k - 1][0] if k > 0 else self.input_size
+            num_neurons = layer_struct_param[0]
+            W_init = self.W_init_list[k] if self.W_init_list is not None else None
+            b_init = self.b_init_list[k] if self.b_init_list is not None else None
+
+            # Get settings for the current layer:
+            layer_settings = deepcopy(self.settings) if bool(self.settings) else {}
+            layer_settings.update(layer_struct_param[2])            
+
+            # Construct layer:
+            layer = get_Layer(layer_type = layer_struct_param[1],
+                              input_size = num_neurons_prev,
+                              output_size = num_neurons,
+                              W_init = W_init,
+                              b_init = b_init,
+                              settings = layer_settings,
+                              is_cuda = self.is_cuda,
+                             )
+            setattr(self, "layer_{0}".format(k), layer)
 
 
-    def get_all_models(self):
-        return [getattr(self, "model_{0}".format(i)) for i in range(self.num_models)]
+    def forward(self, input, p_dict = None, **kwargs):
+        output = input
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
+        for k in range(len(self.struct_param)):
+            p_dict_ele = p_dict[k] if p_dict is not None else None
+            if res_forward and k > 0:
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
+            else:
+                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
+        if is_res_block:
+            output = output + input
+        return output
 
 
-    def forward(self, input):
-        output_list = []
-        for i in range(self.num_models):
-            output = getattr(self, "model_{0}".format(i))(input)
-            if output.size(-1) == 1:
-                output = output.squeeze(1)
-            output_list.append(output)
-        return torch.stack(output_list, -1)
+    def simplify(self, X, y, mode="full", isplot=False, target_name=None, validation_data = None, **kwargs):
+        new_model, _ = simplify(self, X, y, mode=mode, isplot=isplot, target_name=target_name, validation_data=validation_data, **kwargs)
+        self.__dict__.update(new_model.__dict__)
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        for k in range(len(self.struct_param)):
+            layer = getattr(self, "layer_{0}".format(k))
+            reg = reg + layer.get_regularization(mode = mode, source = source)
+        return reg
+
+
+    def reset_layer(self, layer_id, layer):
+        setattr(self, "layer_{0}".format(layer_id), layer)
+
+
+    def insert_layer(self, layer_id, layer):
+        if layer_id < 0:
+            layer_id += self.num_layers
+        if layer_id < self.num_layers - 1:
+            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            if next_layer.struct_param[1] == "Simple_Layer":
+                assert next_layer.input_size == layer.output_size, "The inserted layer's output_size {0} must be compatible with next layer_{1}'s input_size {2}!"                    .format(layer.output_size, layer_id + 1, next_layer.input_size)
+        for i in range(self.num_layers - 1, layer_id - 1, -1):
+            setattr(self, "layer_{0}".format(i + 1), getattr(self, "layer_{0}".format(i)))
+        setattr(self, "layer_{0}".format(layer_id), layer)
+        self.num_layers += 1
+    
+    
+    def remove_layer(self, layer_id):
+        if layer_id < 0:
+            layer_id += self.num_layers
+        if layer_id < self.num_layers - 1:
+            num_neurons_prev = self.struct_param[layer_id - 1][0] if layer_id > 0 else self.input_size
+            replaced_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            if replaced_layer.struct_param[1] == "Simple_Layer":
+                assert replaced_layer.input_size == num_neurons_prev,                     "After deleting layer_{0}, the replaced layer's input_size {1} must be compatible with previous layer's output neurons {2}!"                        .format(layer_id, replaced_layer.input_size, num_neurons_prev)
+        for i in range(layer_id, self.num_layers - 1):
+            setattr(self, "layer_{0}".format(i), getattr(self, "layer_{0}".format(i + 1)))
+        self.num_layers -= 1
+
+
+    def prune_neurons(self, layer_id, neuron_ids):
+        if layer_id < 0:
+            layer_id = self.num_layers + layer_id
+        layer = getattr(self, "layer_{0}".format(layer_id))
+        layer.prune_output_neurons(neuron_ids)
+        self.reset_layer(layer_id, layer)
+        if layer_id < self.num_layers - 1:
+            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            next_layer.prune_input_neurons(neuron_ids)
+            self.reset_layer(layer_id + 1, next_layer)
+
+
+    def add_neurons(self, layer_id, num_neurons, mode = ("imitation", "zeros")):
+        if not isinstance(mode, list) and not isinstance(mode, tuple):
+            mode = (mode, mode)
+        if layer_id < 0:
+            layer_id = self.num_layers + layer_id
+        layer = getattr(self, "layer_{0}".format(layer_id))
+        layer.add_output_neurons(num_neurons, mode = mode[0])
+        self.reset_layer(layer_id, layer)
+        if layer_id < self.num_layers - 1:
+            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            next_layer.add_input_neurons(num_neurons, mode = mode[1])
+            self.reset_layer(layer_id + 1, next_layer)
+
+    
+    def inspect_operation(self, input, operation_between, p_dict = None, **kwargs):
+        output = input
+        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
+        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
+        for k in range(*operation_between):
+            p_dict_ele = p_dict[k] if p_dict is not None else None
+            if res_forward and k > 0:
+                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
+            else:
+                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
+        if is_res_block:
+            output = output + input
+        return output
+
+
+    def get_weights_bias(self, W_source = "core", b_source = "core", layer_ids = None, is_grad = False, isplot = False, verbose = False, raise_error = True):
+        layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
+        W_list = []
+        b_list = []
+        if W_source is not None:
+            for k in range(len(self.struct_param)):
+                if k in layer_ids:
+                    if W_source == "core":
+                        try:
+                            W, _ = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
+                        except Exception as e:
+                            if raise_error:
+                                raise
+                            else:
+                                print(e)
+                            W = np.array([np.NaN])
+                    else:
+                        raise Exception("W_source '{0}' not recognized!".format(W_source))
+                    W_list.append(W)
+        
+        if b_source is not None:
+            for k in range(len(self.struct_param)):
+                if k in layer_ids:
+                    if b_source == "core":
+                        try:
+                            _, b = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
+                        except Exception as e:
+                            if raise_error:
+                                raise
+                            else:
+                                print(e)
+                            b = np.array([np.NaN])
+                    else:
+                        raise Exception("b_source '{0}' not recognized!".format(b_source))
+                b_list.append(b)
+
+        if verbose:
+            import pprint as pp
+            if W_source is not None:
+                print("weight:")
+                pp.pprint(W_list)
+            if b_source is not None:
+                print("bias:")
+                pp.pprint(b_list)
+                
+        if isplot:
+            if W_source is not None:
+                print("weight {0}:".format(W_source))
+                plot_matrices(W_list)
+            if b_source is not None:
+                print("bias {0}:".format(b_source))
+                plot_matrices(b_list)
+
+        return W_list, b_list
+
+
+    def split_to_model_ensemble(self, mode = "standardize"):
+        num_models = self.struct_param[-1][0]
+        model_core = deepcopy(self)
+        if mode == "standardize":
+            last_layer = getattr(model_core, "layer_{0}".format(model_core.num_layers - 1))
+            last_layer.standardize(mode = "b_mean_zero")
+        else:
+            raise Exception("mode {0} not recognized!".format(mode))
+        model_list = [deepcopy(model_core) for i in range(num_models)]
+        for i, model in enumerate(model_list):
+            to_prune = list(range(num_models))
+            to_prune.pop(i)
+            model.prune_neurons(-1, to_prune)
+        return construct_model_ensemble_from_nets(model_list)
+    
+    
+    @property
+    def model_dict(self):
+        model_dict = {"type": "MLP"}
+        model_dict["input_size"] = self.input_size
+        model_dict["struct_param"] = get_full_struct_param(self.struct_param, self.settings)
+        model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
+        model_dict["settings"] = deepcopy(self.settings)
+        model_dict["net_type"] = "MLP"
+        return model_dict
+
+
+    @property
+    def DL(self):
+        return np.sum([getattr(self, "layer_{0}".format(i)).DL for i in range(self.num_layers)])
+
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
 
 
     def get_loss(self, input, target, criterion, **kwargs):
@@ -1622,101 +1832,58 @@ class Model_Ensemble(nn.Module):
         return criterion(y_pred, target)
 
 
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
-        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
-        for k in range(self.num_models):
-            reg = reg + getattr(self, "model_{0}".format(k)).get_regularization(
-                source = source, mode = mode, **kwargs)
-        return reg
-
-
-    def remove_models(self, model_ids):
-        if not isinstance(model_ids, list):
-            model_ids = [model_ids]
-        model_list = []
-        k = 0
-        for i in range(self.num_models):
-            if i not in model_ids:
-                if k != i:
-                    setattr(self, "model_{0}".format(k), getattr(self, "model_{0}".format(i)))
-                k += 1
-        num_models_new = k
-        for i in range(num_models_new, self.num_models):
-            delattr(self, "model_{0}".format(i))
-        self.num_models = num_models_new
-
-
-    def add_models(self, models):
-        if not isinstance(models, list):
-            models = [models]
-        for i, model in enumerate(models):
-            setattr(self, "model_{0}".format(i + self.num_models), model)
-        self.num_models += len(models)
-
-
-    def get_weights_bias(self, W_source = None, b_source = None, verbose = False, isplot = False):
-        W_list_dict = {}
-        b_list_dict = {}
-        for i in range(self.num_models):
-            if verbose:
-                print("\nmodel {0}:".format(i))
-            W_list_dict[i], b_list_dict[i] = getattr(self, "model_{0}".format(i)).get_weights_bias(
-                W_source = W_source, b_source = b_source, verbose = verbose, isplot = isplot)
-        return W_list_dict, b_list_dict
-
-
     def prepare_inspection(self, X, y, **kwargs):
         return {}
-    
-    
+
+
     def set_cuda(self, is_cuda):
-        for k in range(self.num_models):
-            getattr(self, "model_{0}".format(k)).set_cuda(is_cuda)
+        for k in range(self.num_layers):
+            getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
         self.is_cuda = is_cuda
-    
-    
-    def set_trainable(self, is_trainable):
-        for i in range(self.num_models):
-            getattr(self, "model_{0}".format(i)).set_trainable(is_trainable)
-    
 
-class Model_with_uncertainty(nn.Module):
-    def __init__(
-        self,
-        model_pred,
-        model_logstd,
-        ):
-        super(Model_with_uncertainty, self).__init__()
-        self.model_pred = model_pred
-        self.model_logstd = model_logstd
-        
-    def forward(self, input, noise_amp = None, **kwargs):
-        return self.model_pred(input, noise_amp = noise_amp, **kwargs), self.model_logstd(input, **kwargs)
-    
-    def get_loss(self, input, target, criterion, noise_amp = None, **kwargs):
-        pred, log_std = self(input, noise_amp = noise_amp, **kwargs)
-        return criterion(pred = pred, target = target, log_std = log_std)
-    
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
-        return self.model_pred.get_regularization(source = source, mode = mode, **kwargs) +                 self.model_logstd.get_regularization(source = source, mode = mode, **kwargs)
-    
-    @property
-    def model_dict(self):
-        model_dict = {}
-        model_dict["type"] = "Model_with_Uncertainty"
-        model_dict["model_pred"] = self.model_pred.model_dict
-        model_dict["model_logstd"] = self.model_logstd.model_dict
-        return model_dict
 
-    def set_cuda(self, is_cuda):
-        self.model_pred.set_cuda(is_cuda)
-        self.model_logstd.set_cuda(is_cuda)
-        
     def set_trainable(self, is_trainable):
-        self.model_pred.set_trainable(is_trainable)
-        self.model_logstd.set_trainable(is_trainable)
+        for k in range(self.num_layers):
+            getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
+
+
+    def get_snap_dict(self):
+        snap_dict = {}
+        for k in range(len(self.struct_param)):
+            layer = getattr(self, "layer_{0}".format(k))
+            if hasattr(layer, "snap_dict"):
+                recorded_layer_snap_dict = {}
+                for key, item in layer.snap_dict.items():
+                    recorded_layer_snap_dict[key] = {"new_value": item["new_value"]}
+                if len(recorded_layer_snap_dict) > 0:
+                    snap_dict[k] = recorded_layer_snap_dict
+        return snap_dict
+
+
+    def synchronize_settings(self):
+        snap_dict = self.get_snap_dict()
+        if len(snap_dict) > 0:
+            self.settings["snap_dict"] = snap_dict
+        return self.settings
+
+
+    def get_sympy_expression(self, verbose = True):
+        expressions = {i: {} for i in range(self.num_layers)}
+        for i in range(self.num_layers):
+            layer = getattr(self, "layer_{0}".format(i))
+            if layer.struct_param[1] == "Symbolic_Layer":
+                if verbose:
+                    print("Layer {0}, symbolic_expression:  {1}".format(i, layer.symbolic_expression))
+                    print("         numerical_expression: {1}".format(i, layer.numerical_expression))
+                expressions[i]["symbolic_expression"] = layer.symbolic_expression
+                expressions[i]["numerical_expression"] = layer.numerical_expression
+                expressions[i]["param_dict"] = layer.get_param_dict()
+                expressions[i]["DL"] = layer.DL
+            else:
+                if verbose:
+                    print("Layer {0} is not a symbolic layer.".format(i))
+                expressions[i] = None
+        return expressions
 
 
 # ## Multi_MLP (MLPs in series):
@@ -1820,317 +1987,13 @@ class Multi_MLP(nn.Module):
             getattr(self, "block_{0}".format(i)).set_trainable(is_trainable)
 
 
-# ## MLP:
-
-# In[3]:
-
-
-class MLP(nn.Module):
-    def __init__(
-        self,
-        input_size,
-        struct_param,
-        W_init_list = None,     # initialization for weights
-        b_init_list = None,     # initialization for bias
-        settings = {},          # Default settings for each layer, if the settings for the layer is not provided in struct_param
-        is_cuda = False,
-        ):
-        super(MLP, self).__init__()
-        self.input_size = input_size
-        self.num_layers = len(struct_param)
-        self.W_init_list = W_init_list
-        self.b_init_list = b_init_list
-        self.settings = deepcopy(settings)
-        self.is_cuda = is_cuda
-        self.info_dict = {}
-
-        self.init_layers(deepcopy(struct_param))
-
-
-    @property
-    def struct_param(self):
-        return [getattr(self, "layer_{0}".format(i)).struct_param for i in range(self.num_layers)]
-
-
-    def init_layers(self, struct_param):
-        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
-        for k, layer_struct_param in enumerate(struct_param):
-            if res_forward:
-                num_neurons_prev = struct_param[k - 1][0] + self.input_size if k > 0 else self.input_size
-            else:
-                num_neurons_prev = struct_param[k - 1][0] if k > 0 else self.input_size
-            num_neurons = layer_struct_param[0]
-            W_init = self.W_init_list[k] if self.W_init_list is not None else None
-            b_init = self.b_init_list[k] if self.b_init_list is not None else None
-
-            # Get settings for the current layer:
-            layer_settings = deepcopy(self.settings) if bool(self.settings) else {}
-            layer_settings.update(layer_struct_param[2])            
-
-            # Construct layer:
-            layer = get_Layer(layer_type = layer_struct_param[1],
-                              input_size = num_neurons_prev,
-                              output_size = num_neurons,
-                              W_init = W_init,
-                              b_init = b_init,
-                              settings = layer_settings,
-                              is_cuda = self.is_cuda,
-                             )
-            setattr(self, "layer_{0}".format(k), layer)
-
-
-    def forward(self, input, p_dict = None, **kwargs):
-        output = input
-        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
-        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
-        for k in range(len(self.struct_param)):
-            p_dict_ele = p_dict[k] if p_dict is not None else None
-            if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
-            else:
-                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
-        if is_res_block:
-            output = output + input
-        return output
-
-
-    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
-        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
-        for k in range(len(self.struct_param)):
-            layer = getattr(self, "layer_{0}".format(k))
-            reg = reg + layer.get_regularization(mode = mode, source = source)
-        return reg
-
-
-    def reset_layer(self, layer_id, layer):
-        setattr(self, "layer_{0}".format(layer_id), layer)
-
-
-    def insert_layer(self, layer_id, layer):
-        if layer_id < 0:
-            layer_id += self.num_layers
-        if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
-            if next_layer.struct_param[1] == "Simple_Layer":
-                assert next_layer.input_size == layer.output_size, "The inserted layer's output_size {0} must be compatible with next layer_{1}'s input_size {2}!"                    .format(layer.output_size, layer_id + 1, next_layer.input_size)
-        for i in range(self.num_layers - 1, layer_id - 1, -1):
-            setattr(self, "layer_{0}".format(i + 1), getattr(self, "layer_{0}".format(i)))
-        setattr(self, "layer_{0}".format(layer_id), layer)
-        self.num_layers += 1
-    
-    
-    def remove_layer(self, layer_id):
-        if layer_id < 0:
-            layer_id += self.num_layers
-        if layer_id < self.num_layers - 1:
-            num_neurons_prev = self.struct_param[layer_id - 1][0] if layer_id > 0 else self.input_size
-            replaced_layer = getattr(self, "layer_{0}".format(layer_id + 1))
-            if replaced_layer.struct_param[1] == "Simple_Layer":
-                assert replaced_layer.input_size == num_neurons_prev,                     "After deleting layer_{0}, the replaced layer's input_size {1} must be compatible with previous layer's output neurons {2}!"                        .format(layer_id, replaced_layer.input_size, num_neurons_prev)
-        for i in range(layer_id, self.num_layers - 1):
-            setattr(self, "layer_{0}".format(i), getattr(self, "layer_{0}".format(i + 1)))
-        self.num_layers -= 1
-
-
-    def prune_neurons(self, layer_id, neuron_ids):
-        if layer_id < 0:
-            layer_id = self.num_layers + layer_id
-        layer = getattr(self, "layer_{0}".format(layer_id))
-        layer.prune_output_neurons(neuron_ids)
-        self.reset_layer(layer_id, layer)
-        if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
-            next_layer.prune_input_neurons(neuron_ids)
-            self.reset_layer(layer_id + 1, next_layer)
-
-
-    def add_neurons(self, layer_id, num_neurons, mode = ("imitation", "zeros")):
-        if not isinstance(mode, list) and not isinstance(mode, tuple):
-            mode = (mode, mode)
-        if layer_id < 0:
-            layer_id = self.num_layers + layer_id
-        layer = getattr(self, "layer_{0}".format(layer_id))
-        layer.add_output_neurons(num_neurons, mode = mode[0])
-        self.reset_layer(layer_id, layer)
-        if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
-            next_layer.add_input_neurons(num_neurons, mode = mode[1])
-            self.reset_layer(layer_id + 1, next_layer)
-
-    
-    def inspect_operation(self, input, operation_between, p_dict = None, **kwargs):
-        output = input
-        res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
-        is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
-        for k in range(*operation_between):
-            p_dict_ele = p_dict[k] if p_dict is not None else None
-            if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
-            else:
-                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
-        if is_res_block:
-            output = output + input
-        return output
-
-
-
-    def get_weights_bias(self, W_source = "core", b_source = "core", layer_ids = None, is_grad = False, isplot = False, verbose = False, raise_error = True):
-        layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
-        W_list = []
-        b_list = []
-        if W_source is not None:
-            for k in range(len(self.struct_param)):
-                if k in layer_ids:
-                    if W_source == "core":
-                        try:
-                            W, _ = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
-                        except Exception as e:
-                            if raise_error:
-                                raise
-                            else:
-                                print(e)
-                            W = np.array([np.NaN])
-                    else:
-                        raise Exception("W_source '{0}' not recognized!".format(W_source))
-                    W_list.append(W)
-        
-        if b_source is not None:
-            for k in range(len(self.struct_param)):
-                if k in layer_ids:
-                    if b_source == "core":
-                        try:
-                            _, b = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
-                        except Exception as e:
-                            if raise_error:
-                                raise
-                            else:
-                                print(e)
-                            b = np.array([np.NaN])
-                    else:
-                        raise Exception("b_source '{0}' not recognized!".format(b_source))
-                b_list.append(b)
-
-        if verbose:
-            import pprint as pp
-            if W_source is not None:
-                print("weight:")
-                pp.pprint(W_list)
-            if b_source is not None:
-                print("bias:")
-                pp.pprint(b_list)
-                
-        if isplot:
-            if W_source is not None:
-                print("weight {0}:".format(W_source))
-                plot_matrices(W_list)
-            if b_source is not None:
-                print("bias {0}:".format(b_source))
-                plot_matrices(b_list)
-        
-        return W_list, b_list
-
-
-    def split_to_net_ensemble(self, mode = "standardize"):
-        num_models = self.struct_param[-1][0]
-        model_core = deepcopy(self)
-        if mode == "standardize":
-            last_layer = getattr(model_core, "layer_{0}".format(model_core.num_layers - 1))
-            last_layer.standardize(mode = "b_mean_zero")
-        else:
-            raise Exception("mode {0} not recognized!".format(mode))
-        model_list = [deepcopy(model_core) for i in range(num_models)]
-        for i, model in enumerate(model_list):
-            to_prune = list(range(num_models))
-            to_prune.pop(i)
-            model.prune_neurons(-1, to_prune)
-        return construct_net_ensemble_from_nets(model_list)
-    
-    
-    @property
-    def model_dict(self):
-        model_dict = {"type": "MLP"}
-        model_dict["input_size"] = self.input_size
-        model_dict["struct_param"] = get_full_struct_param(self.struct_param, self.settings)
-        model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
-        model_dict["settings"] = deepcopy(self.settings)
-        model_dict["net_type"] = "MLP"
-        return model_dict
-    
-    @property
-    def DL(self):
-        return np.sum([getattr(self, "layer_{0}".format(i)).DL for i in range(self.num_layers)])
-
-
-    def load_model_dict(self, model_dict):
-        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
-        self.__dict__.update(new_net.__dict__)
-
-
-    def get_loss(self, input, target, criterion, **kwargs):
-        y_pred = self(input, **kwargs)
-        return criterion(y_pred, target)
-
-
-    def prepare_inspection(self, X, y, **kwargs):
-        return {}
-
-
-    def set_cuda(self, is_cuda):
-        for k in range(self.num_layers):
-            getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
-        self.is_cuda = is_cuda
-
-
-    def set_trainable(self, is_trainable):
-        for k in range(self.num_layers):
-            getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
-
-
-    def get_snap_dict(self):
-        snap_dict = {}
-        for k in range(len(self.struct_param)):
-            layer = getattr(self, "layer_{0}".format(k))
-            if hasattr(layer, "snap_dict"):
-                recorded_layer_snap_dict = {}
-                for key, item in layer.snap_dict.items():
-                    recorded_layer_snap_dict[key] = {"new_value": item["new_value"]}
-                if len(recorded_layer_snap_dict) > 0:
-                    snap_dict[k] = recorded_layer_snap_dict
-        return snap_dict
-
-
-    def synchronize_settings(self):
-        snap_dict = self.get_snap_dict()
-        if len(snap_dict) > 0:
-            self.settings["snap_dict"] = snap_dict
-        return self.settings
-
-
-    def get_sympy_expression(self, verbose = True):
-        expressions = {i: {} for i in range(self.num_layers)}
-        for i in range(self.num_layers):
-            layer = getattr(self, "layer_{0}".format(i))
-            if layer.struct_param[1] == "Symbolic_Layer":
-                if verbose:
-                    print("Layer {0}, symbolic_expression:  {1}".format(i, layer.symbolic_expression))
-                    print("         numerical_expression: {1}".format(i, layer.numerical_expression))
-                expressions[i]["symbolic_expression"] = layer.symbolic_expression
-                expressions[i]["numerical_expression"] = layer.numerical_expression
-                expressions[i]["param_dict"] = layer.get_param_dict()
-                expressions[i]["DL"] = layer.DL
-            else:
-                if verbose:
-                    print("Layer {0} is not a symbolic layer.".format(i))
-                expressions[i] = None
-        return expressions
-
+# ## Branching_Net:
 
 # In[ ]:
 
 
 class Branching_Net(nn.Module):
+    """An MLP that consists of a base network, and net_1 and net_2 that branches off from the output of the base network."""
     def __init__(
         self,
         net_base_model_dict,
@@ -2235,10 +2098,14 @@ class Fan_in_MLP(nn.Module):
         return model_dict
 
 
+# ## Model_Ensemble:
+
 # In[ ]:
 
 
-class Net_Ensemble(nn.Module):
+class Model_Ensemble(nn.Module):
+    """Model_Ensemble is a collection of models with the same architecture 
+       but independent parameters"""
     def __init__(
         self,
         num_models,
@@ -2247,10 +2114,10 @@ class Net_Ensemble(nn.Module):
         W_init_list = None,
         b_init_list = None,
         settings = None,
-        net_type = "Net",
+        net_type = "MLP",
         is_cuda = False,
         ):
-        super(Net_Ensemble, self).__init__()
+        super(Model_Ensemble, self).__init__()
         self.num_models = num_models
         self.input_size = input_size
         self.net_type = net_type
@@ -2266,7 +2133,7 @@ class Net_Ensemble(nn.Module):
                 struct_param_model = struct_param[i]
             else:
                 struct_param_model = struct_param
-            if net_type == "Net":
+            if net_type == "MLP":
                 net = MLP(input_size = self.input_size,
                           struct_param = deepcopy(struct_param_model),
                           W_init_list = deepcopy(W_init_list[i]) if W_init_list is not None else None,
@@ -2327,7 +2194,7 @@ class Net_Ensemble(nn.Module):
     def forward(self, input):
         output_list = []
         for i in range(self.num_models):
-            if self.net_type == "Net":
+            if self.net_type == "MLP":
                 output = getattr(self, "model_{0}".format(i))(input)
             elif self.net_type == "ConvNet":
                 output = getattr(self, "model_{0}".format(i))(input)[0]
@@ -2544,7 +2411,7 @@ class Net_Ensemble(nn.Module):
 
     @property
     def model_dict(self):
-        model_dict = {"type": "Net_Ensemble"}
+        model_dict = {"type": "Model_Ensemble"}
         for i in range(self.num_models):
             model_dict["model_{0}".format(i)] = getattr(self, "model_{0}".format(i)).model_dict
         model_dict["input_size"] = self.input_size
@@ -2555,42 +2422,42 @@ class Net_Ensemble(nn.Module):
 
 
     def load_model_dict(self, model_dict):
-        new_net_ensemble = load_model_dict(model_dict, is_cuda = self.is_cuda)
-        self.__dict__.update(new_net_ensemble.__dict__)
+        new_model_ensemble = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_model_ensemble.__dict__)    
 
         
-def load_model_dict_net_ensemble(model_dict, is_cuda = False):
+def load_model_dict_model_ensemble(model_dict, is_cuda = False):
     num_models = len([model_name for model_name in model_dict if model_name[:6] == "model_"])
-    return Net_Ensemble(num_models = num_models,
-                        input_size = model_dict["input_size"],
-                        struct_param = tuple([deepcopy(model_dict["model_{0}".format(i)]["struct_param"]) for i in range(num_models)]),
-                        W_init_list = [deepcopy(model_dict["model_{0}".format(i)]["weights"]) for i in range(num_models)],
-                        b_init_list = [deepcopy(model_dict["model_{0}".format(i)]["bias"]) for i in range(num_models)],
-                        settings = [deepcopy(model_dict["model_{0}".format(i)]["settings"]) for i in range(num_models)],
-                        net_type = model_dict["net_type"] if "net_type" in model_dict else "Net",
-                        is_cuda = is_cuda,
-                       )
+    return Model_Ensemble(num_models = num_models,
+                          input_size = model_dict["input_size"],
+                          struct_param = tuple([deepcopy(model_dict["model_{0}".format(i)]["struct_param"]) for i in range(num_models)]),
+                          W_init_list = [deepcopy(model_dict["model_{0}".format(i)]["weights"]) for i in range(num_models)],
+                          b_init_list = [deepcopy(model_dict["model_{0}".format(i)]["bias"]) for i in range(num_models)],
+                          settings = [deepcopy(model_dict["model_{0}".format(i)]["settings"]) for i in range(num_models)],
+                          net_type = model_dict["net_type"] if "net_type" in model_dict else "MLP",
+                          is_cuda = is_cuda,
+                         )
 
 
-def combine_net_ensembles(net_ensembles, input_size):
-    net_ensembles = deepcopy(net_ensembles)
-    net_ensemble_combined = None
+def combine_model_ensembles(model_ensembles, input_size):
+    model_ensembles = deepcopy(model_ensembles)
+    model_ensemble_combined = None
     model_id = 0
-    for k, net_ensemble in enumerate(net_ensembles):
-        if net_ensemble.input_size == input_size:
-            if net_ensemble_combined is None:
-                net_ensemble_combined = net_ensemble
+    for k, model_ensemble in enumerate(model_ensembles):
+        if model_ensemble.input_size == input_size:
+            if model_ensemble_combined is None:
+                model_ensemble_combined = model_ensemble
         else:
             continue  
-        for i in range(net_ensemble.num_models):
-            model = getattr(net_ensemble, "model_{0}".format(i))
-            setattr(net_ensemble_combined, "model_{0}".format(model_id), model)
+        for i in range(model_ensemble.num_models):
+            model = getattr(model_ensemble, "model_{0}".format(i))
+            setattr(model_ensemble_combined, "model_{0}".format(model_id), model)
             model_id += 1
-    net_ensemble_combined.num_models = model_id
-    return net_ensemble_combined
+    model_ensemble_combined.num_models = model_id
+    return model_ensemble_combined
 
 
-def construct_net_ensemble_from_nets(nets):
+def construct_model_ensemble_from_nets(nets):
     num_models = len(nets)
     if num_models is None:
         return None
@@ -2602,10 +2469,50 @@ def construct_net_ensemble_from_nets(nets):
             raise Exception("The input_size for all nets must be the same!")
         if net.is_cuda:
             is_cuda = True
-    net_ensemble = Net_Ensemble(num_models = num_models, input_size = input_size, struct_param = struct_param, is_cuda = is_cuda)
+    model_ensemble = Model_Ensemble(num_models = num_models, input_size = input_size, struct_param = struct_param, is_cuda = is_cuda)
     for i, net in enumerate(nets):
-        setattr(net_ensemble, "model_{0}".format(i), net)
-    return net_ensemble
+        setattr(model_ensemble, "model_{0}".format(i), net)
+    return model_ensemble
+
+
+# In[ ]:
+
+
+class Model_with_uncertainty(nn.Module):
+    def __init__(
+        self,
+        model_pred,
+        model_logstd,
+        ):
+        super(Model_with_uncertainty, self).__init__()
+        self.model_pred = model_pred
+        self.model_logstd = model_logstd
+        
+    def forward(self, input, noise_amp = None, **kwargs):
+        return self.model_pred(input, noise_amp = noise_amp, **kwargs), self.model_logstd(input, **kwargs)
+    
+    def get_loss(self, input, target, criterion, noise_amp = None, **kwargs):
+        pred, log_std = self(input, noise_amp = noise_amp, **kwargs)
+        return criterion(pred = pred, target = target, log_std = log_std)
+    
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        return self.model_pred.get_regularization(source = source, mode = mode, **kwargs) + self.model_logstd.get_regularization(source = source, mode = mode, **kwargs)
+    
+    @property
+    def model_dict(self):
+        model_dict = {}
+        model_dict["type"] = "Model_with_Uncertainty"
+        model_dict["model_pred"] = self.model_pred.model_dict
+        model_dict["model_logstd"] = self.model_logstd.model_dict
+        return model_dict
+
+    def set_cuda(self, is_cuda):
+        self.model_pred.set_cuda(is_cuda)
+        self.model_logstd.set_cuda(is_cuda)
+        
+    def set_trainable(self, is_trainable):
+        self.model_pred.set_trainable(is_trainable)
+        self.model_logstd.set_trainable(is_trainable)
 
 
 # ## RNN:
@@ -2638,6 +2545,11 @@ class RNNCellBase(nn.Module):
             raise RuntimeError(
                 "hidden{} has inconsistent hidden_size: got {}, expected {}".format(
                     hidden_label, hx.size(1), self.hidden_size))
+
+
+# ### LSTM:
+
+# In[ ]:
 
 
 class LSTM(RNNCellBase):
@@ -2794,6 +2706,7 @@ class wide_basic(nn.Module):
         out += self.shortcut(x)
 
         return out
+
 
 class Wide_ResNet(nn.Module):
     """Adapted from https://github.com/meliketoy/wide-resnet.pytorch/blob/master/networks/wide_resnet.py"""
