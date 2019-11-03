@@ -699,6 +699,10 @@ def forward(model, X, **kwargs):
     return output
 
 
+def logplus(x):
+    return torch.clamp(torch.log(torch.clamp(x, 1e-9)) / np.log(2), 0)
+
+
 class Loss_Fun(nn.Module):
     def __init__(self, core = "mse", epsilon = 1e-10, loss_precision_floor = PrecisionFloorLoss, DL_sum = False):
         super(Loss_Fun, self).__init__()
