@@ -50,13 +50,24 @@ def train(
     **kwargs
     ):
     """Training function for generic models. "model" can be a single model or a ordered list of models"""
-    def get_regularization(model, **kwargs):
+    def get_regularization(model, loss_epoch, **kwargs):
+        """Compute regularization."""
         reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else None
         reg = to_Variable([0], is_cuda = is_cuda)
         if reg_dict is not None:
             for reg_type, reg_coeff in reg_dict.items():
-                reg = reg + model.get_regularization(source = reg_type, mode = "L1", **kwargs) * reg_coeff
+                # Setting up regularization strength:
+                if isinstance(reg_coeff, Number):
+                    reg_coeff_ele = reg_coeff
+                else:
+                    if loss_epoch < len(reg_coeff):
+                        reg_coeff_ele = reg_coeff[loss_epoch]
+                    else:
+                        reg_coeff_ele = reg_coeff[-1]
+                # Accumulate regularization:
+                reg = reg + model.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff_ele
         return reg
+
     if is_cuda is None:
         if X is None and y is None:
             assert train_loader is not None
@@ -248,7 +259,7 @@ def train(
         if X is not None and y is not None:
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
-                reg = get_regularization(model, **kwargs)
+                reg = get_regularization(model, loss_epoch = i, **kwargs)
                 loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
                 loss.backward()
                 optimizer.step()
@@ -256,7 +267,7 @@ def train(
                 # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
                 def closure():
                     optimizer.zero_grad()
-                    reg = get_regularization(model, **kwargs)
+                    reg = get_regularization(model, loss_epoch = i, **kwargs)
                     loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     return loss
@@ -267,7 +278,7 @@ def train(
                 if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
                     for _ in range(co_multi_step):
                         co_optimizer.zero_grad()
-                        co_reg = get_regularization(co_model, **co_kwargs)
+                        co_reg = get_regularization(co_model, loss_epoch = i, **co_kwargs)
                         co_loss = co_model.get_loss(X, transform_label(y), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
                         co_loss.backward()
                         co_optimizer.step()
@@ -278,7 +289,7 @@ def train(
             for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
-                    reg = get_regularization(model, **kwargs)
+                    reg = get_regularization(model, loss_epoch = i, **kwargs)
                     loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
                     loss.backward()
                     if logdir is not None:
@@ -291,7 +302,7 @@ def train(
                 else:
                     def closure():
                         optimizer.zero_grad()
-                        reg = get_regularization(model, **kwargs)
+                        reg = get_regularization(model, loss_epoch = i, **kwargs)
                         loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
                         loss.backward()
                         return loss
@@ -312,7 +323,7 @@ def train(
                     if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
                         for _ in range(co_multi_step):
                             co_optimizer.zero_grad()
-                            co_reg = get_regularization(co_model, **co_kwargs)
+                            co_reg = get_regularization(co_model, loss_epoch = i, **co_kwargs)
                             co_loss = co_model.get_loss(X_batch, transform_label(y_batch), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
                             co_loss.backward()
                             if logdir is not None:
@@ -469,11 +480,12 @@ def train(
 def train_simple(model, X, y, validation_data = None, inspect_interval = 5, **kwargs):
     """minimal version of training. "model" can be a single model or a ordered list of models"""
     def get_regularization(model, **kwargs):
-        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {"weight": 0, "bias": 0}
+        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else None
         reg = to_Variable([0], is_cuda = X.is_cuda)
         for model_ele in model:
-            for reg_type, reg_coeff in reg_dict.items():
-                reg = reg + model_ele.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff
+            if reg_dict is not None:
+                for reg_type, reg_coeff in reg_dict.items():
+                    reg = reg + model_ele.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff
         return reg
     if not(isinstance(model, list) or isinstance(model, tuple)):
         model = [model]

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -447,6 +447,8 @@ class Simple_Layer(nn.Module):
 
     
     def get_regularization(self, mode, source = ["weight", "bias"]):
+        if not isinstance(source, list):
+            source = [source]
         reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
