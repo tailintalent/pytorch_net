@@ -1073,6 +1073,8 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                 event_list.append({mode_ele: all_collapse_dict})
 
         elif mode_ele in ["local", "snap"]:
+            # 'local': greedily try reducing the input dimension by removing input dimension from the beginning;
+            # 'snap': greedily snap each float parameter into an integer or rational number. Set argument 'snap_mode' == 'integer' or 'rational'.
             if mode_ele == "snap":
                 target_params = [[(model_id, layer_id), "snap"] for model_id, model_ele in enumerate(model) for layer_id in range(len(model_ele.struct_param))]
             elif mode_ele == "local":
@@ -1827,6 +1829,10 @@ class MLP(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
+
     def get_loss(self, input, target, criterion, **kwargs):
         y_pred = self(input, **kwargs)
         return criterion(y_pred, target)
@@ -1962,6 +1968,10 @@ class Multi_MLP(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
+
     def get_weights_bias(self, W_source = "core", b_source = "core"):
         W_list = []
         b_list = []
@@ -2037,6 +2047,10 @@ class Branching_Net(nn.Module):
         model_dict["net_2_model_dict"] = self.net_2.model_dict
         return model_dict
 
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
     
 class Fan_in_MLP(nn.Module):
     def __init__(
@@ -2096,6 +2110,10 @@ class Fan_in_MLP(nn.Module):
         model_dict["model_dict_branch2"] = self.net_branch2.model_dict if self.net_branch2 is not None else None
         model_dict["model_dict_joint"] = self.net_joint.model_dict
         return model_dict
+
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
 
 
 # ## Model_Ensemble:
@@ -2423,7 +2441,11 @@ class Model_Ensemble(nn.Module):
 
     def load_model_dict(self, model_dict):
         new_model_ensemble = load_model_dict(model_dict, is_cuda = self.is_cuda)
-        self.__dict__.update(new_model_ensemble.__dict__)    
+        self.__dict__.update(new_model_ensemble.__dict__)
+
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
 
         
 def load_model_dict_model_ensemble(model_dict, is_cuda = False):
@@ -2505,6 +2527,9 @@ class Model_with_uncertainty(nn.Module):
         model_dict["model_pred"] = self.model_pred.model_dict
         model_dict["model_logstd"] = self.model_logstd.model_dict
         return model_dict
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
 
     def set_cuda(self, is_cuda):
         self.model_pred.set_cuda(is_cuda)
@@ -2662,6 +2687,9 @@ class LSTM(RNNCellBase):
     def prepare_inspection(self, X, y, **kwargs):
         return {}
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
 
 # ## Wide ResNet:
 
@@ -2775,6 +2803,9 @@ class Wide_ResNet(nn.Module):
         model_dict["output_size"] = self.output_size
         model_dict["dropout_rate"] = self.dropout_rate
         return model_dict
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
     
     def get_regularization(self, *args, **kwargs):
         return to_Variable([0], is_cuda = self.is_cuda)
@@ -3001,6 +3032,10 @@ class ConvNet(nn.Module):
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
         model_dict["return_indices"] = self.return_indices
         return model_dict
+
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
     
     
     def DL(self):
@@ -3161,6 +3196,10 @@ class Conv_Model(nn.Module):
         return model_dict
 
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
+
 
 class Conv_Autoencoder(nn.Module):
     def __init__(
@@ -3239,6 +3278,9 @@ class Conv_Autoencoder(nn.Module):
         model = load_model_dict(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(model.__dict__)
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
     def DL(self):
         return self.encoder.DL + self.decoder.DL
 
@@ -3316,6 +3358,10 @@ class VAE(nn.Module):
         return model_dict
 
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
+
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
         return self.encoder.get_regularization(source = source, mode = mode) + self.decoder.get_regularization(source = source, mode = mode)
 
@@ -3375,6 +3421,9 @@ class Net_reparam(nn.Module):
         model_dict["model"] = self.model.model_dict
         model_dict["reparam_mode"] = self.reparam_mode
         return model_dict
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
     
 
 def reparameterize(model, input, mode = "full", size = None):
@@ -3546,6 +3595,10 @@ class Mixture_Gaussian(nn.Module):
         return model_dict
 
 
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
+
+
     def get_param(self):
         weights = to_np_array(nn.Softmax(dim = 0)(self.weight_logits))
         loc_list = to_np_array(self.loc_list)
@@ -3671,6 +3724,9 @@ class Triangular_dist(Distribution):
         model_dict["a"] = to_np_array(self.a)
         model_dict["b"] = to_np_array(self.b)
         return model_dict
+
+    def save_model(self, filename):
+        pickle.dump(self.model_dict, open(filename, "wb"))
 
 
 # In[ ]:
