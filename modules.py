@@ -431,7 +431,7 @@ class Simple_Layer(nn.Module):
     def get_weights_bias(self, is_grad = False):
         if not is_grad:
             if self.bias_on:
-                return deepcopy(to_np_array(self.W_core, full_reduce = False)), deepcopy(to_np_array(sef.b_core, full_reduce = False))
+                return deepcopy(to_np_array(self.W_core, full_reduce = False)), deepcopy(to_np_array(self.b_core, full_reduce = False))
             else:
                 return deepcopy(to_np_array(self.W_core, full_reduce = False)), None
         else:

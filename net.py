@@ -87,6 +87,7 @@ def train(
     # Inspection kwargs:
     inspect_step = kwargs["inspect_step"] if "inspect_step" in kwargs else None  # Whether to inspect each step
     inspect_items = kwargs["inspect_items"] if "inspect_items" in kwargs else None
+    inspect_items_train = get_inspect_items_train(inspect_items)
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     if inspect_functions is not None:
         for inspect_function_key in inspect_functions:
@@ -140,6 +141,11 @@ def train(
         co_multi_step = co_kwargs["co_multi_step"] if "co_multi_step" in co_kwargs else 1
     
     # Get original loss:
+    if len(inspect_items_train) > 0:
+        loss_value_train = get_loss(model, train_loader, X, y, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
+        info_dict_train = prepare_inspection(model, train_loader, X, y, transform_label=transform_label, **kwargs)
+        if "loss" in record_keys:
+            record_data(data_record, [loss_value_train], ["loss_tr"])
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
@@ -206,12 +212,17 @@ def train(
         print("{0}:".format(-1), end = "")
         print("\tlr: {0:.3e}\t loss:{1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_original, inspect_loss_precision), end = "")
         info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
+        if len(inspect_items_train) > 0:
+            print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
+            info_dict_train = update_key_train(info_dict_train, inspect_items_train)
+            info_dict.update(info_dict_train)
         if len(info_dict) > 0:
             for item in inspect_items:
                 if item in info_dict:
                     print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
                     if item in record_keys and item != "loss":
                         record_data(data_record, [to_np_array(info_dict[item])], [item])
+        
         if co_kwargs is not None:
             co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
             if "co_loss" in inspect_items:
@@ -234,6 +245,7 @@ def train(
 
     # Training:
     to_stop = False
+    
     for i in range(epochs + 1):
         model.train()
         
@@ -372,6 +384,9 @@ def train(
 
         if i % inspect_interval == 0:
             model.eval()
+            if inspect_items is not None and i % inspect_items_interval == 0 and len(inspect_items_train) > 0:
+                loss_value_train = get_loss(model, train_loader, X, y, criterion = criterion, loss_epoch = i, transform_label=transform_label, **kwargs)
+                info_dict_train = prepare_inspection(model, train_loader, X, y, transform_label=transform_label, **kwargs)
             loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **kwargs)
             if scheduler_type is not None:
                 if lr_rampup_steps is None or train_loader is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
@@ -398,12 +413,17 @@ def train(
                     print("{0}:".format(i), end = "")
                     print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
                     info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
+                    if len(inspect_items_train) > 0:
+                        print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
+                        info_dict_train = update_key_train(info_dict_train, inspect_items_train)
+                        info_dict.update(info_dict_train)
                     if len(info_dict) > 0:
                         for item in inspect_items:
                             if item in info_dict:
                                 print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
                                 if item in record_keys and item != "loss":
                                     record_data(data_record, [to_np_array(info_dict[item])], [item])
+                    
                     if co_kwargs is not None:
                         co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **co_kwargs)
                         co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
@@ -900,8 +920,24 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, transform_
         all_dict_summary = {}
         for key, item in all_dict.items():
             all_dict_summary[key] = np.mean(all_dict[key])
-    model.info_dict = all_dict_summary
+    model.info_dict = deepcopy(all_dict_summary)
     return all_dict_summary
+
+
+def get_inspect_items_train(inspect_items):
+    inspect_items_train = []
+    for item in inspect_items:
+        if item.endswith("_tr"):
+            inspect_items_train.append("_".join(item.split("_")[:-1]))
+    return inspect_items_train
+
+
+def update_key_train(info_dict_train, inspect_items_train):
+    info_dict_train_new = {}
+    for key, item in info_dict_train.items():
+        if key in inspect_items_train:
+            info_dict_train_new[key + "_tr"] = item
+    return deepcopy(info_dict_train_new)
 
 
 # ## Simplifying functionality:
