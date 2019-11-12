@@ -39,7 +39,15 @@ def plot_matrices(
     if title is not None:
         fig.suptitle(title, fontsize = 18, horizontalalignment = 'left', x=0.1)
     
-    matrix_list = np.array([to_np_array(matrix_list[i]) for i in range(len(matrix_list))])
+    # To np array. If None, will transform to NaN:
+    matrix_list_new = []
+    for i, element in enumerate(matrix_list):
+        if element is not None:
+            matrix_list_new.append(to_np_array(element))
+        else:
+            matrix_list_new.append(np.array([[np.NaN]]))
+    matrix_list = np.array(matrix_list_new)
+    
     num_matrixs = len(matrix_list)
     rows = np.ceil(num_matrixs / float(images_per_row))
     try:
