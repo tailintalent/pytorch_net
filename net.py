@@ -74,7 +74,7 @@ def train(
             is_cuda = train_loader.dataset.tensors[0].is_cuda
         else:
             is_cuda = X.is_cuda
-    
+
     # Optimization kwargs:
     epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
     lr = kwargs["lr"] if "lr" in kwargs else 5e-3
@@ -97,7 +97,7 @@ def train(
     inspect_image_interval = kwargs["inspect_image_interval"] if "inspect_image_interval" in kwargs else None
     inspect_loss_precision = kwargs["inspect_loss_precision"] if "inspect_loss_precision" in kwargs else 4
     callback = kwargs["callback"] if "callback" in kwargs else None
-    
+
     # Saving kwargs:
     record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
     filename = kwargs["filename"] if "filename" in kwargs else None
@@ -119,7 +119,7 @@ def train(
         batch_idx = 0
         logger = Logger(logdir)
     logimages = kwargs["logimages"] if "logimages" in kwargs else None
-    
+
     if validation_loader is not None:
         assert validation_data is None
         X_valid, y_valid = None, None
@@ -127,11 +127,11 @@ def train(
         X_valid, y_valid = validation_data
     else:
         X_valid, y_valid = X, y
-        
+
     # Setting up dynamic label noise:
     label_noise_matrix = kwargs["label_noise_matrix"] if "label_noise_matrix" in kwargs else None
     transform_label = Transform_Label(label_noise_matrix = label_noise_matrix)
-    
+
     # Setting up cotrain optimizer:
     co_kwargs = kwargs["co_kwargs"] if "co_kwargs" in kwargs else None
     if co_kwargs is not None:
@@ -139,7 +139,7 @@ def train(
         co_model = co_kwargs["co_model"]
         co_criterion = co_kwargs["co_criterion"] if "co_criterion" in co_kwargs else None
         co_multi_step = co_kwargs["co_multi_step"] if "co_multi_step" in co_kwargs else 1
-    
+
     # Get original loss:
     if len(inspect_items_train) > 0:
         loss_value_train = get_loss(model, train_loader, X, y, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
@@ -149,6 +149,9 @@ def train(
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
+    if "reg" in record_keys and "reg_dict" in kwargs:
+        reg_value = get_regularization(model, loss_epoch = 0, **kwargs)
+        record_data(data_record, [reg_value], ["reg"])
     if "param" in record_keys:
         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
     if "param_grad" in record_keys:
@@ -178,35 +181,6 @@ def train(
         return loss_original, loss_value, data_record
     optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs) if "optimizer" not in kwargs or ("optimizer" in kwargs and kwargs["optimizer"] is None) else kwargs["optimizer"]
 
-    
-    # Setting up gradient noise:
-    if gradient_noise is not None:
-        from pytorch_net.util import Gradient_Noise_Scale_Gen
-        scale_gen = Gradient_Noise_Scale_Gen(epochs = epochs,
-                                             gamma = gradient_noise["gamma"],  # decay rate
-                                             eta = gradient_noise["eta"],      # starting variance
-                                             gradient_noise_interval_epoch = 1,
-                                            )
-        gradient_noise_scale = scale_gen.generate_scale(verbose = True)
-    
-    # Set up learning rate scheduler:
-    if scheduler_type is not None:
-        if scheduler_type == "ReduceLROnPlateau":
-            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 40
-            scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
-            scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
-            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
-        elif scheduler_type == "LambdaLR":
-            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
-            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
-        else:
-            raise
-    
-    if lr_rampup_steps is not None and train_loader is not None:
-        scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
-        data_size = train_loader.dataset.tensors[0].shape[0]
-        
-    
     # Initialize inspect_items:
     if inspect_items is not None:
         print("{0}:".format(-1), end = "")
@@ -216,13 +190,15 @@ def train(
             print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
             info_dict_train = update_key_train(info_dict_train, inspect_items_train)
             info_dict.update(info_dict_train)
+        if "reg_dict" in kwargs:
+            print("\treg:{0:.{1}f}".format(to_np_array(reg_value), inspect_loss_precision), end="")
         if len(info_dict) > 0:
             for item in inspect_items:
                 if item in info_dict:
                     print(" \t{0}: {1:.{2}f}".format(item, info_dict[item], inspect_loss_precision), end = "")
-                    if item in record_keys and item != "loss":
+                    if item in record_keys and item not in ["loss", "reg"]:
                         record_data(data_record, [to_np_array(info_dict[item])], [item])
-        
+
         if co_kwargs is not None:
             co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
             if "co_loss" in inspect_items:
@@ -236,6 +212,33 @@ def train(
                             record_data(data_record, [to_np_array(co_info_dict[item])], [item])
         print()
 
+    # Setting up gradient noise:
+    if gradient_noise is not None:
+        from pytorch_net.util import Gradient_Noise_Scale_Gen
+        scale_gen = Gradient_Noise_Scale_Gen(epochs = epochs,
+                                             gamma = gradient_noise["gamma"],  # decay rate
+                                             eta = gradient_noise["eta"],      # starting variance
+                                             gradient_noise_interval_epoch = 1,
+                                            )
+        gradient_noise_scale = scale_gen.generate_scale(verbose = True)
+
+    # Set up learning rate scheduler:
+    if scheduler_type is not None:
+        if scheduler_type == "ReduceLROnPlateau":
+            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 40
+            scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
+            scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
+            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
+        elif scheduler_type == "LambdaLR":
+            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
+            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
+        else:
+            raise
+    # Ramping or learning rate for the first lr_rampup_steps steps:
+    if lr_rampup_steps is not None and train_loader is not None:
+        scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
+        data_size = train_loader.dataset.tensors[0].shape[0]
+
     # Initialize logdir:
     if logdir is not None:
         if logimages is not None:
@@ -245,10 +248,10 @@ def train(
 
     # Training:
     to_stop = False
-    
+
     for i in range(epochs + 1):
         model.train()
-        
+
         # Updating gradient noise:
         if gradient_noise is not None:
             hook_handle_list = []
@@ -267,7 +270,7 @@ def train(
                             h = param.register_hook(lambda grad: grad + Variable(torch.normal(mean = torch.zeros(grad.size()),
                                                                                               std = current_gradient_noise_scale * torch.ones(grad.size()))))
                             hook_handle_list.append(h)
-        
+
         if X is not None and y is not None:
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
@@ -297,7 +300,7 @@ def train(
         else:
             if inspect_step is not None:
                 info_dict_step = {key: [] for key in inspect_items}
-            
+
             for k, (X_batch, y_batch) in enumerate(train_loader):
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
@@ -325,7 +328,7 @@ def train(
                                 if item in info_dict:
                                     logger.log_scalar(item, info_dict[item], batch_idx)
                     optimizer.step(closure)
-                
+
                 # Rampup scheduler:
                 if lr_rampup_steps is not None and i * data_size // len(X_batch) + k < lr_rampup_steps:
                     scheduler_rampup.step()
@@ -344,7 +347,7 @@ def train(
                                         if item in co_info_dict:
                                             logger.log_scalar(item, co_info_dict[item], batch_idx)
                             co_optimizer.step()
-                
+
                 # Inspect at each step:
                 if inspect_step is not None:
                     if k % inspect_step == 0:
@@ -388,6 +391,7 @@ def train(
                 loss_value_train = get_loss(model, train_loader, X, y, criterion = criterion, loss_epoch = i, transform_label=transform_label, **kwargs)
                 info_dict_train = prepare_inspection(model, train_loader, X, y, transform_label=transform_label, **kwargs)
             loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **kwargs)
+            reg_value = get_regularization(model, loss_epoch = i, **kwargs)
             if scheduler_type is not None:
                 if lr_rampup_steps is None or train_loader is None or (lr_rampup_steps is not None and i * data_size // len(X_batch) + k >= lr_rampup_steps):
                     if scheduler_type == "ReduceLROnPlateau":
@@ -417,13 +421,15 @@ def train(
                         print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
                         info_dict_train = update_key_train(info_dict_train, inspect_items_train)
                         info_dict.update(info_dict_train)
+                    if "reg_dict" in kwargs:
+                        print("\treg:{0:.{1}f}".format(to_np_array(reg_value), inspect_loss_precision), end="")
                     if len(info_dict) > 0:
                         for item in inspect_items:
                             if item in info_dict:
                                 print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
-                                if item in record_keys and item != "loss":
+                                if item in record_keys and item not in ["loss", "reg"]:
                                     record_data(data_record, [to_np_array(info_dict[item])], [item])
-                    
+
                     if co_kwargs is not None:
                         co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **co_kwargs)
                         co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
@@ -445,6 +451,8 @@ def train(
                                     record_data(data_record, [np.mean(info_dict_step[item])], ["{}_s".format(item)])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
+                    if "reg" in record_keys and "reg_dict" in kwargs:
+                        record_data(data_record, [reg_value], ["reg"])
                     if "param" in record_keys:
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
                     if "param_grad" in record_keys:
