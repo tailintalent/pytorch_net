@@ -149,7 +149,7 @@ def train(
     loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
-    if "reg" in record_keys and "reg_dict" in kwargs:
+    if "reg" in record_keys and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
         reg_value = get_regularization(model, loss_epoch = 0, **kwargs)
         record_data(data_record, [reg_value], ["reg"])
     if "param" in record_keys:
@@ -190,7 +190,7 @@ def train(
             print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
             info_dict_train = update_key_train(info_dict_train, inspect_items_train)
             info_dict.update(info_dict_train)
-        if "reg_dict" in kwargs:
+        if "reg" in record_keys and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
             print("\treg:{0:.{1}f}".format(to_np_array(reg_value), inspect_loss_precision), end="")
         if len(info_dict) > 0:
             for item in inspect_items:
@@ -421,7 +421,7 @@ def train(
                         print("\tloss_tr: {0:.{1}f}".format(loss_value_train, inspect_loss_precision), end = "")
                         info_dict_train = update_key_train(info_dict_train, inspect_items_train)
                         info_dict.update(info_dict_train)
-                    if "reg_dict" in kwargs:
+                    if "reg" in inspect_items and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
                         print("\treg:{0:.{1}f}".format(to_np_array(reg_value), inspect_loss_precision), end="")
                     if len(info_dict) > 0:
                         for item in inspect_items:
@@ -451,7 +451,7 @@ def train(
                                     record_data(data_record, [np.mean(info_dict_step[item])], ["{}_s".format(item)])
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
-                    if "reg" in record_keys and "reg_dict" in kwargs:
+                    if "reg" in record_keys and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
                         record_data(data_record, [reg_value], ["reg"])
                     if "param" in record_keys:
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
