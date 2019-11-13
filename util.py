@@ -3,6 +3,8 @@ import os
 from numbers import Number
 import numpy as np
 from copy import deepcopy
+import json
+import pickle
 import random
 from sklearn.model_selection import train_test_split
 import scipy.linalg
@@ -14,7 +16,10 @@ import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
 from torch.optim.lr_scheduler import _LRScheduler
+
 PrecisionFloorLoss = 2 ** (-32)
+CLASS_TYPES = ["MLP", "Multi_MLP", "Branching_Net", "Fan_in_MLP", "Model_Ensemble", "Model_with_uncertainty",
+               "RNNCellBase", "LSTM", "Wide_ResNet", "Conv_Net", "Conv_Model", "Conv_Autoencoder", "VAE", "Net_reparam", "Mixture_Gaussian", "Triangular_dist"]
 
 
 def plot_matrices(
@@ -1172,6 +1177,28 @@ class Gradient_Noise_Scale_Gen(object):
         if verbose:
             print("gradient_noise_scale: start = {0}, end = {1:.6f}, gamma = {2}, length = {3}".format(gradient_noise_scale[0], gradient_noise_scale[-1], self.gamma, self.max_iter))
         return gradient_noise_scale
+
+
+def load_model(filename, mode="pickle"):
+    if mode == "pickle":
+        model_dict = pickle.load(open(filename, "rb"))
+    elif mode == "json":
+        with open(filename, 'r') as outfile:
+            json_dict = json.load(outfile)
+            model_dict = deserialize(json_dict)
+    else:
+        raise Exception("mode {} is not valid!".format(mode))
+    return model_dict
+
+
+def save_model(model_dict, filename, mode="pickle"):
+    if mode == "pickle":
+        pickle.dump(model_dict, open(filename, "wb"))
+    elif mode == "json":
+        with open(filename, 'w') as outfile:
+            json.dump(serialize(model_dict), outfile)
+    else:
+        raise Exception("mode {} is not valid!".format(mode))
 
 
 def serialize(item):

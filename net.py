@@ -28,7 +28,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
 from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss
-from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item
+from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model
 
 
 # ## Training functionality:
@@ -1875,10 +1875,17 @@ class MLP(nn.Module):
     def load_model_dict(self, model_dict):
         new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(new_net.__dict__)
+    
+    
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
     def get_loss(self, input, target, criterion, **kwargs):
@@ -2016,8 +2023,15 @@ class Multi_MLP(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
     def get_weights_bias(self, W_source = "core", b_source = "core"):
@@ -2096,8 +2110,15 @@ class Branching_Net(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
     
 class Fan_in_MLP(nn.Module):
@@ -2160,8 +2181,15 @@ class Fan_in_MLP(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
 # ## Model_Ensemble:
@@ -2492,8 +2520,15 @@ class Model_Ensemble(nn.Module):
         self.__dict__.update(new_model_ensemble.__dict__)
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
         
 def load_model_dict_model_ensemble(model_dict, is_cuda = False):
@@ -2576,8 +2611,14 @@ class Model_with_uncertainty(nn.Module):
         model_dict["model_logstd"] = self.model_logstd.model_dict
         return model_dict
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
     def set_cuda(self, is_cuda):
         self.model_pred.set_cuda(is_cuda)
@@ -2735,8 +2776,14 @@ class LSTM(RNNCellBase):
     def prepare_inspection(self, X, y, **kwargs):
         return {}
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
 # ## Wide ResNet:
@@ -2852,8 +2899,14 @@ class Wide_ResNet(nn.Module):
         model_dict["dropout_rate"] = self.dropout_rate
         return model_dict
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
     
     def get_regularization(self, *args, **kwargs):
         return to_Variable([0], is_cuda = self.is_cuda)
@@ -3082,8 +3135,15 @@ class ConvNet(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
     
     
     def DL(self):
@@ -3244,8 +3304,15 @@ class Conv_Model(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
 
@@ -3326,8 +3393,14 @@ class Conv_Autoencoder(nn.Module):
         model = load_model_dict(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(model.__dict__)
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
     def DL(self):
         return self.encoder.DL + self.decoder.DL
@@ -3406,8 +3479,15 @@ class VAE(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
@@ -3470,8 +3550,14 @@ class Net_reparam(nn.Module):
         model_dict["reparam_mode"] = self.reparam_mode
         return model_dict
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
     
 
 def reparameterize(model, input, mode = "full", size = None):
@@ -3643,8 +3729,15 @@ class Mixture_Gaussian(nn.Module):
         return model_dict
 
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
     def get_param(self):
@@ -3773,8 +3866,14 @@ class Triangular_dist(Distribution):
         model_dict["b"] = to_np_array(self.b)
         return model_dict
 
-    def save_model(self, filename):
-        pickle.dump(self.model_dict, open(filename, "wb"))
+    def load(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        model_dict = load_model(filename, mode=mode)
+        self.load_model_dict(model_dict)
+
+    def save(self, filename):
+        mode = "json" if filename.endswith(".json") else "pickle"
+        save_model(self.model_dict, filename, mode=mode)
 
 
 # In[ ]:
