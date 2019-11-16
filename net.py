@@ -933,6 +933,8 @@ def prepare_inspection(model, data_loader = None, X = None, y = None, transform_
 
 
 def get_inspect_items_train(inspect_items):
+    if inspect_items is None:
+        return []
     inspect_items_train = []
     for item in inspect_items:
         if item.endswith("_tr"):
