@@ -65,7 +65,7 @@ def train(
                     else:
                         reg_coeff_ele = reg_coeff[-1]
                 # Accumulate regularization:
-                reg = reg + model.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff_ele
+                reg = reg + model.get_regularization(source=[reg_type], mode=reg_mode, **kwargs) * reg_coeff_ele
         return reg
 
     if is_cuda is None:
@@ -119,6 +119,7 @@ def train(
         batch_idx = 0
         logger = Logger(logdir)
     logimages = kwargs["logimages"] if "logimages" in kwargs else None
+    reg_mode = kwargs["reg_mode"] if "reg_mode" in kwargs else "L1"
 
     if validation_loader is not None:
         assert validation_data is None
