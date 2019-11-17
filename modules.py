@@ -160,6 +160,7 @@ class Simple_Layer(nn.Module):
         # Other attributes that are specific to this layer:
         self.activation = settings["activation"] if "activation" in settings else Default_Activation
         self.bias_on = settings["bias_on"] if "bias_on" in settings else True
+        self.reg_on = settings["reg_on"] if "reg_on" in settings else True
         
         # Define the learnable parameters in the module (use any name you like). 
         # use nn.Parameter() so that the parameters is registered in the module and can be gradient-updated:
@@ -452,26 +453,27 @@ class Simple_Layer(nn.Module):
         reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
-        for source_ele in source:
-            if source_ele == "weight":
-                if mode == "L1":
-                    reg = reg + self.W_core.abs().sum()
-                elif mode == "L2":
-                    reg = reg + (self.W_core ** 2).sum()
-                elif mode in AVAILABLE_REG:
-                    pass
-                else:
-                    raise Exception("mode '{0}' not recognized!".format(mode))
-            elif source_ele == "bias":
-                if self.bias_on:
+        if self.reg_on:
+            for source_ele in source:
+                if source_ele == "weight":
                     if mode == "L1":
-                        reg = reg + self.b_core.abs().sum()
+                        reg = reg + self.W_core.abs().sum()
                     elif mode == "L2":
-                        reg = reg + (self.b_core ** 2).sum()
+                        reg = reg + (self.W_core ** 2).sum()
                     elif mode in AVAILABLE_REG:
                         pass
                     else:
                         raise Exception("mode '{0}' not recognized!".format(mode))
+                elif source_ele == "bias":
+                    if self.bias_on:
+                        if mode == "L1":
+                            reg = reg + self.b_core.abs().sum()
+                        elif mode == "L2":
+                            reg = reg + (self.b_core ** 2).sum()
+                        elif mode in AVAILABLE_REG:
+                            pass
+                        else:
+                            raise Exception("mode '{0}' not recognized!".format(mode))
         return reg
 
 
