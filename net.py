@@ -1644,7 +1644,7 @@ class MLP(nn.Module):
     def __init__(
         self,
         input_size,
-        struct_param,
+        struct_param = None,
         W_init_list = None,     # initialization for weights
         b_init_list = None,     # initialization for bias
         settings = {},          # Default settings for each layer, if the settings for the layer is not provided in struct_param
@@ -1652,14 +1652,15 @@ class MLP(nn.Module):
         ):
         super(MLP, self).__init__()
         self.input_size = input_size
-        self.num_layers = len(struct_param)
-        self.W_init_list = W_init_list
-        self.b_init_list = b_init_list
-        self.settings = deepcopy(settings)
         self.is_cuda = is_cuda
-        self.info_dict = {}
+        if struct_param is not None:
+            self.num_layers = len(struct_param)
+            self.W_init_list = W_init_list
+            self.b_init_list = b_init_list
+            self.settings = deepcopy(settings)
+            self.info_dict = {}
 
-        self.init_layers(deepcopy(struct_param))
+            self.init_layers(deepcopy(struct_param))
 
 
     @property
@@ -1796,6 +1797,8 @@ class MLP(nn.Module):
 
 
     def get_weights_bias(self, W_source = "core", b_source = "core", layer_ids = None, is_grad = False, isplot = False, verbose = False, raise_error = True):
+        if not hasattr(self, "struct_param"):
+            return None, None
         layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
         W_list = []
         b_list = []
