@@ -27,7 +27,7 @@ from torch.distributions.utils import broadcast_all
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
-from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss
+from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL
 from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model
 
 
@@ -2938,98 +2938,99 @@ class ConvNet(nn.Module):
     def __init__(
         self,
         input_channels,
-        struct_param,
-        W_init_list = None,
-        b_init_list = None,
-        settings = {},
-        return_indices = False,
-        is_cuda = False,
+        struct_param=None,
+        W_init_list=None,
+        b_init_list=None,
+        settings={},
+        return_indices=False,
+        is_cuda=False,
         ):
         super(ConvNet, self).__init__()
         self.input_channels = input_channels
-        self.struct_param = struct_param
-        self.W_init_list = W_init_list
-        self.b_init_list = b_init_list
-        self.settings = settings
-        self.num_layers = len(struct_param)
-        self.info_dict = {}
         self.is_cuda = is_cuda
-        self.param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
-        self.return_indices = return_indices
-        for i in range(len(self.struct_param)):
-            if i > 0:
-                k = 1
-                while self.struct_param[i - k][0] is None:
-                    k += 1
-                num_channels_prev = self.struct_param[i - k][0]
-            else:
-                num_channels_prev = input_channels
-                k = 0
-            if self.struct_param[i - k][1] == "Simple_Layer" and isinstance(num_channels_prev, tuple) and len(num_channels_prev) == 3:
-                num_channels_prev = num_channels_prev[0]
-            num_channels = self.struct_param[i][0]
-            layer_type = self.struct_param[i][1]
-            layer_settings = self.struct_param[i][2]
-            if "layer_input_size" in layer_settings and isinstance(layer_settings["layer_input_size"], tuple):
-                num_channels_prev = layer_settings["layer_input_size"][0]
-            if layer_type == "Conv2d":
-                layer = nn.Conv2d(num_channels_prev, 
-                                  num_channels,
-                                  kernel_size = layer_settings["kernel_size"],
-                                  stride = layer_settings["stride"] if "stride" in layer_settings else 1,
-                                  padding = layer_settings["padding"] if "padding" in layer_settings else 0,
-                                  dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
-                                 )
-            elif layer_type == "ConvTranspose2d":
-                layer = nn.ConvTranspose2d(num_channels_prev,
-                                           num_channels,
-                                           kernel_size = layer_settings["kernel_size"],
-                                           stride = layer_settings["stride"] if "stride" in layer_settings else 1,
+        if struct_param is not None:
+            self.struct_param = struct_param
+            self.W_init_list = W_init_list
+            self.b_init_list = b_init_list
+            self.settings = settings
+            self.num_layers = len(struct_param)
+            self.info_dict = {}
+            self.param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
+            self.return_indices = return_indices
+            for i in range(len(self.struct_param)):
+                if i > 0:
+                    k = 1
+                    while self.struct_param[i - k][0] is None:
+                        k += 1
+                    num_channels_prev = self.struct_param[i - k][0]
+                else:
+                    num_channels_prev = input_channels
+                    k = 0
+                if self.struct_param[i - k][1] == "Simple_Layer" and isinstance(num_channels_prev, tuple) and len(num_channels_prev) == 3:
+                    num_channels_prev = num_channels_prev[0]
+                num_channels = self.struct_param[i][0]
+                layer_type = self.struct_param[i][1]
+                layer_settings = self.struct_param[i][2]
+                if "layer_input_size" in layer_settings and isinstance(layer_settings["layer_input_size"], tuple):
+                    num_channels_prev = layer_settings["layer_input_size"][0]
+                if layer_type == "Conv2d":
+                    layer = nn.Conv2d(num_channels_prev, 
+                                      num_channels,
+                                      kernel_size = layer_settings["kernel_size"],
+                                      stride = layer_settings["stride"] if "stride" in layer_settings else 1,
+                                      padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                      dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
+                                     )
+                elif layer_type == "ConvTranspose2d":
+                    layer = nn.ConvTranspose2d(num_channels_prev,
+                                               num_channels,
+                                               kernel_size = layer_settings["kernel_size"],
+                                               stride = layer_settings["stride"] if "stride" in layer_settings else 1,
+                                               padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                               output_padding = layer_settings["output_padding"] if "output_padding" in layer_settings else 0,
+                                               dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
+                                              )
+                elif layer_type == "Simple_Layer":
+                    layer = get_Layer(layer_type = layer_type,
+                                      input_size = layer_settings["layer_input_size"],
+                                      output_size = num_channels,
+                                      W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
+                                      b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
+                                      settings = layer_settings,
+                                      is_cuda = self.is_cuda,
+                                     )
+                elif layer_type == "MaxPool2d":
+                    layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
+                                         stride = layer_settings["stride"] if "stride" in layer_settings else None,
+                                         padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                         return_indices = layer_settings["return_indices"] if "return_indices" in layer_settings else False,
+                                        )
+                elif layer_type == "MaxUnpool2d":
+                    layer = nn.MaxUnpool2d(kernel_size = layer_settings["kernel_size"],
+                                           stride = layer_settings["stride"] if "stride" in layer_settings else None,
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
-                                           output_padding = layer_settings["output_padding"] if "output_padding" in layer_settings else 0,
-                                           dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
-            elif layer_type == "Simple_Layer":
-                layer = get_Layer(layer_type = layer_type,
-                                  input_size = layer_settings["layer_input_size"],
-                                  output_size = num_channels,
-                                  W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
-                                  b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
-                                  settings = layer_settings,
-                                  is_cuda = self.is_cuda,
-                                 )
-            elif layer_type == "MaxPool2d":
-                layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
-                                     stride = layer_settings["stride"] if "stride" in layer_settings else None,
-                                     padding = layer_settings["padding"] if "padding" in layer_settings else 0,
-                                     return_indices = layer_settings["return_indices"] if "return_indices" in layer_settings else False,
-                                    )
-            elif layer_type == "MaxUnpool2d":
-                layer = nn.MaxUnpool2d(kernel_size = layer_settings["kernel_size"],
-                                       stride = layer_settings["stride"] if "stride" in layer_settings else None,
-                                       padding = layer_settings["padding"] if "padding" in layer_settings else 0,
-                                      )
-            elif layer_type == "Upsample":
-                layer = nn.Upsample(scale_factor = layer_settings["scale_factor"],
-                                    mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
-                                   )
-            elif layer_type == "BatchNorm2d":
-                layer = nn.BatchNorm2d(num_features = num_channels)
-            elif layer_type == "Dropout2d":
-                layer = nn.Dropout2d(p = 0.5)
-            elif layer_type == "Flatten":
-                layer = Flatten()
-            else:
-                raise Exception("layer_type {0} not recognized!".format(layer_type))
-            
-            # Initialize using provided initial values:
-            if self.W_init_list is not None and self.W_init_list[i] is not None and layer_type not in ["Simple_Layer"]:
-                layer.weight.data = torch.FloatTensor(self.W_init_list[i])
-                layer.bias.data = torch.FloatTensor(self.b_init_list[i])
-            
-            setattr(self, "layer_{0}".format(i), layer)
-        if self.is_cuda:
-            self.cuda()
+                elif layer_type == "Upsample":
+                    layer = nn.Upsample(scale_factor = layer_settings["scale_factor"],
+                                        mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
+                                       )
+                elif layer_type == "BatchNorm2d":
+                    layer = nn.BatchNorm2d(num_features = num_channels)
+                elif layer_type == "Dropout2d":
+                    layer = nn.Dropout2d(p = 0.5)
+                elif layer_type == "Flatten":
+                    layer = Flatten()
+                else:
+                    raise Exception("layer_type {0} not recognized!".format(layer_type))
+
+                # Initialize using provided initial values:
+                if self.W_init_list is not None and self.W_init_list[i] is not None and layer_type not in ["Simple_Layer"]:
+                    layer.weight.data = torch.FloatTensor(self.W_init_list[i])
+                    layer.bias.data = torch.FloatTensor(self.b_init_list[i])
+
+                setattr(self, "layer_{0}".format(i), layer)
+            if self.is_cuda:
+                self.cuda()
 
 
     def forward(self, input, indices_list = None, **kwargs):
