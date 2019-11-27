@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -155,6 +155,7 @@ class Simple_Layer(nn.Module):
         self.W_init = W_init
         self.b_init = b_init
         self.is_cuda = is_cuda
+        self.device = torch.device("cuda" if self.is_cuda else "cpu")
         self.settings = settings
         
         # Other attributes that are specific to this layer:
@@ -297,9 +298,9 @@ class Simple_Layer(nn.Module):
                 new_b_core = self.b_core[neuron_id: neuron_id + 1].detach().data
         else:
             raise Exception("mode {0} not recognized!".format(mode))
-        self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 1))
+        self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core.to(self.device)], 1))
         if self.bias_on:
-            self.b_core = nn.Parameter(torch.cat([self.b_core.data, new_b_core], 0))
+            self.b_core = nn.Parameter(torch.cat([self.b_core.data, new_b_core.to(self.device)], 0))
         self.output_size += num_neurons
         
     
