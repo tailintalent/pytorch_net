@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[ ]:
@@ -131,7 +131,7 @@ def train(
 
     # Setting up dynamic label noise:
     label_noise_matrix = kwargs["label_noise_matrix"] if "label_noise_matrix" in kwargs else None
-    transform_label = Transform_Label(label_noise_matrix = label_noise_matrix)
+    transform_label = Transform_Label(label_noise_matrix = label_noise_matrix, is_cuda=is_cuda)
 
     # Setting up cotrain optimizer:
     co_kwargs = kwargs["co_kwargs"] if "co_kwargs" in kwargs else None

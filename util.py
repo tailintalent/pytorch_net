@@ -1418,10 +1418,11 @@ def argmax_random(tensor):
 
 
 class Transform_Label(object):
-    def __init__(self, label_noise_matrix=None):
+    def __init__(self, label_noise_matrix=None, is_cuda=False):
         self.label_noise_matrix = label_noise_matrix
         if self.label_noise_matrix is not None:
             assert ((self.label_noise_matrix.sum(0) - 1) < 1e-10).all()
+        self.device = torch.device("cuda" if is_cuda else "cpu")
 
     def __call__(self, y):
         if self.label_noise_matrix is None:
@@ -1434,7 +1435,7 @@ class Transform_Label(object):
                 flip_rate = noise_matrix[:, y_ele]
                 y_ele = np.random.choice(dim, p = flip_rate)
                 y_tilde.append(y_ele)
-            y_tilde = torch.LongTensor(y_tilde)
+            y_tilde = torch.LongTensor(y_tilde).to(self.device)
             return y_tilde
 
         
