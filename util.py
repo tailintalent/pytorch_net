@@ -341,38 +341,38 @@ class MAELoss(_Loss):
         return loss
 
 
-def get_criterion(loss_type, reduce = True, **kwargs):
+def get_criterion(loss_type, reduce=None, **kwargs):
     """Get loss function"""
     if loss_type == "huber":
-        criterion = nn.SmoothL1Loss(reduce = reduce)
+        criterion = nn.SmoothL1Loss(reduce=reduce)
     elif loss_type == "mse":
-        criterion = nn.MSELoss(reduce = reduce)
+        criterion = nn.MSELoss(reduce=reduce)
     elif loss_type == "mae":
-        criterion = MAELoss(reduce = reduce)
+        criterion = MAELoss(reduce=reduce)
     elif loss_type == "DL":
-        criterion = Loss_Fun(core = "DL", 
-            loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss, 
-            DL_sum = kwargs["DL_sum"] if "DL_sum" in kwargs else False,
+        criterion = Loss_Fun(core="DL", 
+            loss_precision_floor=kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss, 
+            DL_sum=kwargs["DL_sum"] if "DL_sum" in kwargs else False,
         )
     elif loss_type == "DLs":
-        criterion = Loss_Fun(core = "DLs", 
-            loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss,
+        criterion = Loss_Fun(core="DLs", 
+            loss_precision_floor=kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs and kwargs["loss_precision_floor"] is not None else PrecisionFloorLoss,
             DL_sum = kwargs["DL_sum"] if "DL_sum" in kwargs else False,
         )
     elif loss_type == "mlse":
         epsilon = 1e-10
-        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce = reduce)(pred, target) + epsilon)
+        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce=reduce)(pred, target) + epsilon)
     elif loss_type == "mse+mlse":
         epsilon = 1e-10
-        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce = reduce)(pred, target) + epsilon) + nn.MSELoss(reduce = reduce)(pred, target).mean()
+        criterion = lambda pred, target: torch.log(nn.MSELoss(reduce=reduce)(pred, target) + epsilon) + nn.MSELoss(reduce=reduce)(pred, target).mean()
     elif loss_type == "cross-entropy":
-        criterion = nn.CrossEntropyLoss(reduce = reduce)
+        criterion = nn.CrossEntropyLoss(reduce=reduce)
     elif loss_type == "Loss_with_uncertainty":
-        criterion = Loss_with_uncertainty(core = kwargs["loss_core"] if "loss_core" in kwargs else "mse", epsilon = 1e-6)
+        criterion = Loss_with_uncertainty(core=kwargs["loss_core"] if "loss_core" in kwargs else "mse", epsilon = 1e-6)
     elif loss_type[:11] == "Contrastive":
         criterion_name = loss_type.split("-")[1]
         beta = eval(loss_type.split("-")[2])
-        criterion = ContrastiveLoss(get_criterion(criterion_name, reduce = reduce, **kwargs), beta = beta)
+        criterion = ContrastiveLoss(get_criterion(criterion_name, reduce=reduce, **kwargs), beta=beta)
     else:
         raise Exception("loss_type {0} not recognized!".format(loss_type))
     return criterion
