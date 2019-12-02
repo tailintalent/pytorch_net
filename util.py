@@ -1515,7 +1515,7 @@ def get_number_DL(n, status):
                 _, numerator, denominator, _ = bestApproximation(n, 100)
                 return np.log2((1 + abs(numerator)) * abs(denominator))
             else:
-                raise Exception("{0} is not a rational number!".format(n))
+                return np.log2(1 + (max(float(n), 2 ** (-64)) / PrecisionFloorLoss) ** 2) / 2   
     elif status == "non-snapped":
         return np.log2(1 + (float(n) / PrecisionFloorLoss) ** 2) / 2
     else:
