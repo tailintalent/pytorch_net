@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[ ]:
@@ -668,7 +668,7 @@ def train_simple(model, X, y, validation_data = None, inspect_interval = 5, **kw
 
 def load_model_dict_net(model_dict, is_cuda = False):
     net_type = model_dict["type"]
-    if net_type == "MLP":
+    if net_type.startswith("MLP"):
         return MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
                    W_init_list = model_dict["weights"] if "weights" in model_dict else None,
@@ -712,7 +712,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
         if "state_dict" in model_dict:
             model.load_state_dict(model_dict["state_dict"])
         return model
-    elif net_type == "ConvNet":
+    elif net_type.startswith("ConvNet"):
         return ConvNet(input_channels = model_dict["input_channels"],
                        struct_param = model_dict["struct_param"],
                        W_init_list = model_dict["weights"] if "weights" in model_dict else None,
@@ -1708,11 +1708,31 @@ class MLP(nn.Module):
         if is_res_block:
             output = output + input
         return output
+    
+    
+    def copy(self):
+        return deepcopy(self)
 
 
     def simplify(self, X, y, mode="full", isplot=False, target_name=None, validation_data = None, **kwargs):
         new_model, _ = simplify(self, X, y, mode=mode, isplot=isplot, target_name=target_name, validation_data=validation_data, **kwargs)
         self.__dict__.update(new_model.__dict__)
+    
+    
+    def snap(self, snap_mode="integer", top=5, **kwargs):
+        """Generate a set of new models whose parameters are snapped, each model with a different number of snapped parameters."""
+        if self.num_layers != 1:
+            return False, [self]
+        else:
+            model_list = []
+            for top_ele in range(1, top + 1):
+                new_model = self.copy()
+                layer = new_model.layer_0
+                layer.simplify(mode="snap", top=top_ele, snap_mode=snap_mode)
+                new_model.reset_layer(0, layer)
+                model_list.append(new_model)
+            is_succeed = True
+            return is_succeed, model_list
 
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
@@ -1872,12 +1892,12 @@ class MLP(nn.Module):
     
     @property
     def model_dict(self):
-        model_dict = {"type": "MLP"}
+        model_dict = {"type": self.__class__.__name__}
         model_dict["input_size"] = self.input_size
         model_dict["struct_param"] = get_full_struct_param(self.struct_param, self.settings)
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
         model_dict["settings"] = deepcopy(self.settings)
-        model_dict["net_type"] = "MLP"
+        model_dict["net_type"] = self.__class__.__name__
         return model_dict
 
 
@@ -2023,12 +2043,12 @@ class Multi_MLP(nn.Module):
 
     @property
     def model_dict(self):
-        model_dict = {"type": "Multi_MLP"}
+        model_dict = {"type": self.__class__.__name__}
         model_dict["input_size"] = self.input_size
         model_dict["struct_param"] = self.struct_param
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
         model_dict["settings"] = deepcopy(self.settings)
-        model_dict["net_type"] = "Multi_MLP"
+        model_dict["net_type"] = self.__class__.__name__
         return model_dict
 
 
@@ -2188,7 +2208,7 @@ class Fan_in_MLP(nn.Module):
     
     @property
     def model_dict(self):
-        model_dict = {'type': "Fan_in_MLP"}
+        model_dict = {'type': self.__class__.__name__}
         model_dict["model_dict_branch1"] = self.net_branch1.model_dict if self.net_branch1 is not None else None
         model_dict["model_dict_branch2"] = self.net_branch2.model_dict if self.net_branch2 is not None else None
         model_dict["model_dict_joint"] = self.net_joint.model_dict
@@ -3140,8 +3160,8 @@ class ConvNet(nn.Module):
 
     @property
     def model_dict(self):
-        model_dict = {"type": "ConvNet"}
-        model_dict["net_type"] = "ConvNet"
+        model_dict = {"type": self.__class__.__name__}
+        model_dict["net_type"] = self.__class__.__name__
         model_dict["input_channels"] = self.input_channels
         model_dict["struct_param"] = self.struct_param
         model_dict["settings"] = self.settings

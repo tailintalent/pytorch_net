@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -326,7 +326,7 @@ class Simple_Layer(nn.Module):
             raise Exception("mode {0} not recognized!".format(mode))
 
 
-    def simplify(self, mode = "snap", excluded_idx = [], **kwargs):
+    def simplify(self, mode="snap", excluded_idx=[], top=1, **kwargs):
         def get_idx_list(key_list, input_size, output_size):
             idx_list = []
             for pos, true_idx in key_list:
@@ -353,16 +353,16 @@ class Simple_Layer(nn.Module):
             # Identify the parameters to freeze:
             param = [to_np_array(self.W_core.view(-1))]
             if self.bias_on:
-                param.append(to_np_array(self.b_core.view(-1)))
+                param.append(to_np_array(self.b_core.view(-1), full_reduce=False))
             param = np.concatenate(param)
             if "snap_targets" in kwargs and kwargs["snap_targets"] is not None:
                 snap_targets = kwargs["snap_targets"]
                 is_target_given = True
             else:
                 excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), self.input_size, self.output_size)
-                snap_targets = snap(param, snap_mode = snap_mode, excluded_idx = excluded_idx_combined)
+                snap_targets = snap(param, snap_mode=snap_mode, excluded_idx=excluded_idx_combined, top=top)
                 is_target_given = False
-            
+
             info_list = []
             for idx, new_value in snap_targets:
                 if new_value is not None:
@@ -382,7 +382,7 @@ class Simple_Layer(nn.Module):
                         new_b_core[true_idx] = new_value
                         self.b_core = nn.Parameter(new_b_core)
                     self.snap_dict[(pos, true_idx)] = {"new_value": new_value}
-                    self.initialize_param_freeze(update_values = False)
+                    self.initialize_param_freeze(update_values=False)
         else:
             raise Exception("mode {0} not recognized!".format(mode))
         return info_list

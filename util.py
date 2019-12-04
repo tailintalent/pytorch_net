@@ -1596,9 +1596,18 @@ def bestApproximation(x,imax):
     else:
         return (None, 0, 0, 1)
 
-def integerSnap(p):
-    i = np.argmin(np.abs(p - np.round(p)))
-    return (i, np.round(p[i]))
+
+def integerSnap(p, top=1):
+    metric = np.abs(p - np.round(p))
+    chosen = np.argsort(metric)[:top]
+    return list(zip(chosen, np.round(p)[chosen]))
+
+
+def zeroSnap(p, top=1):
+    metric = np.abs(p)
+    chosen = np.argsort(metric)[:top]
+    return list(zip(chosen, np.zeros(len(chosen))))
+        
 
 def rationalSnap(p):
     snaps = np.array(list(bestApproximation(x,100) for x in p))
@@ -1657,12 +1666,15 @@ def separableSnap(M):
     aa = aa/aamin
     return (a/aamin,b*aamin)
 
-def snap_core(p, snap_mode):
+
+def snap_core(p, snap_mode, top=1):
     if len(p) == 0:
         return (None, None)
     else:
-        if snap_mode == "integer":
-            return integerSnap(p)
+        if snap_mode == "zero":
+            return zeroSnap(p, top=top)
+        elif snap_mode == "integer":
+            return integerSnap(p, top=top)
         elif snap_mode == "rational":
             return rationalSnap(p)
         elif snap_mode == "vector":
@@ -1676,18 +1688,19 @@ def snap_core(p, snap_mode):
         else:
             raise Exception("Snap mode {0} not recognized!".format(snap_mode))
 
-def snap(param, snap_mode, excluded_idx = None):
-    if excluded_idx is None:
-        idx, new_value = snap_core(param, snap_mode = snap_mode)
+
+def snap(param, snap_mode, excluded_idx=None, top=1):
+    if excluded_idx is None or len(excluded_idx) == 0:
+        return snap_core(param, snap_mode=snap_mode, top=top)
     else:
-        full_idx = list(range(len(param)))
+        assert top == 1
         full_idx = list(range(len(param)))
         valid_idx = sorted(list(set(full_idx) - set(excluded_idx)))
         valid_dict = list(enumerate(valid_idx))
         param_valid = [param[i] for i in valid_idx]
         idx_valid, new_value = snap_core(param_valid, snap_mode = snap_mode)
         idx = valid_dict[idx_valid][1] if idx_valid is not None else None
-    return [(idx, new_value)]
+        return [(idx, new_value)]
 ##
 
     
