@@ -1609,12 +1609,14 @@ def zeroSnap(p, top=1):
     return list(zip(chosen, np.zeros(len(chosen))))
         
 
-def rationalSnap(p):
+def rationalSnap(p, top=1):
+    """Snap to nearest rational number using continued fraction."""
     snaps = np.array(list(bestApproximation(x,100) for x in p))
-    i = np.argmin(snaps[:,3])
-    return (i, snaps[i,0])
+    chosen = np.argsort(snaps[:, 3])[:top]
+    return list(zip(chosen, snaps[chosen, 0]))
 
-def vectorSnap(p):
+def vectorSnap(p, top=1):
+    """Divide p by its smallest number, and then perform integer snap."""
     tiny = 0.001
     huge = 1000000.
     ap = np.abs(p)
@@ -1624,12 +1626,12 @@ def vectorSnap(p):
     i = np.argmin(ap)
     apmin = ap[i] * np.sign(p[i])
     if apmin >= huge:
-        return (-1, p)
+        return []
     else:
         q = p / apmin.astype(float)
         q[i] = 0.5  # It's q[i] = 1, so we don't want to select it
-        (i, qnew) = integerSnap(q)
-        return (i, apmin*qnew)
+        snap_targets = integerSnap(q, top=top)
+        return [(i, apmin * target) for i, target in snap_targets]
 
 def pairSnap(p, snap_mode = "integer"):
     p = np.array(p)
@@ -1669,16 +1671,16 @@ def separableSnap(M):
 
 def snap_core(p, snap_mode, top=1):
     if len(p) == 0:
-        return (None, None)
+        return []
     else:
         if snap_mode == "zero":
             return zeroSnap(p, top=top)
         elif snap_mode == "integer":
             return integerSnap(p, top=top)
         elif snap_mode == "rational":
-            return rationalSnap(p)
+            return rationalSnap(p, top=top)
         elif snap_mode == "vector":
-            return vectorSnap(p)
+            return vectorSnap(p, top=top)
         elif snap_mode == "pair_integer":
             return pairSnap(p, snap_mode = "integer")
         elif snap_mode == "pair_rational":
@@ -1693,15 +1695,15 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
     if excluded_idx is None or len(excluded_idx) == 0:
         return snap_core(param, snap_mode=snap_mode, top=top)
     else:
-        assert top == 1
         full_idx = list(range(len(param)))
         valid_idx = sorted(list(set(full_idx) - set(excluded_idx)))
         valid_dict = list(enumerate(valid_idx))
         param_valid = [param[i] for i in valid_idx]
-        idx_valid, new_value = snap_core(param_valid, snap_mode = snap_mode)
-        idx = valid_dict[idx_valid][1] if idx_valid is not None else None
-        return [(idx, new_value)]
-##
+        snap_targets_valid = snap_core(param_valid, snap_mode=snap_mode, top=top)
+        snap_targets = []
+        for idx_valid, new_value in snap_targets_valid:
+            snap_targets.append((valid_dict[idx_valid][1], new_value))
+        return snap_targets
 
     
 class Batch_Generator(object):

@@ -196,6 +196,8 @@ class Simple_Layer(nn.Module):
             "output_size": output_size,
             "settings": self.settings,
         }
+        if len(self.snap_dict) > 0:
+            Layer_dict["settings"]["snap_dict"] = self.snap_dict
         Layer_dict["weights"], Layer_dict["bias"] = self.get_weights_bias()
         return Layer_dict
 
