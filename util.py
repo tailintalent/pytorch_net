@@ -1511,7 +1511,7 @@ def get_number_DL(n, status):
         if np.abs(n - int(n)) < epsilon:
             return np.log2(1 + abs(int(n)))
         else:
-            snapped = snap_core([n], "rational")[1]
+            snapped = snap_core([n], "rational")[0][1]
             if snapped is not None and abs(n - snapped) < epsilon:
                 _, numerator, denominator, _ = bestApproximation(n, 100)
                 return np.log2((1 + abs(numerator)) * abs(denominator))

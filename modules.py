@@ -184,6 +184,8 @@ class Simple_Layer(nn.Module):
     @property
     def struct_param(self):
         output_size = self.output_size_original if hasattr(self, "output_size_original") else self.output_size
+        if len(self.snap_dict) > 0:
+            self.settings["snap_dict"] = self.snap_dict
         return [output_size, "Simple_Layer", self.settings]
 
 
