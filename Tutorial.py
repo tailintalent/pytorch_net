@@ -95,17 +95,12 @@ net_loaded(X_train) - net(X_train)
 # In[ ]:
 
 
-# Setting up symbolic expression for layer 1 and layer 2:
-symbolic_expression1 = standardize_symbolic_expression("[3 * x0 ** 2 + p0 * x1 * x2 + p1 * x3, 5 * x0 ** 2 + p2 * x1 + p3 * x3 * x2]")
-symbolic_expression2 = standardize_symbolic_expression("[3 * x0 ** 2 + p2 * x1]")
-variable_name_list = get_variable_name_list(symbolic_expression1)
-
 # Construct the network:
 model_dict = {
     "type": "MLP",
-    "input_size": len(variable_name_list),
-    "struct_param": [[len(symbolic_expression1), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression1)}],
-                     [len(symbolic_expression2), "Symbolic_Layer", {"symbolic_expression": str(symbolic_expression2)}], 
+    "input_size": 4,
+    "struct_param": [[2, "Symbolic_Layer", {"symbolic_expression": "[3 * x0 ** 2 + p0 * x1 * x2 + p1 * x3, 5 * x0 ** 2 + p2 * x1 + p3 * x3 * x2]"}],
+                     [1, "Symbolic_Layer", {"symbolic_expression": "[3 * x0 ** 2 + p2 * x1]"}], 
                     ],
     # Here the optional "weights" sets up the initial values for the parameters. If not set, will initialize with N(0, 1):
     'weights': [{'p0': -1.3,
@@ -118,10 +113,10 @@ model_dict = {
 net = load_model_dict(model_dict)
 pp.pprint(net.model_dict)
 print("\nOutput:")
-net(torch.rand(100, len(variable_name_list)))
+net(torch.rand(100, 4))
 
 
-# ### 2.1 Simplification of an MLP from Simple_Layer to Symbolic_Layer:
+# ### 2.2 Simplification of an MLP from Simple_Layer to Symbolic_Layer:
 
 # In[4]:
 
