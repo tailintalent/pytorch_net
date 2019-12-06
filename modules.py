@@ -151,25 +151,26 @@ class Simple_Layer(nn.Module):
             self.output_size_original = output_size
         else:
             self.output_size = output_size
-        # self.W_init, self.b_init can be a numpy array, or a string like "glorot-normal":
-        self.W_init = W_init
-        self.b_init = b_init
+        
         self.is_cuda = is_cuda
         self.device = torch.device("cuda" if self.is_cuda else "cpu")
         self.settings = settings
         
         # Other attributes that are specific to this layer:
         self.activation = settings["activation"] if "activation" in settings else Default_Activation
+        self.weight_on = settings["weight_on"] if "weight_on" in settings else True
         self.bias_on = settings["bias_on"] if "bias_on" in settings else True
         self.reg_on = settings["reg_on"] if "reg_on" in settings else True
         
         # Define the learnable parameters in the module (use any name you like). 
         # use nn.Parameter() so that the parameters is registered in the module and can be gradient-updated:
-        self.W_core = nn.Parameter(torch.randn(self.input_size, self.output_size))
-        init_weight(self.W_core, init = self.W_init)  
+        # self.W_init, self.b_init can be a numpy array, or a string like "glorot-normal":
+        if self.weight_on:
+            self.W_core = nn.Parameter(torch.randn(self.input_size, self.output_size))
+            init_weight(self.W_core, init=W_init)  
         if self.bias_on:
             self.b_core = nn.Parameter(torch.zeros(self.output_size))
-            init_bias(self.b_core, init = self.b_init)
+            init_bias(self.b_core, init=b_init)
         if is_cuda:
             self.cuda()
         
@@ -206,19 +207,20 @@ class Simple_Layer(nn.Module):
 
     @property
     def DL(self):
-        shape = self.W_core.shape
-        # Weight:
         non_snapped_list = []
         snapped_list = []
-        for i in range(shape[0]):
-            for j in range(shape[1]):
-                if ("weight", (i, j)) in self.snap_dict:
-                    snapped_list.append(self.snap_dict[("weight", (i, j))]["new_value"])
-                else:
-                    non_snapped_list.append(to_np_array(self.W_core[i, j]))
+        # Weights:
+        if self.weight_on:
+            shape = self.W_core.shape
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    if ("weight", (i, j)) in self.snap_dict:
+                        snapped_list.append(self.snap_dict[("weight", (i, j))]["new_value"])
+                    else:
+                        non_snapped_list.append(to_np_array(self.W_core[i, j]))
         # Bias:
         if self.bias_on:
-            for i in range(shape[1]):
+            for i in range(len(self.b_core)):
                 if ("bias", i) in self.snap_dict:
                     snapped_list.append(self.snap_dict[("bias", i)]["new_value"])
                 else:
@@ -236,7 +238,8 @@ class Simple_Layer(nn.Module):
         if hasattr(self, "input_size_original"):
             output = output.view(-1, self.input_size)
         # Perform dot(X, W) + b:
-        output = torch.matmul(output, self.W_core)
+        if self.weight_on:
+            output = torch.matmul(output, self.W_core)
         if self.bias_on:
             output = output + self.b_core
         
@@ -265,60 +268,69 @@ class Simple_Layer(nn.Module):
     def prune_output_neurons(self, neuron_ids):
         if not isinstance(neuron_ids, list):
             neuron_ids = [neuron_ids]
-        preserved_ids = torch.LongTensor(np.array(list(set(range(self.output_size)) - set(neuron_ids))))
-        if self.is_cuda:
-            preserved_ids = preserved_ids.cuda()
-        self.W_core = nn.Parameter(self.W_core.data[:, preserved_ids])
+        preserved_ids = torch.LongTensor(np.array(list(set(range(self.output_size)) - set(neuron_ids)))).to(self.device)
+        if self.weight_on:
+            self.W_core = nn.Parameter(self.W_core.data[:, preserved_ids])
         if self.bias_on:
             self.b_core = nn.Parameter(self.b_core.data[preserved_ids])
         self.output_size = self.W_core.size(1)
     
     
     def prune_input_neurons(self, neuron_ids):
-        if not isinstance(neuron_ids, list):
-            neuron_ids = [neuron_ids]
-        preserved_ids = torch.LongTensor(np.array(list(set(range(self.input_size)) - set(neuron_ids))))
-        self.W_core = nn.Parameter(self.W_core.data[preserved_ids, :])
-        self.input_size = self.W_core.size(0)
+        if self.weight_on:
+            if not isinstance(neuron_ids, list):
+                neuron_ids = [neuron_ids]
+            preserved_ids = torch.LongTensor(np.array(list(set(range(self.input_size)) - set(neuron_ids))))
+            self.W_core = nn.Parameter(self.W_core.data[preserved_ids, :])
+            self.input_size = self.W_core.size(0)
+        else:
+            print("Cannot shrink input neurons since weight_on=False")
 
     
     def add_output_neurons(self, num_neurons, mode = "imitation"):
         if mode == "imitation":
-            W_core_mean = to_np_array(self.W_core.mean())
-            W_core_std = to_np_array(self.W_core.std())
-            new_W_core = torch.randn(self.input_size, num_neurons) * W_core_std + W_core_mean
+            if self.weight_on:
+                W_core_mean = to_np_array(self.W_core.mean())
+                W_core_std = to_np_array(self.W_core.std())
+                new_W_core = torch.randn(self.input_size, num_neurons) * W_core_std + W_core_mean
             if self.bias_on:
                 b_core_mean = to_np_array(self.b_core.mean())
                 b_core_std = to_np_array(self.b_core.std())
                 new_b_core = torch.randn(num_neurons) * b_core_std + b_core_mean
         elif mode == "zeros":
-            new_W_core = torch.zeros(self.input_size, num_neurons)
+            if self.weight_on:
+                new_W_core = torch.zeros(self.input_size, num_neurons)
             if self.bias_on:
                 new_b_core = torch.zeros(num_neurons)
         elif mode[0] == "copy":
             neuron_id = mode[1]
-            new_W_core = self.W_core[:, neuron_id: neuron_id + 1].detach().data
+            if self.weight_on:
+                new_W_core = self.W_core[:, neuron_id: neuron_id + 1].detach().data
             if self.bias_on:
                 new_b_core = self.b_core[neuron_id: neuron_id + 1].detach().data
         else:
             raise Exception("mode {0} not recognized!".format(mode))
-        self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core.to(self.device)], 1))
+        if self.weight_on:
+            self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core.to(self.device)], 1))
         if self.bias_on:
             self.b_core = nn.Parameter(torch.cat([self.b_core.data, new_b_core.to(self.device)], 0))
         self.output_size += num_neurons
         
     
     def add_input_neurons(self, num_neurons, mode = "imitation"):
-        if mode == "imitation":
-            W_core_mean = self.W_core.mean().data[0]
-            W_core_std = self.W_core.std().data[0]
-            new_W_core = torch.randn(num_neurons, self.output_size) * W_core_std + W_core_mean
-        elif mode == "zeros":
-            new_W_core = torch.zeros(num_neurons, self.output_size)
+        if self.weight_on:
+            if mode == "imitation":
+                W_core_mean = self.W_core.mean().data[0]
+                W_core_std = self.W_core.std().data[0]
+                new_W_core = torch.randn(num_neurons, self.output_size) * W_core_std + W_core_mean
+            elif mode == "zeros":
+                new_W_core = torch.zeros(num_neurons, self.output_size)
+            else:
+                raise Exception("mode {0} not recognized!".format(mode))
+            self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 0))
+            self.input_size += num_neurons
         else:
-            raise Exception("mode {0} not recognized!".format(mode))
-        self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 0))
-        self.input_size += num_neurons
+            print("Cannot add input neurons since weight_on=False")
         
 
     def standardize(self, mode = "b_mean_zero"):
@@ -331,31 +343,43 @@ class Simple_Layer(nn.Module):
 
 
     def simplify(self, mode="snap", excluded_idx=[], top=1, **kwargs):
-        def get_idx_list(key_list, input_size, output_size):
+        def get_idx_list(key_list, input_size, output_size, weight_on):
+            """Transform (pos, true_idx) list to idx list."""
             idx_list = []
             for pos, true_idx in key_list:
                 if pos == "weight":
+                    assert self.weight_on is True
                     idx_list.append(true_idx[0] * output_size + true_idx[1])
                 elif pos == "bias":
-                    idx_list.append(true_idx + input_size * output_size)
+                    assert self.bias_on is True
+                    if weight_on:
+                        idx_list.append(true_idx + input_size * output_size)
+                    else:
+                        idx_list.append(true_idx)
                 else:
                     raise
             return sorted(idx_list)
 
-        def get_true_idx(idx, input_size, output_size):
+        def get_true_idx(idx, input_size, output_size, weight_on):
             """Get (pos, true_idx) from idx"""
-            if idx < input_size * output_size:
-                pos = "weight"
-                true_idx = (int(idx / output_size), idx % output_size)
+            if weight_on:
+                if idx < input_size * output_size:
+                    pos = "weight"
+                    true_idx = (int(idx / output_size), idx % output_size)
+                else:
+                    pos = "bias"
+                    true_idx = idx - input_size * output_size
             else:
                 pos = "bias"
-                true_idx = idx - input_size * output_size
+                true_idx = idx
             return pos, true_idx
 
         if mode == "snap":
             snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
             # Identify the parameters to freeze:
-            param = [to_np_array(self.W_core.view(-1))]
+            param = []
+            if self.weight_on:
+                param.append(to_np_array(self.W_core.view(-1)))
             if self.bias_on:
                 param.append(to_np_array(self.b_core.view(-1), full_reduce=False))
             param = np.concatenate(param)
@@ -363,7 +387,8 @@ class Simple_Layer(nn.Module):
                 snap_targets = kwargs["snap_targets"]
                 is_target_given = True
             else:
-                excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), self.input_size, self.output_size)
+                excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), 
+                                                     self.input_size, self.output_size, self.weight_on)
                 snap_targets = snap(param, snap_mode=snap_mode, excluded_idx=excluded_idx_combined, top=top)
                 is_target_given = False
 
@@ -374,7 +399,7 @@ class Simple_Layer(nn.Module):
                         pos, true_idx = idx
                         new_value = float(new_value)
                     else:
-                        pos, true_idx = get_true_idx(idx, self.input_size, self.output_size)
+                        pos, true_idx = get_true_idx(idx, self.input_size, self.output_size, self.weight_on)
                         new_value = new_value.astype(float)
                     info_list.append(((pos, true_idx), new_value))
                     if pos == "weight":
@@ -394,7 +419,8 @@ class Simple_Layer(nn.Module):
 
     def initialize_param_freeze(self, update_values = True):
         if update_values:
-            new_W_core = self.W_core.data
+            if self.weight_on:
+                new_W_core = self.W_core.data
             if self.bias_on:
                 new_b_core = self.b_core.data
             # Update weight and bias values:
@@ -405,7 +431,8 @@ class Simple_Layer(nn.Module):
                     new_b_core[true_idx] = item["new_value"]
                 else:
                     raise
-            self.W_core = nn.Parameter(new_W_core)
+            if self.weight_on:
+                self.W_core = nn.Parameter(new_W_core)
             if self.bias_on:
                 self.b_core = nn.Parameter(new_b_core)
         
@@ -426,7 +453,8 @@ class Simple_Layer(nn.Module):
 
     def get_param_names(self, source):
         if source == "modules":
-            param_names = ["W_core"]
+            if self.weight_on:
+                param_names = ["W_core"]
             if self.bias_on:
                 param_names.append("b_core")
         if source == "attention":
@@ -436,39 +464,33 @@ class Simple_Layer(nn.Module):
 
     def get_weights_bias(self, is_grad = False):
         if not is_grad:
-            if self.bias_on:
-                return deepcopy(to_np_array(self.W_core, full_reduce = False)), deepcopy(to_np_array(self.b_core, full_reduce = False))
-            else:
-                return deepcopy(to_np_array(self.W_core, full_reduce = False)), None
+            W_core = deepcopy(to_np_array(self.W_core, full_reduce=False)) if self.weight_on else None
+            b_core = deepcopy(to_np_array(self.b_core, full_reduce=False)) if self.bias_on else None
+            return W_core, b_core
         else:
-            if self.bias_on:
-                W_grad, b_grad = self.W_core.grad, self.b_core.grad
-                W_grad = deepcopy(to_np_array(W_grad, full_reduce = False)) if W_grad is not None else None
-                b_grad = deepcopy(to_np_array(b_grad, full_reduce = False)) if b_grad is not None else None
-                return W_grad, b_grad
-            else:
-                W_grad = self.W_core.grad
-                W_grad = deepcopy(to_np_array(W_grad, full_reduce = False)) if W_grad is not None else None
-                return W_grad, None
+            W_grad = self.W_core.grad if self.weight_on else None
+            b_grad = self.b_core.grad if self.bias_on else None
+            W_grad = deepcopy(to_np_array(W_grad, full_reduce=False)) if W_grad is not None else None
+            b_grad = deepcopy(to_np_array(b_grad, full_reduce=False)) if b_grad is not None else None
+            return W_grad, b_grad
 
     
     def get_regularization(self, mode, source = ["weight", "bias"]):
         if not isinstance(source, list):
             source = [source]
-        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False).to(self.device)
         if self.reg_on:
             for source_ele in source:
-                if source_ele == "weight":
-                    if mode == "L1":
-                        reg = reg + self.W_core.abs().sum()
-                    elif mode == "L2":
-                        reg = reg + (self.W_core ** 2).sum()
-                    elif mode in AVAILABLE_REG:
-                        pass
-                    else:
-                        raise Exception("mode '{0}' not recognized!".format(mode))
+                if self.weight_on:
+                    if source_ele == "weight":
+                        if mode == "L1":
+                            reg = reg + self.W_core.abs().sum()
+                        elif mode == "L2":
+                            reg = reg + (self.W_core ** 2).sum()
+                        elif mode in AVAILABLE_REG:
+                            pass
+                        else:
+                            raise Exception("mode '{0}' not recognized!".format(mode))
                 elif source_ele == "bias":
                     if self.bias_on:
                         if mode == "L1":
@@ -492,11 +514,13 @@ class Simple_Layer(nn.Module):
 
     def set_trainable(self, is_trainable):
         if is_trainable:
-            self.W_core.requires_grad = True
+            if self.weight_on:
+                self.W_core.requires_grad = True
             if self.bias_on:
                 self.b_core.requires_grad = True
         else:
-            self.W_core.requires_grad = False
+            if self.weight_on:
+                self.W_core.requires_grad = False
             if self.bias_on:
                 self.b_core.requires_grad = False
 
