@@ -856,6 +856,7 @@ class Symbolic_Layer(nn.Module):
                             i += 1
                         return param_list, inverse_dict
                     snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                    top = kwargs["top"] if "top" in kwargs else 1
                     if snap_mode == "integer":
                         snap_mode_whole = "pair_integer"
                     elif snap_mode == "rational":
@@ -864,7 +865,7 @@ class Symbolic_Layer(nn.Module):
                         raise Exception("snap_mode {0} not recognized!".format(snap_mode))
                     param_list, inverse_dict = get_param_inverse_dict(self.get_param_dict())
 
-                    snap_targets = snap(param_list, snap_mode = snap_mode_whole)
+                    snap_targets = snap(param_list, snap_mode=snap_mode_whole, top=top)
                     subs_targets = [(Symbol(inverse_dict[replace_id]), Symbol(inverse_dict[ref_id]) * ratio) for (replace_id, ref_id), ratio in snap_targets]
                     prev_expression = self.symbolic_expression
                     new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
