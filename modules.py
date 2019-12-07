@@ -827,9 +827,10 @@ class Symbolic_Layer(nn.Module):
                     print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))                
             elif mode_ele == "snap":
                 snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                top = kwargs["top"] if "top" in kwargs else 1
                 param_names = list(self.get_param_dict().keys())
                 param_array = np.array(list(self.get_param_dict().values()))
-                snap_targets = snap(param_array, snap_mode = snap_mode)
+                snap_targets = snap(param_array, snap_mode=snap_mode, top=top)
                 if not (len(snap_targets) == 1 and snap_targets[0][1] is None):
                     subs_targets = [(Symbol(param_names[idx]), new_value) for idx, new_value in snap_targets]
                     prev_expression = self.symbolic_expression
