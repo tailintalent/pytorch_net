@@ -180,6 +180,14 @@ class Simple_Layer(nn.Module):
             self.initialize_param_freeze(update_values = True)
         else:
             self.snap_dict = {}
+    
+    
+    def change(self, target, new_property):
+        if target == "activation":
+            self.settings["activation"] = new_property
+            self.activation = self.settings["activation"]
+        else:
+            raise Exception("target can only be activation!")
 
 
     @property
