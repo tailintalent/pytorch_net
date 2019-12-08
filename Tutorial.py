@@ -118,14 +118,14 @@ net(torch.rand(100, 4))
 
 # ### 2.2 Simplification of an MLP from Simple_Layer to Symbolic_Layer:
 
-# In[4]:
+# In[6]:
 
 
 input_size = 1
 struct_param = [
-    [2, "Simple_Layer", {}],   # (number of neurons in each layer, layer_type, layer settings)
+    [2, "Simple_Layer", {"activation": "relu"}],   # (number of neurons in each layer, layer_type, layer settings)
     [10, "Simple_Layer", {"activation": "linear"}],
-    [1, "Simple_Layer", {"activation": "linear"}],
+    [1, "Simple_Layer", {"activation": "relu"}],
 ]
 
 net = MLP(input_size = input_size,
@@ -139,7 +139,7 @@ net = MLP(input_size = input_size,
 
 net.simplify(X=X_train,
              y=y_train,
-             mode=['collapse_layers', 'snap', 'to_symbolic'], 
+             mode=['to_symbolic'], 
              # The mode is a list of consecutive simplification methods, choosing from:
              # 'collapse_layers': collapse multiple Simple_Layer with linear activation into a single Simple_Layer; 
              # 'local': greedily try reducing the input dimension by removing input dimension from the beginning

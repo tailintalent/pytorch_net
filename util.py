@@ -1464,6 +1464,15 @@ def get_param_name_list(expressions):
     return sorted(list({symbol.name for expression in expressions for symbol in expression.free_symbols if "x" not in symbol.name}))
 
 
+def get_function_name_list(symbolic_expression):
+    from sympy import Function
+    from sympy.utilities.lambdify import implemented_function
+    symbolic_expression = standardize_symbolic_expression(symbolic_expression)
+    function_name_list = list({element.func.__name__ for expression in symbolic_expression for element in expression.atoms(Function) if element.func.__name__ not in ["linear"]})
+    implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
+    return function_name_list, implemented_function
+
+
 def substitute(expressions, param_dict):
     """Substitute each expression in the expression using the param_dict"""
     new_expressions = []
@@ -1481,6 +1490,11 @@ def get_coeffs(expression):
     variable_names = get_variable_name_list([expression])
     variables = standardize_symbolic_expression(variable_names)
     if len(variables) > 0:
+        # Peel the outmost activation:
+        function_name_list = get_function_name_list(expression)
+        if len(function_name_list) > 0:
+            expression = expression.args[0]
+        
         poly = Poly(expression, *variables)
         return poly.coeffs(), variable_names
     else:

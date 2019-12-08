@@ -675,7 +675,7 @@ class Symbolic_Layer(nn.Module):
         return get_variable_name_list(symbolic_expression)
 
 
-    def get_function_name_list(self, symbolic_expression = None):
+    def get_function_name_list(self, symbolic_expression=None):
         from sympy import Function
         from sympy.utilities.lambdify import implemented_function
         symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
@@ -740,7 +740,7 @@ class Symbolic_Layer(nn.Module):
         self.param_name_list = self.get_param_name_list(symbolic_expression)
         self.variable_name_list = self.get_variable_name_list(symbolic_expression)
         self.get_function_name_list()
-
+        
         # If the new expression has parameter names that did not appear in previous expression, create it:
         for param_name in self.param_name_list:            
             if not hasattr(self, param_name):
