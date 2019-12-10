@@ -956,7 +956,7 @@ def update_key_train(info_dict_train, inspect_items_train):
 # In[ ]:
 
 
-def simplify(model, X, y, mode = "full", isplot = False, target_name = None, validation_data = None, **kwargs):
+def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None, validation_data=None, **kwargs):
     """Simplify a neural network model in various ways. "model" can be a single model or a ordered list of models"""
     verbose = kwargs["verbose"] if "verbose" in kwargs else 1
     if validation_data is None:
@@ -970,8 +970,9 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
     performance_monitor = Performance_Monitor(patience = simplify_patience, epsilon = simplify_epsilon, compare_mode = simplify_compare_mode)
     record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["mse"]
     loss_precision_floor = kwargs["loss_precision_floor"] if "loss_precision_floor" in kwargs else PrecisionFloorLoss
-    if y is None:
-        y = Variable(forward(model, X, **kwargs).data, requires_grad = False)
+    if X is not None:
+        if y is None:
+            y = Variable(forward(model, X, **kwargs).data, requires_grad = False)
     if not (isinstance(model, list) or isinstance(model, tuple)):
         model = [model]
         is_list = False
@@ -1001,15 +1002,16 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
             print("=" * 48)
         
         # Record the loss before simplification:
-        pred_valid = forward(model, X_valid, **kwargs)
-        loss_original = to_np_array(criterion(pred_valid, y_valid))
-        loss_list = [loss_original]
-        if verbose >= 1:
-            print("original_loss: {0}".format(loss_original))
-        event_list = ["before simplification"]        
-        mse_record_whole = [to_np_array(nn.MSELoss()(pred_valid, y_valid))]
-        data_DL_whole = [to_np_array(DL_criterion(pred_valid, y_valid))]
+        if X is not None:
+            pred_valid = forward(model, X_valid, **kwargs)
+            loss_original = to_np_array(criterion(pred_valid, y_valid))
+            loss_list = [loss_original]
+            if verbose >= 1:
+                print("original_loss: {0}".format(loss_original))
+            mse_record_whole = [to_np_array(nn.MSELoss()(pred_valid, y_valid))]
+            data_DL_whole = [to_np_array(DL_criterion(pred_valid, y_valid))]
         model_DL_whole = [get_model_DL(model)]
+        event_list = ["before simplification"]
         iter_end_whole = [1]
         is_accept_whole = []
         if "param" in record_keys:
@@ -1289,7 +1291,8 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                     if layer_struct_param[1] == "Simple_Layer":
                         # Obtain loss before simplification:
                         layer = getattr(model_ele, "layer_{0}".format(layer_id))
-                        criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                        if X is not None:
+                            criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
                         
                         if mode_ele.split("_")[-1] == "separable":
                             new_layer = Simple_2_Symbolic(layer, settings = model_ele.settings, mode = "separable", prefix = prefix)
@@ -1312,24 +1315,28 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                             model_ele.struct_param[layer_id][2].update(new_layer.struct_param[2])
                         
                         # Calculate the loss again:
-                        criteria_new, criteria_result_new = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
-                        if verbose >= 1:
-                            print("Prev_loss: {0}, new loss: {1}\tprev_DL: {2:.9f}, new DL: {3:.9f}".format(
-                                   criteria_result_prev["loss"], criteria_result_new["loss"], criteria_result_prev["DL"], criteria_result_new["DL"]))
-                            print()
-                        if criteria_new > criteria_prev * (1 + 0.05):
-                            print("to_symbolic DL increase more than 5%! ", end = "")
-                            if not force_simplification:
-                                print("Reset layer.")
-                                model[model_id].reset_layer(layer_id, layer)
-                            else:
-                                print("Nevertheless, force simplification.")
-                        
-                        loss_list.append(criteria_result_new["loss"])
+                        if X is not None:
+                            criteria_new, criteria_result_new = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
+                            if verbose >= 1:
+                                print("Prev_loss: {0}, new loss: {1}\tprev_DL: {2:.9f}, new DL: {3:.9f}".format(
+                                       criteria_result_prev["loss"], criteria_result_new["loss"], criteria_result_prev["DL"], criteria_result_new["DL"]))
+                                print()
+                            if criteria_new > criteria_prev * (1 + 0.05):
+                                print("to_symbolic DL increase more than 5%! ", end = "")
+                                if not force_simplification:
+                                    print("Reset layer.")
+                                    model[model_id].reset_layer(layer_id, layer)
+                                else:
+                                    print("Nevertheless, force simplification.")
+
+                            loss_list.append(criteria_result_new["loss"])
+                            print("{0} succeed. Prev_loss: {1}\tnew_loss: {2}\tprev_DL: {3:.9f}, new_DL: {4:.9f}".format(
+                                    mode_ele, criteria_result_prev["loss"], criteria_result_new["loss"],
+                                    criteria_result_prev["DL"], criteria_result_new["DL"]))
+                        else:
+                            print("{0} succeed.".format(mode_ele))
                         event_list.append({mode_ele: (model_id, layer_id)})
-                        print("{0} succeed. Prev_loss: {1}\tnew_loss: {2}\tprev_DL: {3:.9f}, new_DL: {4:.9f}".format(
-                                mode_ele, criteria_result_prev["loss"], criteria_result_new["loss"],
-                                criteria_result_prev["DL"], criteria_result_new["DL"]))
+                        
                     
                     elif layer_struct_param[1] == "Sneuron_Layer":
                         # Obtain loss before simplification:
@@ -1358,8 +1365,9 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
                         print("{0} succeed. Prev_loss: {1}\tnew_loss: {2}\tprev_DL: {3:.9f}, new_DL: {4:.9f}".format(
                                 mode_ele, criteria_result_prev["loss"], criteria_result_new["loss"],
                                 criteria_result_prev["DL"], criteria_result_new["DL"]))
-            mse_record_whole.append(to_np_array(nn.MSELoss()(pred_valid, y_valid)))
-            data_DL_whole.append(to_np_array(DL_criterion(pred_valid, y_valid)))
+            if X is not None:
+                mse_record_whole.append(to_np_array(nn.MSELoss()(pred_valid, y_valid)))
+                data_DL_whole.append(to_np_array(DL_criterion(pred_valid, y_valid)))
             model_DL_whole.append(get_model_DL(model))
             if "param" in record_keys:
                 param_record_whole.append(model[0].get_weights_bias(W_source = "core", b_source = "core"))
@@ -1612,15 +1620,16 @@ def simplify(model, X, y, mode = "full", isplot = False, target_name = None, val
             raise Exception("mode {0} not recognized!".format(mode_ele))
 
         loss_dict[mode_ele] = {}
-        loss_dict[mode_ele]["mse_record_whole"] = mse_record_whole
-        loss_dict[mode_ele]["data_DL_whole"] = data_DL_whole
+        if X is not None:
+            loss_dict[mode_ele]["mse_record_whole"] = mse_record_whole
+            loss_dict[mode_ele]["data_DL_whole"] = data_DL_whole
+            loss_dict[mode_ele]["{0}_test".format(loss_type)] = loss_list
         loss_dict[mode_ele]["model_DL_whole"] = model_DL_whole
         if "param" in record_keys:
             loss_dict[mode_ele]["param_record_whole"] = param_record_whole
         if "param_grad" in record_keys:
             loss_dict[mode_ele]["param_grad_record_whole"] = param_grad_record_whole
         loss_dict[mode_ele]["iter_end_whole"] = iter_end_whole
-        loss_dict[mode_ele]["{0}_test".format(loss_type)] = loss_list
         loss_dict[mode_ele]["event_list"] = event_list
         loss_dict[mode_ele]["is_accept_whole"] = is_accept_whole
         if mode_ele == "ramping-L1":
@@ -1714,7 +1723,7 @@ class MLP(nn.Module):
         return deepcopy(self)
 
 
-    def simplify(self, X, y, mode="full", isplot=False, target_name=None, validation_data = None, **kwargs):
+    def simplify(self, X=None, y=None, mode="full", isplot=False, target_name=None, validation_data = None, **kwargs):
         new_model, _ = simplify(self, X, y, mode=mode, isplot=isplot, target_name=target_name, validation_data=validation_data, **kwargs)
         self.__dict__.update(new_model.__dict__)
     
