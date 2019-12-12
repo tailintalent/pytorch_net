@@ -342,6 +342,20 @@ class MAELoss(_Loss):
         return loss
 
 
+class MultihotBinaryCrossEntropy(_Loss):
+    """Multihot cross-entropy loss."""
+    def __init__(self, size_average=True, reduce=True):
+        super(MultihotBinaryCrossEntropy, self).__init__(size_average)
+        self.reduce = reduce
+
+    def forward(self, input, target):
+        assert not target.requires_grad, \
+        "nn criterions don't compute the gradient w.r.t. targets - please " \
+        "mark these variables as volatile or not requiring gradients"
+        target = torch.tensor(np.concatenate(([np.eye(10)[target[:,c]] for c in range(target.shape[1])]), axis=1))
+        return F.binary_cross_entropy_with_logits(input, target, reduce=self.reduce) 
+
+
 def get_criterion(loss_type, reduce=None, **kwargs):
     """Get loss function"""
     if loss_type == "huber":
@@ -368,6 +382,8 @@ def get_criterion(loss_type, reduce=None, **kwargs):
         criterion = lambda pred, target: torch.log(nn.MSELoss(reduce=reduce)(pred, target) + epsilon) + nn.MSELoss(reduce=reduce)(pred, target).mean()
     elif loss_type == "cross-entropy":
         criterion = nn.CrossEntropyLoss(reduce=reduce)
+    elif loss_type == "multihot-bce":
+        criterion = MultihotBinaryCrossEntropy(reduce=reduce)
     elif loss_type == "Loss_with_uncertainty":
         criterion = Loss_with_uncertainty(core=kwargs["loss_core"] if "loss_core" in kwargs else "mse", epsilon = 1e-6)
     elif loss_type[:11] == "Contrastive":
@@ -377,6 +393,7 @@ def get_criterion(loss_type, reduce=None, **kwargs):
     else:
         raise Exception("loss_type {0} not recognized!".format(loss_type))
     return criterion
+
 
 
 def get_criteria_value(model, X, y, criteria_type, criterion, **kwargs):
