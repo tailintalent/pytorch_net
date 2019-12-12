@@ -177,6 +177,15 @@ class Simple_Layer(nn.Module):
         
         # Initialize parameter freeze if stipulated:
         if "snap_dict" in self.settings:
+            # Clear snapping if either self.weight_on is False or self.bias_on is False
+            pop_snapping = []
+            for pos, idx in self.settings["snap_dict"]:
+                if (self.weight_on is False and pos == "weight") or (self.bias_on is False and pos == "bias"):
+                    pop_snapping.append((pos, idx))
+            for key in pop_snapping:
+                self.settings["snap_dict"].pop(key)
+                    
+            # Initialize freeze:
             self.snap_dict = self.settings["snap_dict"]
             self.initialize_param_freeze(update_values = True)
         else:
@@ -430,27 +439,23 @@ class Simple_Layer(nn.Module):
         if update_values:
             if self.weight_on:
                 new_W_core = self.W_core.data
-            if self.bias_on:
-                new_b_core = self.b_core.data
-            # Update weight and bias values:
-            for (pos, true_idx), item in self.snap_dict.items():
-                if pos == "weight":
-                    new_W_core[true_idx] = item["new_value"]
-                elif pos == "bias":
-                    new_b_core[true_idx] = item["new_value"]
-                else:
-                    raise
-            if self.weight_on:
+                for (pos, true_idx), item in self.snap_dict.items():
+                    if pos == "weight":
+                        new_W_core[true_idx] = item["new_value"]
                 self.W_core = nn.Parameter(new_W_core)
             if self.bias_on:
+                new_b_core = self.b_core.data
+                for (pos, true_idx), item in self.snap_dict.items():
+                    if pos == "bias":
+                        new_b_core[true_idx] = item["new_value"]
                 self.b_core = nn.Parameter(new_b_core)
         
         # Initialize hook:
         for pos, true_idx in self.snap_dict.keys():
             hook_function = zero_grad_hook(true_idx)
-            if pos == "weight":
+            if self.weight_on and pos == "weight":
                 h = self.W_core.register_hook(hook_function)
-            elif pos == "bias":
+            elif self.bias_on and pos == "bias":
                 h = self.b_core.register_hook(hook_function)
     
 
