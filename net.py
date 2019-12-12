@@ -3179,6 +3179,11 @@ class ConvNet(nn.Module):
         return model_dict
 
 
+    def get_sympy_expression(self, verbose=True):
+        expressions = {i: None for i in range(self.num_layers)}
+        return expressions
+
+
     def load(self, filename):
         mode = "json" if filename.endswith(".json") else "pickle"
         model_dict = load_model(filename, mode=mode)
