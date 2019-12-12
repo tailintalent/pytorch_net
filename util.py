@@ -51,7 +51,7 @@ def plot_matrices(
             matrix_list_new.append(to_np_array(element))
         else:
             matrix_list_new.append(np.array([[np.NaN]]))
-    matrix_list = np.array(matrix_list_new)
+    matrix_list = matrix_list_new
     
     num_matrixs = len(matrix_list)
     rows = np.ceil(num_matrixs / float(images_per_row))
@@ -297,6 +297,7 @@ def get_activation(activation):
         f = torch.tanh
     elif activation == "softplus":
         f = F.softplus
+#         f = lambda x: (1 + x.exp()).log()
     elif activation == "sigmoid":
         f = torch.sigmoid
     elif activation == "selu":
@@ -1491,7 +1492,7 @@ def get_coeffs(expression):
     variables = standardize_symbolic_expression(variable_names)
     if len(variables) > 0:
         # Peel the outmost activation:
-        function_name_list = get_function_name_list(expression)
+        function_name_list, _ = get_function_name_list(expression)
         if len(function_name_list) > 0:
             expression = expression.args[0]
         
@@ -1530,7 +1531,7 @@ def get_number_DL(n, status):
                 _, numerator, denominator, _ = bestApproximation(n, 100)
                 return np.log2((1 + abs(numerator)) * abs(denominator))
             else:
-                return np.log2(1 + (max(float(n), 2 ** (-64)) / PrecisionFloorLoss) ** 2) / 2   
+                raise Exception("The snapped numbers should be a rational number! However, {} is not a rational number.".format(n)) 
     elif status == "non-snapped":
         return np.log2(1 + (float(n) / PrecisionFloorLoss) ** 2) / 2
     else:

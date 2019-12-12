@@ -13,6 +13,7 @@ from torch.autograd import Variable
 from copy import deepcopy
 
 import sys, os
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, zero_grad_hook
 from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap
@@ -535,7 +536,7 @@ class Simple_Layer(nn.Module):
 
 # ## Symbolic Layer:
 
-# In[ ]:
+# In[4]:
 
 
 class Symbolic_Layer(nn.Module):
@@ -787,6 +788,7 @@ class Symbolic_Layer(nn.Module):
             symbols = tuple(symbols + [Symbol(param_name) for param_name in self.param_name_list])  # Get symbolic variables
         else:
             symbols = tuple(symbols + [Symbol(param_name) for param_name in sorted(list(p_dict.keys())) if "x" not in param_name])
+        self.get_function_name_list()
         f_list = [lambdify(symbols, expression, torch) for expression in self.symbolic_expression]    # Obtain the lambda function f(x0, x1,..., param0, param1, ...)
         # Obtain the data that will be fed into (x0, x1,..., param0, param1, ...):
         variables_feed = []
@@ -921,7 +923,7 @@ class Symbolic_Layer(nn.Module):
 
 # ## SuperNet Layer:
 
-# In[ ]:
+# In[5]:
 
 
 class SuperNet_Layer(nn.Module):
