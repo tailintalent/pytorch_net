@@ -27,6 +27,7 @@ Default_Activation = "linear"
 
 
 def get_Layer(layer_type, input_size, output_size, W_init = None, b_init = None, settings = {}, is_cuda = False):
+    """Obtain layer from specifications."""
     if layer_type == "Simple_Layer":
         layer = Simple_Layer(input_size = input_size,
                              output_size = output_size,
@@ -57,6 +58,7 @@ def get_Layer(layer_type, input_size, output_size, W_init = None, b_init = None,
 
 
 def load_layer_dict(layer_dict, layer_type, is_cuda = False):
+    """Load layer from layer_dict."""
     new_layer = get_Layer(layer_type = "Symbolic_Layer",
                           input_size = layer_dict["input_size"],
                           output_size = layer_dict["output_size"],
