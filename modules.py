@@ -15,7 +15,7 @@ from copy import deepcopy
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, zero_grad_hook
+from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook
 from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
@@ -897,34 +897,26 @@ class Symbolic_Layer(nn.Module):
         return info_list
 
 
-    def get_regularization(self, mode, source = ["param"], **kwargs):
-        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
+    def get_regularization(self, mode, source = ["weight"], **kwargs):
+        reg = to_Variable([0], is_cuda=self.is_cuda)
         if not isinstance(source, list):
             source = [source]
         param_list = [param for param in self.parameters()]
-        if len(param_list) > 0:
+        if len(param_list) > 0 and "weight" in source:
             params = torch.cat(param_list)
             scale_factor = kwargs["reg_scale_factor"] if "reg_scale_factor" in kwargs else None
             if mode == "L1":
-                if "param" in source:
-                    if scale_factor is not None:
-                        reg_indi = (params * to_Variable(scale_factor, is_cuda = self.is_cuda)).abs().sum()
-                    else:
-                        reg_indi = params.abs().sum()
-                    reg = reg + reg_indi                        
+                if scale_factor is not None:
+                    reg_indi = (params * to_Variable(scale_factor, is_cuda = self.is_cuda)).abs().sum()
+                else:
+                    reg_indi = params.abs().sum()
+                reg = reg + reg_indi                        
             elif mode == "L2":
-                if "param" in source:
-                    if scale_factor is not None:
-                        reg_indi = torch.sum((params * to_Variable(scale_factor, is_cuda = self.is_cuda)) ** 2)
-                    else:
-                        reg_indi = torch.sum(params ** 2)
-                    reg = reg + reg_indi
-            elif mode in AVAILABLE_REG:
-                pass
-            else:
-                raise Exception("mode '{0}' not recognized!".format(mode))
+                if scale_factor is not None:
+                    reg_indi = torch.sum((params * to_Variable(scale_factor, is_cuda = self.is_cuda)) ** 2)
+                else:
+                    reg_indi = torch.sum(params ** 2)
+                reg = reg + reg_indi
         return reg
 
 
