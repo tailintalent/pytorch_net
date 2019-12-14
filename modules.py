@@ -170,7 +170,7 @@ class Simple_Layer(nn.Module):
         # self.W_init, self.b_init can be a numpy array, or a string like "glorot-normal":
         if self.weight_on:
             self.W_core = nn.Parameter(torch.randn(self.input_size, self.output_size))
-            init_weight(self.W_core, init=W_init)  
+            init_weight(self.W_core, init=W_init)
         if self.bias_on:
             self.b_core = nn.Parameter(torch.zeros(self.output_size))
             init_bias(self.b_core, init=b_init)
@@ -195,11 +195,43 @@ class Simple_Layer(nn.Module):
     
     
     def change(self, target, new_property):
-        if target == "activation":
+        if target == "weight":
+            if self.weight_on:
+                old_property = "on"
+                if new_property == "off":
+                    self.settings["weight_on"] = False
+                    self.weight_on = False
+                    delattr(self, "W_core")
+            else:
+                old_property = "off"
+                if new_property == "on":
+                    self.settings.pop("weight_on")
+                    self.weight_on = True
+                    self.W_core = nn.Parameter(torch.randn(self.input_size, self.output_size))
+                    init_weight(self.W_core, init=None)
+
+        elif target == "bias":
+            if self.bias_on:
+                old_property = "on"
+                if new_property == "off":
+                    self.settings["bias_on"] = False
+                    self.bias_on = False
+                    delattr(self, "b_core")
+            else:
+                old_property = "off"
+                if new_property == "on":
+                    self.settings.pop("bias_on")
+                    self.bias_on = True
+                    self.b_core = nn.Parameter(torch.zeros(self.output_size))
+                    init_bias(self.b_core, init=None)
+                
+        elif target == "activation":
+            old_property = self.settings["activation"]
             self.settings["activation"] = new_property
-            self.activation = self.settings["activation"]
+            self.activation = self.settings["activation"]  
         else:
             raise Exception("target can only be activation!")
+        return old_property
 
 
     @property
