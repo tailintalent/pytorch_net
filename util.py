@@ -325,7 +325,7 @@ def get_activation(activation):
 
 class MAELoss(_Loss):
     """Mean absolute loss"""
-    def __init__(self, size_average=True, reduce=True):
+    def __init__(self, size_average=None, reduce=None):
         super(MAELoss, self).__init__(size_average)
         self.reduce = reduce
 
@@ -344,7 +344,7 @@ class MAELoss(_Loss):
 
 class MultihotBinaryCrossEntropy(_Loss):
     """Multihot cross-entropy loss."""
-    def __init__(self, size_average=True, reduce=True):
+    def __init__(self, size_average=None, reduce=None):
         super(MultihotBinaryCrossEntropy, self).__init__(size_average)
         self.reduce = reduce
 
@@ -1736,6 +1736,27 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
         for idx_valid, new_value in snap_targets_valid:
             snap_targets.append((valid_dict[idx_valid][1], new_value))
         return snap_targets
+
+
+def update_dictionary(dictionary, key, item):
+    """Update the key: item in the dictionary. If key collision happens, 
+    rename the key if the items do not refer to the same thing."""
+    if key in dictionary:
+        if dictionary[key] is item:
+            result = 2
+            return result, key
+        else:
+            result = 0
+            i = 0
+            while "{}_{}".format(key, i) in dictionary:
+                i += 1
+            new_key = "{}_{}".format(key, i)
+            dictionary[new_key] = item
+            return result, new_key
+    else:
+        result = 1
+        dictionary[key] = item
+        return result, key
 
     
 class Batch_Generator(object):
