@@ -1738,6 +1738,19 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
         return snap_targets
 
 
+def get_next_available_key(dictionary, key, suffix=""):
+    """Get the next available key that does not collide with the keys in the dictionary."""
+    if key not in dictionary:
+        return key
+    else:
+        i = 0
+        while "{}_{}{}".format(key, suffix, i) in dictionary:
+            i += 1
+        new_key = "{}_{}{}".format(key, suffix, i)
+        return new_key
+    
+    
+
 def update_dictionary(dictionary, key, item):
     """Update the key: item in the dictionary. If key collision happens, 
     rename the key if the items do not refer to the same thing."""
@@ -1747,10 +1760,7 @@ def update_dictionary(dictionary, key, item):
             return result, key
         else:
             result = 0
-            i = 0
-            while "{}_{}".format(key, i) in dictionary:
-                i += 1
-            new_key = "{}_{}".format(key, i)
+            new_key = get_next_available_key(dictionary, key)
             dictionary[new_key] = item
             return result, new_key
     else:
