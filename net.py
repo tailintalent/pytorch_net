@@ -1676,6 +1676,11 @@ class MLP(nn.Module):
     def struct_param(self):
         return [getattr(self, "layer_{0}".format(i)).struct_param for i in range(self.num_layers)]
 
+    
+    @property
+    def output_size(self):
+        return self.get_layer(-1).output_size
+
 
     def init_layers(self, struct_param):
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
@@ -1701,7 +1706,7 @@ class MLP(nn.Module):
                               settings = layer_settings,
                               is_cuda = self.is_cuda,
                              )
-            setattr(self, "layer_{0}".format(k), layer)
+            setattr(self, "layer_{}".format(k), layer)
 
 
     def forward(self, input, p_dict = None, **kwargs):
@@ -1711,9 +1716,9 @@ class MLP(nn.Module):
         for k in range(len(self.struct_param)):
             p_dict_ele = p_dict[k] if p_dict is not None else None
             if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
             else:
-                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(output, p_dict = p_dict_ele)
         if is_res_block:
             output = output + input
         return output
@@ -1749,25 +1754,31 @@ class MLP(nn.Module):
         if self.is_cuda:
             reg = reg.cuda()
         for k in range(len(self.struct_param)):
-            layer = getattr(self, "layer_{0}".format(k))
+            layer = getattr(self, "layer_{}".format(k))
             reg = reg + layer.get_regularization(mode = mode, source = source)
         return reg
 
 
+    def get_layer(self, layer_id):
+        if layer_id < 0:
+            layer_id += self.num_layers
+        return getattr(self, "layer_{}".format(layer_id))
+
+
     def reset_layer(self, layer_id, layer):
-        setattr(self, "layer_{0}".format(layer_id), layer)
+        setattr(self, "layer_{}".format(layer_id), layer)
 
 
     def insert_layer(self, layer_id, layer):
         if layer_id < 0:
             layer_id += self.num_layers
         if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            next_layer = getattr(self, "layer_{}".format(layer_id + 1))
             if next_layer.struct_param[1] == "Simple_Layer":
                 assert next_layer.input_size == layer.output_size, "The inserted layer's output_size {0} must be compatible with next layer_{1}'s input_size {2}!"                    .format(layer.output_size, layer_id + 1, next_layer.input_size)
         for i in range(self.num_layers - 1, layer_id - 1, -1):
-            setattr(self, "layer_{0}".format(i + 1), getattr(self, "layer_{0}".format(i)))
-        setattr(self, "layer_{0}".format(layer_id), layer)
+            setattr(self, "layer_{}".format(i + 1), getattr(self, "layer_{}".format(i)))
+        setattr(self, "layer_{}".format(layer_id), layer)
         self.num_layers += 1
     
     
@@ -1776,22 +1787,22 @@ class MLP(nn.Module):
             layer_id += self.num_layers
         if layer_id < self.num_layers - 1:
             num_neurons_prev = self.struct_param[layer_id - 1][0] if layer_id > 0 else self.input_size
-            replaced_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            replaced_layer = getattr(self, "layer_{}".format(layer_id + 1))
             if replaced_layer.struct_param[1] == "Simple_Layer":
                 assert replaced_layer.input_size == num_neurons_prev,                     "After deleting layer_{0}, the replaced layer's input_size {1} must be compatible with previous layer's output neurons {2}!"                        .format(layer_id, replaced_layer.input_size, num_neurons_prev)
         for i in range(layer_id, self.num_layers - 1):
-            setattr(self, "layer_{0}".format(i), getattr(self, "layer_{0}".format(i + 1)))
+            setattr(self, "layer_{}".format(i), getattr(self, "layer_{}".format(i + 1)))
         self.num_layers -= 1
 
 
     def prune_neurons(self, layer_id, neuron_ids):
         if layer_id < 0:
             layer_id = self.num_layers + layer_id
-        layer = getattr(self, "layer_{0}".format(layer_id))
+        layer = getattr(self, "layer_{}".format(layer_id))
         layer.prune_output_neurons(neuron_ids)
         self.reset_layer(layer_id, layer)
         if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            next_layer = getattr(self, "layer_{}".format(layer_id + 1))
             next_layer.prune_input_neurons(neuron_ids)
             self.reset_layer(layer_id + 1, next_layer)
 
@@ -1801,11 +1812,11 @@ class MLP(nn.Module):
             mode = (mode, mode)
         if layer_id < 0:
             layer_id = self.num_layers + layer_id
-        layer = getattr(self, "layer_{0}".format(layer_id))
+        layer = getattr(self, "layer_{}".format(layer_id))
         layer.add_output_neurons(num_neurons, mode = mode[0])
         self.reset_layer(layer_id, layer)
         if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{0}".format(layer_id + 1))
+            next_layer = getattr(self, "layer_{}".format(layer_id + 1))
             next_layer.add_input_neurons(num_neurons, mode = mode[1])
             self.reset_layer(layer_id + 1, next_layer)
 
@@ -1817,9 +1828,9 @@ class MLP(nn.Module):
         for k in range(*operation_between):
             p_dict_ele = p_dict[k] if p_dict is not None else None
             if res_forward and k > 0:
-                output = getattr(self, "layer_{0}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
             else:
-                output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(output, p_dict = p_dict_ele)
         if is_res_block:
             output = output + input
         return output
@@ -1836,7 +1847,7 @@ class MLP(nn.Module):
                 if k in layer_ids:
                     if W_source == "core":
                         try:
-                            W, _ = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
+                            W, _ = getattr(self, "layer_{}".format(k)).get_weights_bias(is_grad = is_grad)
                         except Exception as e:
                             if raise_error:
                                 raise
@@ -1844,7 +1855,7 @@ class MLP(nn.Module):
                                 print(e)
                             W = np.array([np.NaN])
                     else:
-                        raise Exception("W_source '{0}' not recognized!".format(W_source))
+                        raise Exception("W_source '{}' not recognized!".format(W_source))
                     W_list.append(W)
         
         if b_source is not None:
@@ -1852,7 +1863,7 @@ class MLP(nn.Module):
                 if k in layer_ids:
                     if b_source == "core":
                         try:
-                            _, b = getattr(self, "layer_{0}".format(k)).get_weights_bias(is_grad = is_grad)
+                            _, b = getattr(self, "layer_{}".format(k)).get_weights_bias(is_grad = is_grad)
                         except Exception as e:
                             if raise_error:
                                 raise
@@ -1860,7 +1871,7 @@ class MLP(nn.Module):
                                 print(e)
                             b = np.array([np.NaN])
                     else:
-                        raise Exception("b_source '{0}' not recognized!".format(b_source))
+                        raise Exception("b_source '{}' not recognized!".format(b_source))
                 b_list.append(b)
 
         if verbose:
@@ -1874,10 +1885,10 @@ class MLP(nn.Module):
                 
         if isplot:
             if W_source is not None:
-                print("weight {0}:".format(W_source))
+                print("weight {}:".format(W_source))
                 plot_matrices(W_list)
             if b_source is not None:
-                print("bias {0}:".format(b_source))
+                print("bias {}:".format(b_source))
                 plot_matrices(b_list)
 
         return W_list, b_list
@@ -1887,10 +1898,10 @@ class MLP(nn.Module):
         num_models = self.struct_param[-1][0]
         model_core = deepcopy(self)
         if mode == "standardize":
-            last_layer = getattr(model_core, "layer_{0}".format(model_core.num_layers - 1))
+            last_layer = getattr(model_core, "layer_{}".format(model_core.num_layers - 1))
             last_layer.standardize(mode = "b_mean_zero")
         else:
-            raise Exception("mode {0} not recognized!".format(mode))
+            raise Exception("mode {} not recognized!".format(mode))
         model_list = [deepcopy(model_core) for i in range(num_models)]
         for i, model in enumerate(model_list):
             to_prune = list(range(num_models))
@@ -1912,7 +1923,7 @@ class MLP(nn.Module):
 
     @property
     def DL(self):
-        return np.sum([getattr(self, "layer_{0}".format(i)).DL for i in range(self.num_layers)])
+        return np.sum([getattr(self, "layer_{}".format(i)).DL for i in range(self.num_layers)])
 
 
     def load_model_dict(self, model_dict):
@@ -1942,19 +1953,19 @@ class MLP(nn.Module):
 
     def set_cuda(self, is_cuda):
         for k in range(self.num_layers):
-            getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
+            getattr(self, "layer_{}".format(k)).set_cuda(is_cuda)
         self.is_cuda = is_cuda
 
 
     def set_trainable(self, is_trainable):
         for k in range(self.num_layers):
-            getattr(self, "layer_{0}".format(k)).set_trainable(is_trainable)
+            getattr(self, "layer_{}".format(k)).set_trainable(is_trainable)
 
 
     def get_snap_dict(self):
         snap_dict = {}
         for k in range(len(self.struct_param)):
-            layer = getattr(self, "layer_{0}".format(k))
+            layer = getattr(self, "layer_{}".format(k))
             if hasattr(layer, "snap_dict"):
                 recorded_layer_snap_dict = {}
                 for key, item in layer.snap_dict.items():
@@ -1974,18 +1985,18 @@ class MLP(nn.Module):
     def get_sympy_expression(self, verbose = True):
         expressions = {i: {} for i in range(self.num_layers)}
         for i in range(self.num_layers):
-            layer = getattr(self, "layer_{0}".format(i))
+            layer = getattr(self, "layer_{}".format(i))
             if layer.struct_param[1] == "Symbolic_Layer":
                 if verbose:
-                    print("Layer {0}, symbolic_expression:  {1}".format(i, layer.symbolic_expression))
-                    print("         numerical_expression: {1}".format(i, layer.numerical_expression))
+                    print("Layer {}, symbolic_expression:  {}".format(i, layer.symbolic_expression))
+                    print("          numerical_expression: {}".format(layer.numerical_expression))
                 expressions[i]["symbolic_expression"] = layer.symbolic_expression
                 expressions[i]["numerical_expression"] = layer.numerical_expression
                 expressions[i]["param_dict"] = layer.get_param_dict()
                 expressions[i]["DL"] = layer.DL
             else:
                 if verbose:
-                    print("Layer {0} is not a symbolic layer.".format(i))
+                    print("Layer {} is not a symbolic layer.".format(i))
                 expressions[i] = None
         return expressions
 
@@ -3177,6 +3188,11 @@ class ConvNet(nn.Module):
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
         model_dict["return_indices"] = self.return_indices
         return model_dict
+
+    
+    @property
+    def output_size(self):
+        return self.struct_param[-1][0]
 
 
     def get_sympy_expression(self, verbose=True):

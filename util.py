@@ -1252,6 +1252,48 @@ def deserialize(item):
                 return item
 
 
+def deserialize_list_str(string):
+    """Parse a string version of recursive lists into recursive lists of strings."""
+    assert string.startswith("[") and string.endswith("]")
+    string = string[1:-1]
+    bracket_count = 0
+    punctuations = [0]
+    for i, letter in enumerate(string):
+        if letter == "," and bracket_count == 0:
+            punctuations.append(i)
+        elif letter == "[":
+            bracket_count += 1
+        elif letter == "]":
+            bracket_count -= 1
+
+    if len(punctuations) == 1:
+        return [string]
+    List = []
+    for i in range(len(punctuations)):
+        if i == 0:
+            element = string[:punctuations[1]]
+        elif i == len(punctuations) - 1:
+            element = string[punctuations[i] + 1:].strip()
+        else:
+            element = string[punctuations[i] + 1: punctuations[i+1]].strip()
+        if element.startswith("[") and element.endswith("]"):
+            List.append(deserialize_list_str(element))
+        else:
+            List.append(element)
+    return List
+
+
+def flatten_list(graph):
+    """Flatten a recursive list of lists into a flattened list."""
+    if not isinstance(graph, list):
+        return [deepcopy(graph)]
+    else:
+        flattened_graph = []
+        for subgraph in graph:
+            flattened_graph += flatten_list(subgraph)
+        return flattened_graph
+
+
 def get_num_params(model, is_trainable = None):
     """Get number of parameters of the model, specified by 'None': all parameters;
     True: trainable parameters; False: non-trainable parameters.
@@ -1738,15 +1780,15 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
         return snap_targets
 
 
-def get_next_available_key(dictionary, key, suffix=""):
+def get_next_available_key(iterable, key, midfix="", suffix=""):
     """Get the next available key that does not collide with the keys in the dictionary."""
-    if key not in dictionary:
-        return key
+    if key not in iterable:
+        return key + suffix
     else:
         i = 0
-        while "{}_{}{}".format(key, suffix, i) in dictionary:
+        while "{}_{}{}{}".format(key, midfix, i, suffix) in iterable:
             i += 1
-        new_key = "{}_{}{}".format(key, suffix, i)
+        new_key = "{}_{}{}{}".format(key, midfix, i, suffix)
         return new_key
     
     
