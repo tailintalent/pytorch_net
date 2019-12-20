@@ -740,7 +740,6 @@ class Symbolic_Layer(nn.Module):
                 self.implemented_function[function_name] = implemented_function(Function(function_name), get_activation(function_name))
             except:
                 pass
-#         self.implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
         return function_name_list
 
 
