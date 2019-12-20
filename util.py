@@ -1782,7 +1782,7 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
 
 def get_next_available_key(iterable, key, midfix="", suffix=""):
     """Get the next available key that does not collide with the keys in the dictionary."""
-    if key not in iterable:
+    if key + suffix not in iterable:
         return key + suffix
     else:
         i = 0
