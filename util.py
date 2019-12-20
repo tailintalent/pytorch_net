@@ -1811,6 +1811,14 @@ def update_dictionary(dictionary, key, item):
         return result, key
 
     
+def pprint_dict(dictionary):
+    string = ""
+    for key, item in dictionary.items():
+        string += "{}: {}; ".format(key, item)
+    string = string[:-2] + "."
+    return string
+
+    
 class Batch_Generator(object):
     def __init__(self, X, y, batch_size = 50, target_one_hot_off = False):
         """
