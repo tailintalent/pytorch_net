@@ -734,7 +734,13 @@ class Symbolic_Layer(nn.Module):
         symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
         symbolic_expression = standardize_symbolic_expression(symbolic_expression)
         function_name_list = list({element.func.__name__ for expression in symbolic_expression for element in expression.atoms(Function) if element.func.__name__ not in ["linear"]})
-        self.implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
+        self.implemented_function = {}
+        for function_name in function_name_list:
+            try:
+                self.implemented_function[function_name] = implemented_function(Function(function_name), get_activation(function_name))
+            except:
+                pass
+#         self.implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
         return function_name_list
 
 
