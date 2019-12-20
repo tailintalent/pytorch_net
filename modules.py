@@ -6,6 +6,7 @@
 
 from __future__ import print_function
 import numpy as np
+from numbers import Number
 from functools import reduce
 import torch
 import torch.nn as nn
@@ -369,17 +370,21 @@ class Simple_Layer(nn.Module):
         self.output_size += num_neurons
         
     
-    def add_input_neurons(self, num_neurons, mode = "imitation"):
+    def add_input_neurons(self, num_neurons, mode="imitation", position="end"):
         if self.weight_on:
             if mode == "imitation":
-                W_core_mean = self.W_core.mean().data[0]
-                W_core_std = self.W_core.std().data[0]
+                W_core_mean = self.W_core.mean().item()
+                W_core_std = self.W_core.std().item()
                 new_W_core = torch.randn(num_neurons, self.output_size) * W_core_std + W_core_mean
             elif mode == "zeros":
                 new_W_core = torch.zeros(num_neurons, self.output_size)
             else:
-                raise Exception("mode {0} not recognized!".format(mode))
-            self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 0))
+                raise Exception("mode {} not recognized!".format(mode))
+            if position == "end":
+                self.W_core = nn.Parameter(torch.cat([self.W_core.data, new_W_core], 0))
+            else:
+                assert isinstance(position, Number)
+                self.W_core = nn.Parameter(torch.cat([self.W_core.data[:position], new_W_core, self.W_core.data[position:]], 0))
             self.input_size += num_neurons
         else:
             print("Cannot add input neurons since weight_on=False")
