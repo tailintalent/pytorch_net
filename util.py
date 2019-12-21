@@ -1815,7 +1815,7 @@ def pprint_dict(dictionary):
     string = ""
     for key, item in dictionary.items():
         string += "{}: {}; ".format(key, item)
-    string = string[:-2] + "."
+    string = string[:-2]
     return string
 
     

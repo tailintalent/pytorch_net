@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[ ]:
@@ -1682,6 +1682,15 @@ class MLP(nn.Module):
         return self.get_layer(-1).output_size
 
 
+    @property
+    def structure(self):
+        structure = OrderedDict()
+        structure["input_size"] = self.input_size
+        structure["output_size"] = self.output_size
+        structure["struct_param"] = self.struct_param
+        return structure
+
+
     def init_layers(self, struct_param):
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         for k, layer_struct_param in enumerate(struct_param):
@@ -3193,6 +3202,16 @@ class ConvNet(nn.Module):
     @property
     def output_size(self):
         return self.struct_param[-1][0]
+    
+    
+    @property
+    def structure(self):
+        structure = OrderedDict()
+        structure["input_channels"] = self.input_channels
+        structure["output_size"] = self.output_size
+        structure["struct_param"] = self.struct_param
+        return structure
+        
 
 
     def get_sympy_expression(self, verbose=True):
