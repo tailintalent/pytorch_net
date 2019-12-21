@@ -1529,7 +1529,12 @@ def get_function_name_list(symbolic_expression):
     from sympy.utilities.lambdify import implemented_function
     symbolic_expression = standardize_symbolic_expression(symbolic_expression)
     function_name_list = list({element.func.__name__ for expression in symbolic_expression for element in expression.atoms(Function) if element.func.__name__ not in ["linear"]})
-    implemented_function = {function_name: implemented_function(Function(function_name), get_activation(function_name)) for function_name in function_name_list}
+    implemented_function = {}
+    for function_name in function_name_list:
+        try:
+            implemented_function[function_name] = implemented_function(Function(function_name), get_activation(function_name))
+        except:
+            pass
     return function_name_list, implemented_function
 
 
@@ -1554,7 +1559,6 @@ def get_coeffs(expression):
         function_name_list, _ = get_function_name_list(expression)
         if len(function_name_list) > 0:
             expression = expression.args[0]
-        
         poly = Poly(expression, *variables)
         return poly.coeffs(), variable_names
     else:
@@ -1590,7 +1594,14 @@ def get_number_DL(n, status):
                 _, numerator, denominator, _ = bestApproximation(n, 100)
                 return np.log2((1 + abs(numerator)) * abs(denominator))
             else:
-                raise Exception("The snapped numbers should be a rational number! However, {} is not a rational number.".format(n)) 
+                if (n - np.pi) < 1e-10:
+                    # It is pi:
+                    return np.log2((1 + 3))
+                elif (n - np.e) < 1e-10:
+                    # It is e:
+                    return np.log2((1 + 2))
+                else:
+                    raise Exception("The snapped numbers should be a rational number! However, {} is not a rational number.".format(n)) 
     elif status == "non-snapped":
         return np.log2(1 + (float(n) / PrecisionFloorLoss) ** 2) / 2
     else:
