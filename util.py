@@ -1791,15 +1791,46 @@ def snap(param, snap_mode, excluded_idx=None, top=1):
         return snap_targets
 
 
-def get_next_available_key(iterable, key, midfix="", suffix=""):
+def unsnap(exprs, param_dict):
+    """Unsnap a symbolic expression, tranforming all numerical values to learnable parameters."""
+    unsnapped_param_dict = {}
+    unsnapped_exprs = []
+    for expr in exprs:
+        unsnapped_expr = unsnap_recur(expr, param_dict, unsnapped_param_dict)
+        unsnapped_exprs.append(unsnapped_expr)
+    return unsnapped_exprs, unsnapped_param_dict
+
+
+def unsnap_recur(expr, param_dict, unsnapped_param_dict):
+    """Recursively transform each numerical value into a learnable parameter."""
+    import sympy
+    from sympy import Symbol
+    if isinstance(expr, sympy.numbers.Float) or isinstance(expr, sympy.numbers.Integer):
+        used_param_names = list(param_dict.keys()) + list(unsnapped_param_dict)
+        unsnapped_param_name = get_next_available_key(used_param_names, "p", is_underscore=False)
+        unsnapped_param_dict[unsnapped_param_name] = float(expr)
+        unsnapped_expr = Symbol(unsnapped_param_name)
+        return unsnapped_expr
+    elif isinstance(expr, sympy.symbol.Symbol):
+        return expr
+    else:
+        unsnapped_sub_expr_list = []
+        for sub_expr in expr.args:
+            unsnapped_sub_expr = unsnap_recur(sub_expr, param_dict, unsnapped_param_dict)
+            unsnapped_sub_expr_list.append(unsnapped_sub_expr)
+        return expr.func(*unsnapped_sub_expr_list)
+
+
+def get_next_available_key(iterable, key, midfix="", suffix="", is_underscore=True):
     """Get the next available key that does not collide with the keys in the dictionary."""
     if key + suffix not in iterable:
         return key + suffix
     else:
         i = 0
-        while "{}_{}{}{}".format(key, midfix, i, suffix) in iterable:
+        underscore = "_" if is_underscore else ""
+        while "{}{}{}{}{}".format(key, underscore, midfix, i, suffix) in iterable:
             i += 1
-        new_key = "{}_{}{}{}".format(key, midfix, i, suffix)
+        new_key = "{}{}{}{}{}".format(key, underscore, midfix, i, suffix)
         return new_key
     
     

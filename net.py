@@ -1748,6 +1748,7 @@ class MLP(nn.Module):
             return False, [self]
         else:
             model_list = []
+            top = top if snap_mode != "unsnap" else 1
             for top_ele in range(1, top + 1):
                 new_model = self.copy()
                 layer = new_model.layer_0

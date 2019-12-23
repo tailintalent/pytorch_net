@@ -17,7 +17,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook
-from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap
+from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap, unsnap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
 
@@ -190,7 +190,7 @@ class Simple_Layer(nn.Module):
                     
             # Initialize freeze:
             self.snap_dict = self.settings["snap_dict"]
-            self.initialize_param_freeze(update_values = True)
+            self.initialize_param_freeze(update_values=True)
         else:
             self.snap_dict = {}
     
@@ -434,42 +434,46 @@ class Simple_Layer(nn.Module):
 
         if mode == "snap":
             snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
-            # Identify the parameters to freeze:
-            param = []
-            if self.weight_on:
-                param.append(to_np_array(self.W_core.view(-1)))
-            if self.bias_on:
-                param.append(to_np_array(self.b_core.view(-1), full_reduce=False))
-            param = np.concatenate(param)
-            if "snap_targets" in kwargs and kwargs["snap_targets"] is not None:
-                snap_targets = kwargs["snap_targets"]
-                is_target_given = True
+            if snap_mode == "unsnap":
+                self.remove_param_freeze()
+                return []
             else:
-                excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), 
-                                                     self.input_size, self.output_size, self.weight_on)
-                snap_targets = snap(param, snap_mode=snap_mode, excluded_idx=excluded_idx_combined, top=top)
-                is_target_given = False
+                # Identify the parameters to freeze:
+                param = []
+                if self.weight_on:
+                    param.append(to_np_array(self.W_core.view(-1)))
+                if self.bias_on:
+                    param.append(to_np_array(self.b_core.view(-1), full_reduce=False))
+                param = np.concatenate(param)
+                if "snap_targets" in kwargs and kwargs["snap_targets"] is not None:
+                    snap_targets = kwargs["snap_targets"]
+                    is_target_given = True
+                else:
+                    excluded_idx_combined = get_idx_list(set([element[0] for element in excluded_idx] + list(self.snap_dict.keys())), 
+                                                         self.input_size, self.output_size, self.weight_on)
+                    snap_targets = snap(param, snap_mode=snap_mode, excluded_idx=excluded_idx_combined, top=top)
+                    is_target_given = False
 
-            info_list = []
-            for idx, new_value in snap_targets:
-                if new_value is not None:
-                    if is_target_given:
-                        pos, true_idx = idx
-                        new_value = float(new_value)
-                    else:
-                        pos, true_idx = get_true_idx(idx, self.input_size, self.output_size, self.weight_on)
-                        new_value = new_value.astype(float)
-                    info_list.append(((pos, true_idx), new_value))
-                    if pos == "weight":
-                        new_W_core = self.W_core.data
-                        new_W_core[true_idx] = new_value
-                        self.W_core = nn.Parameter(new_W_core)
-                    elif pos == "bias":
-                        new_b_core = self.b_core.data
-                        new_b_core[true_idx] = new_value
-                        self.b_core = nn.Parameter(new_b_core)
-                    self.snap_dict[(pos, true_idx)] = {"new_value": new_value}
-                    self.initialize_param_freeze(update_values=False)
+                info_list = []
+                for idx, new_value in snap_targets:
+                    if new_value is not None:
+                        if is_target_given:
+                            pos, true_idx = idx
+                            new_value = float(new_value)
+                        else:
+                            pos, true_idx = get_true_idx(idx, self.input_size, self.output_size, self.weight_on)
+                            new_value = new_value.astype(float)
+                        info_list.append(((pos, true_idx), new_value))
+                        if pos == "weight":
+                            new_W_core = self.W_core.data
+                            new_W_core[true_idx] = new_value
+                            self.W_core = nn.Parameter(new_W_core)
+                        elif pos == "bias":
+                            new_b_core = self.b_core.data
+                            new_b_core[true_idx] = new_value
+                            self.b_core = nn.Parameter(new_b_core)
+                        self.snap_dict[(pos, true_idx)] = {"new_value": new_value}
+                        self.initialize_param_freeze(update_values=False)
         else:
             raise Exception("mode {0} not recognized!".format(mode))
         return info_list
@@ -499,10 +503,14 @@ class Simple_Layer(nn.Module):
                 h = self.b_core.register_hook(hook_function)
     
 
-    def remove_param_freeze(self, index_list):
-        for key in index_list:
-            self.snap_dict.pop(key)
-        self.initialize_param_freeze(update_values = True)
+    def remove_param_freeze(self, index_list=None):
+        if index_list is None:
+            self.snap_dict = {}
+            self.settings.pop("snap_dict")
+        else:
+            for key in index_list:
+                self.snap_dict.pop(key)
+            self.initialize_param_freeze(update_values=True)
 
 
     def get_param_names(self, source):
@@ -887,21 +895,26 @@ class Symbolic_Layer(nn.Module):
                     print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))                
             elif mode_ele == "snap":
                 snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
-                top = kwargs["top"] if "top" in kwargs else 1
-                param_names = list(self.get_param_dict().keys())
-                param_array = np.array(list(self.get_param_dict().values()))
-                snap_targets = snap(param_array, snap_mode=snap_mode, top=top)
-                if not (len(snap_targets) == 1 and snap_targets[0][1] is None):
-                    subs_targets = [(Symbol(param_names[idx]), new_value) for idx, new_value in snap_targets]
-                    prev_expression = self.symbolic_expression
-                    if verbose > 0:
-                        print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
-                        print("Substitution:  \t{0}".format(subs_targets))
-                    new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
-                    self.set_symbolic_expression(new_expression)
-                    info_list = info_list + [(param_names[idx], new_value) for idx, new_value in snap_targets]
-                    if verbose > 0:
-                        print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
+                if snap_mode == "unsnap":
+                    unsnapped_expression, new_param_dict = unsnap(self.symbolic_expression, self.get_param_dict())
+                    self.set_symbolic_expression(unsnapped_expression, new_param_dict)
+                    info_list = info_list + [(mode_ele, snap_mode, unsnapped_expression)]
+                else:
+                    top = kwargs["top"] if "top" in kwargs else 1
+                    param_names = list(self.get_param_dict().keys())
+                    param_array = np.array(list(self.get_param_dict().values()))
+                    snap_targets = snap(param_array, snap_mode=snap_mode, top=top)
+                    if not (len(snap_targets) == 1 and snap_targets[0][1] is None):
+                        subs_targets = [(Symbol(param_names[idx]), new_value) for idx, new_value in snap_targets]
+                        prev_expression = self.symbolic_expression
+                        if verbose > 0:
+                            print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
+                            print("Substitution:  \t{0}".format(subs_targets))
+                        new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
+                        self.set_symbolic_expression(new_expression)
+                        info_list = info_list + [(param_names[idx], new_value) for idx, new_value in snap_targets]
+                        if verbose > 0:
+                            print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
             elif mode_ele == "pair_snap":
                 if len(self.get_param_dict()) < 2:
                     raise Exception("Less than 2 parameters. Cannot pair_snap!")
