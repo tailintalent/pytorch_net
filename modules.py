@@ -17,7 +17,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook
-from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs, substitute, snap, unsnap
+from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs_tree, snap, unsnap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
 
@@ -648,16 +648,9 @@ class Symbolic_Layer(nn.Module):
 
     @property
     def DL(self):
-        snapped_list = []
-        non_snapped_list = []
-        for symbolic_expression in self.symbolic_expression:
-            coeffs, variables = get_coeffs(symbolic_expression)
-            coeffs_numerical, has_param = substitute(coeffs, self.get_param_dict())
-            for coeffs_numerical_indi, has_param_indi in zip(coeffs_numerical, has_param):
-                if has_param_indi or self.is_numerical:
-                    non_snapped_list.append(coeffs_numerical_indi)
-                else:
-                    snapped_list.append(coeffs_numerical_indi)
+        param_dict = self.get_param_dict()
+        expr_length, snapped_list = get_coeffs_tree(self.symbolic_expression, param_dict)
+        non_snapped_list = list(param_dict.values())
         return get_list_DL(snapped_list, "snapped") + get_list_DL(non_snapped_list, "non-snapped")
 
 

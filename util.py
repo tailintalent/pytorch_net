@@ -1564,6 +1564,33 @@ def get_coeffs(expression):
     else:
         return [expression], []
 
+    
+def get_coeffs_tree(exprs, param_dict):
+    """Get snapped coefficients by traversing the whole expression tree."""
+    snapped_list = []
+    length = 0
+    for expr in exprs:
+        length += get_coeffs_recur(expr, param_dict, snapped_list)
+    return length, snapped_list
+
+
+def get_coeffs_recur(expr, param_dict, snapped_list):
+    import sympy
+    if isinstance(expr, sympy.numbers.Float) or isinstance(expr, sympy.numbers.Integer):
+        snapped_list.append(float(expr))
+        return 1
+    elif isinstance(expr, sympy.symbol.Symbol):
+        if not expr.name.startswith("x"):
+            if expr.name not in param_dict:
+                raise Exception("Non-snapped parameter did not appear in param_dict! Check implementation.")
+        return 1
+    else:
+        length = 0
+        for sub_expr in expr.args:
+            length += get_coeffs_recur(sub_expr, param_dict, snapped_list)
+        length += 1
+        return length
+
 
 def standardize_symbolic_expression(symbolic_expression):
     """Standardize symbolic expression to be a list of SymPy expressions"""
