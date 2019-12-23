@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -324,9 +324,10 @@ class Simple_Layer(nn.Module):
         preserved_ids = torch.LongTensor(np.array(list(set(range(self.output_size)) - set(neuron_ids)))).to(self.device)
         if self.weight_on:
             self.W_core = nn.Parameter(self.W_core.data[:, preserved_ids])
+            self.output_size = self.W_core.shape[1]
         if self.bias_on:
             self.b_core = nn.Parameter(self.b_core.data[preserved_ids])
-        self.output_size = self.W_core.size(1)
+            self.output_size = self.b_core.shape[0]
     
     
     def prune_input_neurons(self, neuron_ids):
