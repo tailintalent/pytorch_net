@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[ ]:
@@ -1805,15 +1805,20 @@ class MLP(nn.Module):
 
 
     def prune_neurons(self, layer_id, neuron_ids):
-        if layer_id < 0:
-            layer_id = self.num_layers + layer_id
-        layer = getattr(self, "layer_{}".format(layer_id))
-        layer.prune_output_neurons(neuron_ids)
-        self.reset_layer(layer_id, layer)
-        if layer_id < self.num_layers - 1:
-            next_layer = getattr(self, "layer_{}".format(layer_id + 1))
-            next_layer.prune_input_neurons(neuron_ids)
-            self.reset_layer(layer_id + 1, next_layer)
+        if layer_id == "input":
+            layer = self.get_layer(0)
+            layer.prune_input_neurons(neuron_ids)
+            self.input_size = layer.input_size
+        else:
+            if layer_id < 0:
+                layer_id = self.num_layers + layer_id
+            layer = getattr(self, "layer_{}".format(layer_id))
+            layer.prune_output_neurons(neuron_ids)
+            self.reset_layer(layer_id, layer)
+            if layer_id < self.num_layers - 1:
+                next_layer = getattr(self, "layer_{}".format(layer_id + 1))
+                next_layer.prune_input_neurons(neuron_ids)
+                self.reset_layer(layer_id + 1, next_layer)
 
 
     def add_neurons(self, layer_id, num_neurons, mode = ("imitation", "zeros")):
