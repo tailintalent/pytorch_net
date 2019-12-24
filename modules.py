@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -879,7 +879,6 @@ class Symbolic_Layer(nn.Module):
             symbols = tuple(symbols + [Symbol(param_name) for param_name in self.param_name_list])  # Get symbolic variables
         else:
             symbols = tuple(symbols + [Symbol(param_name) for param_name in sorted(list(p_dict.keys())) if "x" not in param_name])
-        self.get_function_name_list()
         f_list = [lambdify(symbols, N(expression), torch) for expression in self.symbolic_expression]    # Obtain the lambda function f(x0, x1,..., param0, param1, ...)
         # Obtain the data that will be fed into (x0, x1,..., param0, param1, ...):
         variables_feed = []
