@@ -614,8 +614,7 @@ class Symbolic_Layer(nn.Module):
         self.W_init = W_init # Here we use W_init to represent all parameter initial values
         self.is_cuda = is_cuda
         self.is_numerical = False
-        assert isinstance(settings["symbolic_expression"], str)
-        self.set_symbolic_expression(settings["symbolic_expression"], p_init=self.W_init)
+        self.set_symbolic_expression(str(settings["symbolic_expression"]), p_init=self.W_init)
 
 
     @property
