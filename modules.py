@@ -5,6 +5,7 @@
 
 
 from __future__ import print_function
+from collections import Counter
 import numpy as np
 from numbers import Number
 from functools import reduce
@@ -16,7 +17,7 @@ from copy import deepcopy
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook
+from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook, ACTIVATION_LIST
 from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs_tree, snap, unsnap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
@@ -634,6 +635,41 @@ class Symbolic_Layer(nn.Module):
     @property
     def settings(self):
         return {"symbolic_expression": str(self.symbolic_expression)}
+    
+    
+    @property
+    def activation(self):
+        activation_list = []
+        for expression in self.symbolic_expression:
+            if hasattr(expression.func, "name") and expression.func.name in ACTIVATION_LIST:
+                act_ele = expression.func.name
+            else:
+                act_ele = "linear"
+            activation_list.append(act_ele)
+        if len(Counter(activation_list)) > 1:
+            return "linear"
+        else:
+            return list(Counter(activation_list).keys())[0]
+    
+    
+    def change(self, target, new_property):
+        from sympy import Add
+        from sympy.utilities.lambdify import implemented_function
+        assert target == "activation"
+        prev_activation = self.activation
+        activation = new_property
+        if activation != prev_activation:
+            if prev_activation == "linear":
+                f = implemented_function(activation, get_activation(activation))
+                new_symbolic_expression = [f(expression) for expression in self.symbolic_expression]
+                self.set_symbolic_expression(new_symbolic_expression)
+            else:
+                if activation != "linear":
+                    f = implemented_function(activation, get_activation(activation))
+                    new_symbolic_expression = [f(*expression.args) for expression in self.symbolic_expression]
+                else:
+                    new_symbolic_expression = [Add(*expression.args) for expression in self.symbolic_expression]
+                self.set_symbolic_expression(new_symbolic_expression)
 
 
     @property

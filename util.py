@@ -20,6 +20,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 PrecisionFloorLoss = 2 ** (-32)
 CLASS_TYPES = ["MLP", "Multi_MLP", "Branching_Net", "Fan_in_MLP", "Model_Ensemble", "Model_with_uncertainty",
                "RNNCellBase", "LSTM", "Wide_ResNet", "Conv_Net", "Conv_Model", "Conv_Autoencoder", "VAE", "Net_reparam", "Mixture_Gaussian", "Triangular_dist"]
+ACTIVATION_LIST = ["relu", "leakyRelu", "leakyReluFlat", "tanh", "softplus", "sigmoid", "selu", "elu", "sign", "heaviside", "softmax", "negLogSoftmax", "naturalLogSoftmax"]
 
 
 def plot_matrices(
@@ -285,6 +286,7 @@ def init_bias(bias_list, init):
 
 def get_activation(activation):
     """Get activation"""
+    assert activation in ACTIVATION_LIST + ["linear"]
     if activation == "linear":
         f = lambda x: x
     elif activation == "relu":
@@ -297,7 +299,6 @@ def get_activation(activation):
         f = torch.tanh
     elif activation == "softplus":
         f = F.softplus
-#         f = lambda x: (1 + x.exp()).log()
     elif activation == "sigmoid":
         f = torch.sigmoid
     elif activation == "selu":
@@ -1596,7 +1597,6 @@ def standardize_symbolic_expression(symbolic_expression):
     """Standardize symbolic expression to be a list of SymPy expressions"""
     from sympy.parsing.sympy_parser import parse_expr
     from sympy.utilities.lambdify import implemented_function
-    import torch.nn.functional as F
     if isinstance(symbolic_expression, str):
         symbolic_expression = parse_expr(symbolic_expression)
     if not (isinstance(symbolic_expression, list) or isinstance(symbolic_expression, tuple)):
@@ -1604,9 +1604,10 @@ def standardize_symbolic_expression(symbolic_expression):
     parsed_symbolic_expression = []
     for expression in symbolic_expression:
         parsed_expression = parse_expr(expression) if isinstance(expression, str) else expression
-        if hasattr(parsed_expression.func, "name") and parsed_expression.func.name == 'softplus':
-            softplus = implemented_function("softplus", F.softplus)
-            parsed_expression = softplus(*parsed_expression.args)
+        if hasattr(parsed_expression.func, "name") and parsed_expression.func.name in ACTIVATION_LIST:
+            activation = parsed_expression.func.name
+            f = implemented_function(activation, get_activation(activation))
+            parsed_expression = f(*parsed_expression.args)
         parsed_symbolic_expression.append(parsed_expression)
     return parsed_symbolic_expression
 
