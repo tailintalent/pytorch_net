@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -84,11 +84,13 @@ def Simple_2_Symbolic(simple_layer, settings = {}, mode = "normal", prefix = "")
     if mode == "normal":
         for j in range(output_size):
             expression = 0
-            for i in range(input_size):
-                expression += Symbol("{0}W{1}{2}".format(prefix, i, j)) * Symbol("x{0}".format(i))
-                W_init["{0}W{1}{2}".format(prefix, i, j)] = W_core[i, j]
-            expression += Symbol("{0}b{1}".format(prefix, j))
-            W_init["{0}b{1}".format(prefix, j)] = b_core[j]
+            if W_core is not None:
+                for i in range(input_size):
+                    expression += Symbol("{0}W{1}{2}".format(prefix, i, j)) * Symbol("x{0}".format(i))
+                    W_init["{0}W{1}{2}".format(prefix, i, j)] = W_core[i, j]
+            if b_core is not None:
+                expression += Symbol("{0}b{1}".format(prefix, j))
+                W_init["{0}b{1}".format(prefix, j)] = b_core[j]
             if "activation" in simple_layer.settings:
                 activation_name = simple_layer.settings["activation"]
             elif "activation" in settings:
