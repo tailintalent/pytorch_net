@@ -1752,10 +1752,11 @@ class MLP(nn.Module):
             for top_ele in range(1, top + 1):
                 new_model = self.copy()
                 layer = new_model.layer_0
-                layer.simplify(mode="snap", top=top_ele, snap_mode=snap_mode)
-                new_model.reset_layer(0, layer)
-                model_list.append(new_model)
-            is_succeed = True
+                info_list = layer.simplify(mode="snap", top=top_ele, snap_mode=snap_mode)
+                if len(info_list) > 0:
+                    new_model.reset_layer(0, layer)
+                    model_list.append(new_model)
+            is_succeed = len(model_list) > 0
             return is_succeed, model_list
 
 

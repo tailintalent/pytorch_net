@@ -1727,10 +1727,22 @@ def rationalSnap(p, top=1):
     chosen = np.argsort(snaps[:, 3])[:top]
     return list(zip(chosen, snaps[chosen, 0]))
 
-def vectorSnap(p, top=1):
-    """Divide p by its smallest number, and then perform integer snap."""
-    tiny = 0.001
+def vectorSnap(param_dict, top=1):
+    """Divide p by its smallest number, and then perform integer snap.
+
+    Args:
+        param_dict: dictionary of parameter name and its values for snapping.
+        top: number of parameters to snap.
+
+    Returns:
+        param_dict_subs: dictionary for substitution.
+        new_param_dict: initial value for the remaining parameters.
+    """
+    tiny = 0.01
     huge = 1000000.
+    print(param_dict)
+    p = list(param_dict.values())
+    symbs = list(param_dict.keys())
     ap = np.abs(p)
     for i in range(len(p)):
         if ap[i] < tiny:
@@ -1738,12 +1750,18 @@ def vectorSnap(p, top=1):
     i = np.argmin(ap)
     apmin = ap[i] * np.sign(p[i])
     if apmin >= huge:
-        return []
+        return {}, None
     else:
         q = p / apmin.astype(float)
-        q[i] = 0.5  # It's q[i] = 1, so we don't want to select it
-        snap_targets = integerSnap(q, top=top)
-        return [(i, apmin * target) for i, target in snap_targets]
+        snap_targets = integerSnap(q, top=top + 1)
+        param_dict_subs = {}
+        new_param_dict = {}
+        newsymb = symbs[i]
+        for k in range(len(snap_targets)):
+            if snap_targets[k][0] != i:
+                param_dict_subs[symbs[snap_targets[k][0]]] = "{}".format(snap_targets[k][1]) + "*" + newsymb
+        new_param_dict[newsymb] = param_dict[newsymb]
+        return param_dict_subs, new_param_dict
 
 def pairSnap(p, snap_mode = "integer"):
     p = np.array(p)

@@ -436,6 +436,8 @@ class Simple_Layer(nn.Module):
             snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
             if snap_mode == "unsnap":
                 self.remove_param_freeze()
+                return ["unsnap"]
+            elif snap_mode == "vector":
                 return []
             else:
                 # Identify the parameters to freeze:
@@ -791,7 +793,7 @@ class Symbolic_Layer(nn.Module):
         return length_list
 
 
-    def set_symbolic_expression(self, symbolic_expression, p_init = None):
+    def set_symbolic_expression(self, symbolic_expression, p_init=None):
         """Set a new symbolic expression and update the parameterss"""
         symbolic_expression = standardize_symbolic_expression(symbolic_expression)
         assert sum(self.get_expression_length(symbolic_expression)) == self.output_size, "symbolic_expression's combined output length must be equal to self.output_size!"
@@ -888,12 +890,24 @@ class Symbolic_Layer(nn.Module):
                     print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))                
             elif mode_ele == "snap":
                 snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
+                top = kwargs["top"] if "top" in kwargs else 1
                 if snap_mode == "unsnap":
                     unsnapped_expression, new_param_dict = unsnap(self.symbolic_expression, self.get_param_dict())
                     self.set_symbolic_expression(unsnapped_expression, new_param_dict)
                     info_list = info_list + [(mode_ele, snap_mode, unsnapped_expression)]
+                elif snap_mode in ["vector"]:
+                    param_dict = self.get_param_dict()
+                    param_dict_subs, new_param_dict = snap(param_dict, snap_mode=snap_mode, top=top)
+                    param_dict.update(new_param_dict)
+                    if verbose > 0:
+                        print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
+                        print("Substitution:  \t{0}, with value: {1}".format(pprint_dict(param_dict_subs), pprint_dict(new_param_dict)))
+                    new_expression = [expression.subs(param_dict_subs) for expression in self.symbolic_expression]
+                    self.set_symbolic_expression(new_expression, param_dict)
+                    info_list = info_list + [(deepcopy(param_dict_subs), deepcopy(new_param_dict))]
+                    if verbose > 0:
+                        print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
                 else:
-                    top = kwargs["top"] if "top" in kwargs else 1
                     param_names = list(self.get_param_dict().keys())
                     param_array = np.array(list(self.get_param_dict().values()))
                     snap_targets = snap(param_array, snap_mode=snap_mode, top=top)
