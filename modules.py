@@ -31,48 +31,48 @@ Default_Activation = "linear"
 def get_Layer(layer_type, input_size, output_size, W_init = None, b_init = None, settings = {}, is_cuda = False):
     """Obtain layer from specifications."""
     if layer_type == "Simple_Layer":
-        layer = Simple_Layer(input_size = input_size,
-                             output_size = output_size,
-                             W_init = W_init,
-                             b_init = b_init,
-                             settings = settings,
-                             is_cuda = is_cuda,
+        layer = Simple_Layer(input_size=input_size,
+                             output_size=output_size,
+                             W_init=W_init,
+                             b_init=b_init,
+                             settings=settings,
+                             is_cuda=is_cuda,
                             )
     elif layer_type == "SuperNet_Layer":
-        layer = SuperNet_Layer(input_size = input_size,
-                               output_size = output_size,
-                               W_init = W_init,
-                               b_init = b_init,
-                               settings = settings,
-                               is_cuda = is_cuda,
+        layer = SuperNet_Layer(input_size=input_size,
+                               output_size=output_size,
+                               W_init=W_init,
+                               b_init=b_init,
+                               settings=settings,
+                               is_cuda=is_cuda,
                               )
     elif layer_type == "Symbolic_Layer":
-        layer = Symbolic_Layer(input_size = input_size,
-                               output_size = output_size,
-                               W_init = W_init,
-                               b_init = b_init,
-                               settings = settings,
-                               is_cuda = is_cuda,
+        layer = Symbolic_Layer(input_size=input_size,
+                               output_size=output_size,
+                               W_init=W_init,
+                               b_init=b_init,
+                               settings=settings,
+                               is_cuda=is_cuda,
                               )
     else:
-        raise Exception("layer_type '{0}' not recognized!".format(layer_type))
+        raise Exception("layer_type '{}' not recognized!".format(layer_type))
     return layer
 
 
-def load_layer_dict(layer_dict, layer_type, is_cuda = False):
+def load_layer_dict(layer_dict, layer_type, is_cuda=False):
     """Load layer from layer_dict."""
-    new_layer = get_Layer(layer_type = "Symbolic_Layer",
-                          input_size = layer_dict["input_size"],
-                          output_size = layer_dict["output_size"],
-                          W_init = layer_dict["weights"],
-                          b_init = layer_dict["bias"],
-                          settings = layer_dict["settings"],
-                          is_cuda = is_cuda,
+    new_layer = get_Layer(layer_type="Symbolic_Layer",
+                          input_size=layer_dict["input_size"],
+                          output_size=layer_dict["output_size"],
+                          W_init=layer_dict["weights"],
+                          b_init=layer_dict["bias"],
+                          settings=layer_dict["settings"],
+                          is_cuda=is_cuda,
                          )
     return new_layer
 
 
-def Simple_2_Symbolic(simple_layer, settings = {}, mode = "normal", prefix = ""):
+def Simple_2_Symbolic(simple_layer, settings={}, mode="normal", prefix=""):
     """Transform Simple Layer to Symbolic Layer."""
     from sympy import Symbol, Function
     input_size = simple_layer.input_size
@@ -105,7 +105,7 @@ def Simple_2_Symbolic(simple_layer, settings = {}, mode = "normal", prefix = "")
         for j in range(output_size):
             expression = 0
             for i in range(input_size):
-                expression += Symbol("x{0}".format(i)) * Symbol("{0}p{1}".format(prefix, i)) * Symbol("{0}q{1}".format(prefix, j))
+                expression += Symbol("x{}".format(i)) * Symbol("{0}p{1}".format(prefix, i)) * Symbol("{0}q{1}".format(prefix, j))
                 W_init["{0}p{1}".format(prefix, i)] = vector_p[i]
             expression += Symbol("{0}b{1}".format(prefix, j))
             W_init["{0}q{1}".format(prefix, j)] = vector_q[j]
@@ -120,13 +120,13 @@ def Simple_2_Symbolic(simple_layer, settings = {}, mode = "normal", prefix = "")
                 expression = Function(activation_name)(expression)
             symbolic_expression.append(expression)   
 
-    return get_Layer(layer_type = "Symbolic_Layer",
-                     input_size = input_size,
-                     output_size = output_size,
-                     W_init = W_init,
-                     b_init = None,
-                     settings = {"symbolic_expression": str(symbolic_expression)},
-                     is_cuda = simple_layer.is_cuda,
+    return get_Layer(layer_type="Symbolic_Layer",
+                     input_size=input_size,
+                     output_size=output_size,
+                     W_init=W_init,
+                     b_init=None,
+                     settings={"symbolic_expression": str(symbolic_expression)},
+                     is_cuda=simple_layer.is_cuda,
                     )
 
 
@@ -140,10 +140,10 @@ class Simple_Layer(nn.Module):
         self,
         input_size,
         output_size,
-        W_init = None,     # initialization for weights
-        b_init = None,     # initialization for bias
-        settings = {},     # Other settings that are relevant to this specific layer
-        is_cuda = False,
+        W_init=None,     # initialization for weights
+        b_init=None,     # initialization for bias
+        settings={},     # Other settings that are relevant to this specific layer
+        is_cuda=False,
         ):
         # Firstly, must perform this step:
         super(Simple_Layer, self).__init__()
@@ -289,7 +289,7 @@ class Simple_Layer(nn.Module):
         self.__dict__.update(new_layer.__dict__)
 
 
-    def forward(self, input, p_dict = None):
+    def forward(self, input, p_dict=None):
         output = input
         if hasattr(self, "input_size_original"):
             output = output.view(-1, self.input_size)
@@ -344,7 +344,7 @@ class Simple_Layer(nn.Module):
             print("Cannot shrink input neurons since weight_on=False")
 
     
-    def add_output_neurons(self, num_neurons, mode = "imitation"):
+    def add_output_neurons(self, num_neurons, mode="imitation"):
         if mode == "imitation":
             if self.weight_on:
                 W_core_mean = to_np_array(self.W_core.mean())
@@ -394,7 +394,7 @@ class Simple_Layer(nn.Module):
             print("Cannot add input neurons since weight_on=False")
         
 
-    def standardize(self, mode = "b_mean_zero"):
+    def standardize(self, mode="b_mean_zero"):
         if mode == "b_mean_zero":
             if self.bias_on:
                 b_mean = to_np_array(self.b_core.mean())
@@ -484,7 +484,7 @@ class Simple_Layer(nn.Module):
         return info_list
 
 
-    def initialize_param_freeze(self, update_values = True):
+    def initialize_param_freeze(self, update_values=True):
         if update_values:
             if self.weight_on:
                 new_W_core = self.W_core.data
@@ -529,7 +529,7 @@ class Simple_Layer(nn.Module):
         return param_names
 
 
-    def get_weights_bias(self, is_grad = False):
+    def get_weights_bias(self, is_grad=False):
         if not is_grad:
             W_core = deepcopy(to_np_array(self.W_core, full_reduce=False)) if self.weight_on else None
             b_core = deepcopy(to_np_array(self.b_core, full_reduce=False)) if self.bias_on else None
@@ -542,10 +542,10 @@ class Simple_Layer(nn.Module):
             return W_grad, b_grad
 
     
-    def get_regularization(self, mode, source = ["weight", "bias"]):
+    def get_regularization(self, mode, source=["weight", "bias"]):
         if not isinstance(source, list):
             source = [source]
-        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False).to(self.device)
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad=False).to(self.device)
         if self.reg_on:
             for source_ele in source:
                 if self.weight_on:
@@ -557,7 +557,7 @@ class Simple_Layer(nn.Module):
                         elif mode in AVAILABLE_REG:
                             pass
                         else:
-                            raise Exception("mode '{0}' not recognized!".format(mode))
+                            raise Exception("mode '{}' not recognized!".format(mode))
                 elif source_ele == "bias":
                     if self.bias_on:
                         if mode == "L1":
@@ -567,7 +567,7 @@ class Simple_Layer(nn.Module):
                         elif mode in AVAILABLE_REG:
                             pass
                         else:
-                            raise Exception("mode '{0}' not recognized!".format(mode))
+                            raise Exception("mode '{}' not recognized!".format(mode))
         return reg
 
 
@@ -602,10 +602,10 @@ class Symbolic_Layer(nn.Module):
         self,
         input_size,
         output_size,
-        W_init = None,
-        b_init = None,
-        settings = {},
-        is_cuda = False,
+        W_init=None,
+        b_init=None,
+        settings={},
+        is_cuda=False,
         ):
         super(Symbolic_Layer, self).__init__()
         from sympy.parsing.sympy_parser import parse_expr
@@ -615,7 +615,7 @@ class Symbolic_Layer(nn.Module):
         self.is_cuda = is_cuda
         self.is_numerical = False
         assert isinstance(settings["symbolic_expression"], str)
-        self.set_symbolic_expression(settings["symbolic_expression"], p_init = self.W_init)
+        self.set_symbolic_expression(settings["symbolic_expression"], p_init=self.W_init)
 
 
     @property
@@ -709,7 +709,7 @@ class Symbolic_Layer(nn.Module):
         self.set_symbolic_expression(symbolic_expression)
     
     
-    def standardize(self, mode = "b_mean_zero"):
+    def standardize(self, mode="b_mean_zero"):
         from sympy import Function
         if mode == "b_mean_zero":
             param_dict = self.get_param_dict()
@@ -752,11 +752,11 @@ class Symbolic_Layer(nn.Module):
         self.set_param_values(p_dict)
 
 
-    def init_bias_with_input(self, input, mode = "std_sqrt"):
+    def init_bias_with_input(self, input, mode="std_sqrt"):
         pass
 
 
-    def get_param_name_list(self, symbolic_expression = None):
+    def get_param_name_list(self, symbolic_expression=None):
         """Get parameter names from a given symbolic expression"""
         # Here in the Sympy_Net we assume that the input is always represented by Symbol("x"), so "x" is excluded from param_name_list:
         symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
@@ -764,7 +764,7 @@ class Symbolic_Layer(nn.Module):
         return get_param_name_list(symbolic_expression)
 
 
-    def get_variable_name_list(self, symbolic_expression = None):
+    def get_variable_name_list(self, symbolic_expression=None):
         symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
         symbolic_expression = standardize_symbolic_expression(symbolic_expression)
         return get_variable_name_list(symbolic_expression)
@@ -801,7 +801,7 @@ class Symbolic_Layer(nn.Module):
                 getattr(self, key).data.copy_(value_core.view(-1))
 
 
-    def get_weights_bias(self, is_grad = False):
+    def get_weights_bias(self, is_grad=False):
         if not is_grad:
             return deepcopy(self.get_param_dict()), None
         else:
@@ -810,13 +810,13 @@ class Symbolic_Layer(nn.Module):
             for param_name in param_names:
                 grad = getattr(self, param_name).grad
                 if grad is not None:
-                    param_grad_dict[param_name] = grad.data[0]
+                    param_grad_dict[param_name] = grad.item()
                 else:
                     param_grad_dict[param_name] = None
             return param_grad_dict, None
 
 
-    def get_expression_length(self, symbolic_expression = None):
+    def get_expression_length(self, symbolic_expression=None):
         symbolic_expression = self.symbolic_expression if symbolic_expression is None else symbolic_expression
         symbolic_expression = standardize_symbolic_expression(symbolic_expression)
         length_list = []
@@ -872,7 +872,7 @@ class Symbolic_Layer(nn.Module):
                 getattr(self, param_name).requires_grad = False
 
 
-    def forward(self, input, p_dict = None):
+    def forward(self, input, p_dict=None):
         from sympy import Symbol, lambdify, N
         symbols = [Symbol(variable_name) for variable_name in self.variable_name_list]
         if p_dict is None:
@@ -897,21 +897,15 @@ class Symbolic_Layer(nn.Module):
         for f in f_list:
             output_ele = f(*symbols_feed)
             if not isinstance(output_ele, Variable):
-                output_ele = Variable(torch.ones(input.size(0), 1), requires_grad = False) * output_ele
-                if self.is_cuda:
-                    output_ele = output_ele.cuda()
-            elif len(output_ele.size()) < 2 or output_ele.size(0) != input.size(0):
-                multiplier = Variable(torch.ones(input.size(0), 1), requires_grad = False)
-                if self.is_cuda:
-                    multiplier = multiplier.cuda()
+                output_ele = to_Variable(torch.ones(input.shape[0], 1), is_cuda=self.is_cuda) * output_ele
+            elif len(output_ele.shape) < 2 or output_ele.shape[0] != input.shape[0]:
+                multiplier = to_Variable(torch.ones(input.shape[0], 1), is_cuda=self.is_cuda)
                 output_ele = output_ele * multiplier
-                if self.is_cuda:
-                    output_ele = output_ele.cuda()
             output_list.append(output_ele)
         return torch.cat(output_list, 1)
 
 
-    def simplify(self, mode = "form", **kwargs):
+    def simplify(self, mode="form", **kwargs):
         from sympy import simplify, Symbol
         verbose = kwargs["verbose"] if "verbose" in kwargs else 0
         info_list = []
@@ -979,7 +973,7 @@ class Symbolic_Layer(nn.Module):
                     elif snap_mode == "rational":
                         snap_mode_whole = "pair_rational"
                     else:
-                        raise Exception("snap_mode {0} not recognized!".format(snap_mode))
+                        raise Exception("snap_mode {} not recognized!".format(snap_mode))
                     param_list, inverse_dict = get_param_inverse_dict(self.get_param_dict())
 
                     snap_targets = snap(param_list, snap_mode=snap_mode_whole, top=top)
@@ -987,17 +981,17 @@ class Symbolic_Layer(nn.Module):
                     prev_expression = self.symbolic_expression
                     new_expression = [expression.subs(subs_targets) for expression in self.symbolic_expression]
                     self.set_symbolic_expression(new_expression)
-                    info_list = info_list + [(inverse_dict[replace_id], "{0} * ".format(ratio) + inverse_dict[ref_id]) for (replace_id, ref_id), ratio in snap_targets]
+                    info_list = info_list + [(inverse_dict[replace_id], "{} * ".format(ratio) + inverse_dict[ref_id]) for (replace_id, ref_id), ratio in snap_targets]
                     if verbose > 0:
-                        print("Original expression:\tsymbolic: {0}; \t numerical: {1}".format(prev_expression, self.numerical_expression))
-                        print("Substitution:  \t{0}".format(subs_targets))
-                        print("New  expression: \tsymbolic: {0}; \t numerical: {1}".format(self.symbolic_expression, self.numerical_expression))
+                        print("Original expression:\tsymbolic: {}; \t numerical: {}".format(prev_expression, self.numerical_expression))
+                        print("Substitution:  \t{}".format(subs_targets))
+                        print("New  expression: \tsymbolic: {}; \t numerical: {}".format(self.symbolic_expression, self.numerical_expression))
             else:
-                raise Exception("mode {0} not recognized!".format(mode_ele))
+                raise Exception("mode {} not recognized!".format(mode_ele))
         return info_list
 
 
-    def get_regularization(self, mode, source = ["weight"], **kwargs):
+    def get_regularization(self, mode, source=["weight"], **kwargs):
         reg = to_Variable([0], is_cuda=self.is_cuda)
         if not isinstance(source, list):
             source = [source]
@@ -1030,10 +1024,10 @@ class SuperNet_Layer(nn.Module):
         self,
         input_size,
         output_size,
-        W_init = None,     # initialization for weights
-        b_init = None,     # initialization for bias
-        settings = {},
-        is_cuda = False,
+        W_init=None,     # initialization for weights
+        b_init=None,     # initialization for bias
+        settings={},
+        is_cuda=False,
         ):
         super(SuperNet_Layer, self).__init__()
         # Saving the attribuites:
@@ -1125,7 +1119,7 @@ class SuperNet_Layer(nn.Module):
             self.A_sig = nn.Parameter(torch.FloatTensor(self.A_sig_init))
 
 
-    def get_layers(self, source = ["weight", "bias"]):
+    def get_layers(self, source=["weight", "bias"]):
         """All the different SuperNet layers are based on the same W_seed matrices. 
         For example, W_seed is based on the full self.W_layer_seed; "Toeplitz" is based on
         the first row and first column of self.W_layer_seed to construct the Toeplitz matrix, etc.
@@ -1219,7 +1213,7 @@ class SuperNet_Layer(nn.Module):
                 self.b_core = torch.matmul(self.b_list, b_sig_softmax.transpose(1,0)).squeeze(1)
 
 
-    def forward(self, X, p_dict = None):
+    def forward(self, X, p_dict=None):
         del p_dict
         output = X
         if hasattr(self, "input_size_original"):
@@ -1304,6 +1298,6 @@ class SuperNet_Layer(nn.Module):
         elif mode in AVAILABLE_REG:
             pass
         else:
-            raise Exception("mode '{0}' not recognized!".format(mode))
+            raise Exception("mode '{}' not recognized!".format(mode))
         return reg
 
