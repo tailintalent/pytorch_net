@@ -1595,12 +1595,20 @@ def get_coeffs_recur(expr, param_dict, snapped_list):
 def standardize_symbolic_expression(symbolic_expression):
     """Standardize symbolic expression to be a list of SymPy expressions"""
     from sympy.parsing.sympy_parser import parse_expr
+    from sympy.utilities.lambdify import implemented_function
+    import torch.nn.functional as F
     if isinstance(symbolic_expression, str):
         symbolic_expression = parse_expr(symbolic_expression)
     if not (isinstance(symbolic_expression, list) or isinstance(symbolic_expression, tuple)):
         symbolic_expression = [symbolic_expression]
-    symbolic_expression = [parse_expr(expression) if isinstance(expression, str) else expression for expression in symbolic_expression]
-    return symbolic_expression
+    parsed_symbolic_expression = []
+    for expression in symbolic_expression:
+        parsed_expression = parse_expr(expression) if isinstance(expression, str) else expression
+        if hasattr(parsed_expression.func, "name") and parsed_expression.func.name == 'softplus':
+            softplus = implemented_function("softplus", F.softplus)
+            parsed_expression = softplus(*parsed_expression.args)
+        parsed_symbolic_expression.append(parsed_expression)
+    return parsed_symbolic_expression
 
 
 def get_number_DL(n, status):
