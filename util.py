@@ -1768,7 +1768,10 @@ def vectorSnap(param_dict, top=1):
         newsymb = symbs[i]
         for k in range(len(snap_targets)):
             if snap_targets[k][0] != i:
-                param_dict_subs[symbs[snap_targets[k][0]]] = "{}".format(snap_targets[k][1]) + "*" + newsymb
+                if snap_targets[k][1] != 1:
+                    param_dict_subs[symbs[snap_targets[k][0]]] = "{}".format(snap_targets[k][1]) + "*" + newsymb
+                else:
+                    param_dict_subs[symbs[snap_targets[k][0]]] = newsymb
         new_param_dict[newsymb] = param_dict[newsymb]
         return param_dict_subs, new_param_dict
 
