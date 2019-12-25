@@ -1835,6 +1835,8 @@ class MLP(nn.Module):
             next_layer = getattr(self, "layer_{}".format(layer_id + 1))
             next_layer.add_input_neurons(num_neurons, mode = mode[1])
             self.reset_layer(layer_id + 1, next_layer)
+        if layer_id == 0:
+            self.input_size = self.get_layer(0).input_size
 
     
     def inspect_operation(self, input, operation_between, p_dict = None, **kwargs):
