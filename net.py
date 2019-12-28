@@ -1687,7 +1687,7 @@ class MLP(nn.Module):
         structure = OrderedDict()
         structure["input_size"] = self.input_size
         structure["output_size"] = self.output_size
-        structure["struct_param"] = self.struct_param
+        structure["struct_param"] = self.struct_param if hasattr(self, "struct_param") else None
         return structure
 
 
@@ -1744,7 +1744,7 @@ class MLP(nn.Module):
     
     def snap(self, snap_mode="integer", top=5, **kwargs):
         """Generate a set of new models whose parameters are snapped, each model with a different number of snapped parameters."""
-        if self.num_layers != 1:
+        if not hasattr(self, "num_layers") or self.num_layers != 1:
             return False, [self]
         else:
             model_list = []
@@ -3218,7 +3218,7 @@ class ConvNet(nn.Module):
         structure = OrderedDict()
         structure["input_channels"] = self.input_channels
         structure["output_size"] = self.output_size
-        structure["struct_param"] = self.struct_param
+        structure["struct_param"] = self.struct_param if hasattr(self, "struct_param") else None
         return structure
         
 
