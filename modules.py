@@ -178,6 +178,9 @@ class Simple_Layer(nn.Module):
         if self.bias_on:
             self.b_core = nn.Parameter(torch.zeros(self.output_size))
             init_bias(self.b_core, init=b_init)
+        # Dropout:
+        if "dropout_rate" in settings:
+            self.dropout = nn.Dropout(p=settings["dropout_rate"])
         if is_cuda:
             self.cuda()
         
@@ -293,6 +296,10 @@ class Simple_Layer(nn.Module):
         output = input
         if hasattr(self, "input_size_original"):
             output = output.view(-1, self.input_size)
+        # Dropout:
+        if hasattr(self, "dropout"):
+            output = self.dropout(output)
+
         # Perform dot(X, W) + b:
         if self.weight_on:
             output = torch.matmul(output, self.W_core)
