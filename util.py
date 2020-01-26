@@ -838,6 +838,15 @@ def sample(dist, n=None):
         return dist.rsample((n,))
 
 
+def set_variational_output_size(model_dict, reparam_mode, latent_size):
+    if reparam_mode == "full":
+        model_dict["struct_param"][-1][0] = int((latent_size + 3) * latent_size / 2)
+    elif reparam_mode == "diag":
+        model_dict["struct_param"][-1][0] = 2 * latent_size
+    else:
+        raise
+
+
 def shrink_tensor(tensor, dim, shrink_ratio, mode = "any"):
     """Shrink a tensor along certain dimension using neighboring sites"""
     is_tensor = isinstance(tensor, torch.Tensor)
