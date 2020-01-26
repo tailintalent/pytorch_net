@@ -830,6 +830,14 @@ def expand_tensor(tensor, dim, times):
     return tensor.unsqueeze(dim + 1).repeat(repeat_times).view(*size)
 
 
+def sample(dist, n=None):
+    """Sample n instances from distribution dist"""
+    if n is None:
+        return dist.rsample()
+    else:
+        return dist.rsample((n,))
+
+
 def shrink_tensor(tensor, dim, shrink_ratio, mode = "any"):
     """Shrink a tensor along certain dimension using neighboring sites"""
     is_tensor = isinstance(tensor, torch.Tensor)
