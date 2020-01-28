@@ -1469,6 +1469,8 @@ class RampupLR(_LRScheduler):
 
 def isin(ar1, ar2):
     ar2 = torch.LongTensor(ar2)
+    if ar1.is_cuda:
+        ar2 = ar2.cuda()
     return (ar1[..., None] == ar2).any(-1)
 
 
