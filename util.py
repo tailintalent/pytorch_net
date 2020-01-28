@@ -203,8 +203,11 @@ def to_Variable(*arrays, **kwargs):
             array = torch.tensor(array).float()
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
             array = Variable(array, requires_grad = requires_grad)
-        if is_cuda:
-            array = array.cuda()
+        if isinstance(is_cuda, str):
+            array = array.cuda(is_cuda)
+        else:
+            if is_cuda:
+                array = array.cuda()
         array_list.append(array)
     if len(array_list) == 1:
         array_list = array_list[0]
@@ -582,10 +585,9 @@ def to_one_hot(idx, num):
     if not isinstance(idx, Variable):
         if isinstance(idx, np.ndarray):
             idx = torch.LongTensor(idx)
-        idx = Variable(idx, requires_grad = False)
-    onehot = Variable(torch.zeros(idx.size(0), num), requires_grad = False)
-    if idx.is_cuda:
-        onehot = onehot.cuda()
+        idx = Variable(idx, requires_grad=False)
+    onehot = Variable(torch.zeros(idx.size(0), num), requires_grad=False)
+    onehot = onehot.to(idx.device)
     onehot.scatter_(1, idx, 1)
     return onehot
 

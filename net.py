@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[ ]:
@@ -2766,7 +2766,7 @@ class LSTM(RNNCellBase):
             self.register_parameter('b_hh', None)
         self.reset_parameters()
         self.is_cuda = is_cuda
-        self.device = torch.device("cuda" if self.is_cuda else "cpu")
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
         self.to(self.device)
 
     def reset_parameters(self):
@@ -3707,9 +3707,9 @@ class Mixture_Gaussian(nn.Module):
         self.num_components = num_components
         self.dim = dim
         self.param_mode = param_mode
-        self.device = torch.device("cuda" if is_cuda else "cpu")
-        self.info_dict = {}
         self.is_cuda = is_cuda
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
+        self.info_dict = {}
 
 
     def initialize(self, model_dict = None, input = None, num_samples = 100, verbose = False):

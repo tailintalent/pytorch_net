@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -158,17 +158,17 @@ class Simple_Layer(nn.Module):
             self.output_size_original = output_size
         else:
             self.output_size = output_size
-        
+
         self.is_cuda = is_cuda
-        self.device = torch.device("cuda" if self.is_cuda else "cpu")
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
         self.settings = settings
-        
+
         # Other attributes that are specific to this layer:
         self.activation = settings["activation"] if "activation" in settings else Default_Activation
         self.weight_on = settings["weight_on"] if "weight_on" in settings else True
         self.bias_on = settings["bias_on"] if "bias_on" in settings else True
         self.reg_on = settings["reg_on"] if "reg_on" in settings else True
-        
+
         # Define the learnable parameters in the module (use any name you like). 
         # use nn.Parameter() so that the parameters is registered in the module and can be gradient-updated:
         # self.W_init, self.b_init can be a numpy array, or a string like "glorot-normal":
@@ -181,9 +181,8 @@ class Simple_Layer(nn.Module):
         # Dropout:
         if "dropout_rate" in settings:
             self.dropout = nn.Dropout(p=settings["dropout_rate"])
-        if is_cuda:
-            self.cuda()
-        
+        self.set_cuda(is_cuda)
+
         # Initialize parameter freeze if stipulated:
         if "snap_dict" in self.settings:
             # Clear snapping if either self.weight_on is False or self.bias_on is False
@@ -193,14 +192,14 @@ class Simple_Layer(nn.Module):
                     pop_snapping.append((pos, idx))
             for key in pop_snapping:
                 self.settings["snap_dict"].pop(key)
-                    
+        
             # Initialize freeze:
             self.snap_dict = self.settings["snap_dict"]
             self.initialize_param_freeze(update_values=True)
         else:
             self.snap_dict = {}
-    
-    
+
+
     def change(self, target, new_property):
         if target == "weight":
             if self.weight_on:
@@ -579,10 +578,13 @@ class Simple_Layer(nn.Module):
 
 
     def set_cuda(self, is_cuda):
-        if is_cuda:
-            self.cuda()
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
         else:
-            self.cpu()
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
         self.is_cuda = is_cuda
 
 
@@ -865,8 +867,7 @@ class Symbolic_Layer(nn.Module):
         for param_name in param_name_to_delete:
             delattr(self, param_name)
 
-        if self.is_cuda:
-            self.cuda()
+        self.set_cuda(self.is_cuda)
 
 
     def set_trainable(self, is_trainable):
@@ -876,6 +877,17 @@ class Symbolic_Layer(nn.Module):
                 getattr(self, param_name).requires_grad = True
             else:
                 getattr(self, param_name).requires_grad = False
+    
+    
+    def set_cuda(self, is_cuda):
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
+        else:
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
+        self.is_cuda = is_cuda
 
 
     def forward(self, input, p_dict=None):
@@ -1050,7 +1062,7 @@ class SuperNet_Layer(nn.Module):
         self.W_init = W_init
         self.b_init = b_init
         self.is_cuda = is_cuda
-        self.device = torch.device("cuda" if is_cuda else "cpu")
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
         
         # Obtain additional initialization settings if provided:
         self.W_available = settings["W_available"] if "W_available" in settings else ["dense", "Toeplitz"]
@@ -1070,8 +1082,7 @@ class SuperNet_Layer(nn.Module):
         
         # Initialize layer:
         self.init_layer()
-        if is_cuda:
-            self.cuda()
+        self.set_cuda(is_cuda)
     
     
     @property
@@ -1306,4 +1317,15 @@ class SuperNet_Layer(nn.Module):
         else:
             raise Exception("mode '{}' not recognized!".format(mode))
         return reg
+
+
+    def set_cuda(self, is_cuda):
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
+        else:
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
+        self.is_cuda = is_cuda
 
