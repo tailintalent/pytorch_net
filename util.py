@@ -2161,3 +2161,8 @@ class Batch_Generator(object):
                     y_batch = y_batch.cuda()
 
             return X_batch, y_batch
+
+        
+def logmeanexp(tensor, axis, keepdims=False):
+    """Calculate logmeanexp of tensor."""
+    return torch.logsumexp(tensor, axis=axis, keepdims=keepdims) - np.log(tensor.shape[axis])

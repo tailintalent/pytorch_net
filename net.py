@@ -670,7 +670,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
     net_type = model_dict["type"]
     if net_type.startswith("MLP"):
         return MLP(input_size = model_dict["input_size"],
-                   struct_param = model_dict["struct_param"],
+                   struct_param = model_dict["struct_param"] if "struct_param" in model_dict else None,
                    W_init_list = model_dict["weights"] if "weights" in model_dict else None,
                    b_init_list = model_dict["bias"] if "bias" in model_dict else None,
                    settings = model_dict["settings"] if "settings" in model_dict else {},
@@ -1662,14 +1662,16 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.input_size = input_size
         self.is_cuda = is_cuda
+        self.settings = deepcopy(settings)
         if struct_param is not None:
             self.num_layers = len(struct_param)
             self.W_init_list = W_init_list
             self.b_init_list = b_init_list
-            self.settings = deepcopy(settings)
             self.info_dict = {}
 
             self.init_layers(deepcopy(struct_param))
+        else:
+            self.num_layers = 0
 
 
     @property
