@@ -104,6 +104,7 @@ def train(
     if filename is not None:
         make_dir(filename)
     save_interval = kwargs["save_interval"] if "save_interval" in kwargs else None
+    save_step = kwargs["save_step"] if "save_step" in kwargs else None
     logdir = kwargs["logdir"] if "logdir" in kwargs else None
     data_record = {key: [] for key in record_keys}
     info_to_save = kwargs["info_to_save"] if "info_to_save" in kwargs else None
@@ -374,6 +375,9 @@ def train(
                                             info_dict_step[item].append(co_info_dict[item])
                                             print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                         print()
+                    if k % save_step == 0:
+                        if filename is not None:
+                            pickle.dump(model.model_dict, open(filename[:-2] + "_model.p", "wb"))
 
         if logdir is not None:
             # Log values and gradients of the parameters (histogram summary)
