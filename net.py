@@ -711,6 +711,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
                             input_channels=model_dict["input_channels"],
                             output_size=model_dict["output_size"],
                             dropout_rate=model_dict["dropout_rate"],
+                            input_size_final_layer=model_dict["input_size_final_layer"],
                             is_cuda=is_cuda,
                            )
         if "state_dict" in model_dict:
@@ -2925,6 +2926,7 @@ class Wide_ResNet(nn.Module):
         input_channels,
         output_size,
         dropout_rate=None,
+        input_size_final_layer=None,
         is_cuda=False,
     ):
         super(Wide_ResNet, self).__init__()
@@ -2933,6 +2935,7 @@ class Wide_ResNet(nn.Module):
         self.widen_factor = widen_factor
         self.input_channels = input_channels
         self.dropout_rate = dropout_rate
+        self.input_size_final_layer = input_size_final_layer
         self.output_size = output_size
 
         assert ((depth-4)%6 ==0), 'Wide-resnet depth should be 6n+4'
@@ -2946,10 +2949,8 @@ class Wide_ResNet(nn.Module):
         self.layer2 = self._wide_layer(wide_basic, nStages[2], n, dropout_rate, stride=2)
         self.layer3 = self._wide_layer(wide_basic, nStages[3], n, dropout_rate, stride=2)
         self.bn1 = nn.BatchNorm2d(nStages[3], momentum=0.9)
-        self.linear = nn.Linear(nStages[3], output_size)
-        self.is_cuda = is_cuda
-        if is_cuda:
-            self = self.cuda()
+        self.linear = nn.Linear(nStages[3] if input_size_final_layer is None else input_size_final_layer, output_size)
+        self.set_cuda(is_cuda)
 
     def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride):
         strides = [stride] + [1]*(int(num_blocks)-1)
@@ -2973,6 +2974,17 @@ class Wide_ResNet(nn.Module):
 
         return out
     
+    def set_cuda(self, is_cuda):
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
+        else:
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
+        self.is_cuda = is_cuda
+
+    
     @property
     def model_dict(self):
         model_dict = {"type": "Wide_ResNet"}
@@ -2981,6 +2993,7 @@ class Wide_ResNet(nn.Module):
         model_dict["widen_factor"] = self.widen_factor
         model_dict["input_channels"] = self.input_channels
         model_dict["output_size"] = self.output_size
+        model_dict["input_size_final_layer"] = self.input_size_final_layer
         model_dict["dropout_rate"] = self.dropout_rate
         return model_dict
 
@@ -3018,7 +3031,6 @@ class ConvNet(nn.Module):
         ):
         super(ConvNet, self).__init__()
         self.input_channels = input_channels
-        self.is_cuda = is_cuda
         if struct_param is not None:
             self.struct_param = struct_param
             self.W_init_list = W_init_list
@@ -3068,7 +3080,7 @@ class ConvNet(nn.Module):
                                       W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
                                       b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
                                       settings = layer_settings,
-                                      is_cuda = self.is_cuda,
+                                      is_cuda = is_cuda,
                                      )
                 elif layer_type == "MaxPool2d":
                     layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
@@ -3100,8 +3112,7 @@ class ConvNet(nn.Module):
                     layer.bias.data = torch.FloatTensor(self.b_init_list[i])
 
                 setattr(self, "layer_{0}".format(i), layer)
-            if self.is_cuda:
-                self.cuda()
+            self.set_cuda(is_cuda)
 
 
     def forward(self, input, indices_list = None, **kwargs):
@@ -3279,17 +3290,17 @@ class ConvNet(nn.Module):
 #         self.info_dict["accuracy"] = get_accuracy(pred, y)
         return deepcopy(self.info_dict)
     
-    
+
     def set_cuda(self, is_cuda):
-        for k in range(self.num_layers):
-            if self.struct_param[k][1] == "Simple_Layer":
-                getattr(self, "layer_{0}".format(k)).set_cuda(is_cuda)
-            elif self.struct_param[k][1] in self.param_available:
-                if is_cuda is True:
-                    getattr(self, "layer_{0}".format(k)).cuda()
-                else:
-                    getattr(self, "layer_{0}".format(k)).cpu()
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
+        else:
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
         self.is_cuda = is_cuda
+
 
 
     def set_trainable(self, is_trainable):
