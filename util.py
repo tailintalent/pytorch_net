@@ -603,7 +603,7 @@ def train_test_split(*args, test_size = 0.1):
         num_train = num_examples - num_test
         idx_train = np.random.choice(range(num_examples), size = num_train, replace = False)
         idx_test = set(range(num_examples)) - set(idx_train)
-        device = torch.device("cuda" if args[0].is_cuda else "cpu")
+        device = args[0].device
         idx_train = torch.LongTensor(list(idx_train)).to(device)
         idx_test = torch.LongTensor(list(idx_test)).to(device)
         for arg in args:
@@ -879,7 +879,7 @@ def shrink_tensor(tensor, dim, shrink_ratio, mode = "any"):
 def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
     from copy import deepcopy
     assert dim != 0
-    device = torch.device("cuda" if X.is_cuda else "cpu")
+    device = X.device
     if isinstance(idx, tuple) or isinstance(idx, list):
         k, ll = idx
         X_permute = X[:, k, ll * group_sizes: (ll + 1) * group_sizes]
@@ -1504,7 +1504,7 @@ class Transform_Label(object):
         self.label_noise_matrix = label_noise_matrix
         if self.label_noise_matrix is not None:
             assert ((self.label_noise_matrix.sum(0) - 1) < 1e-10).all()
-        self.device = torch.device("cuda" if is_cuda else "cpu")
+        self.device = torch.device(is_cuda if isinstance(is_cuda, str) else "cuda" if is_cuda else "cpu")
 
     def __call__(self, y):
         if self.label_noise_matrix is None:

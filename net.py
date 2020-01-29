@@ -857,8 +857,10 @@ def Zip(*data, **kwargs):
     return data
 
 
-def get_loss(model, data_loader = None, X = None, y = None, criterion = None, transform_label=None, **kwargs):
+def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_label=None, **kwargs):
     """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
+    if transform_label is None:
+        transform_label = Transform_Label()
     if data_loader is not None:
         assert X is None and y is None
         loss_record = 0
@@ -882,7 +884,9 @@ def get_loss(model, data_loader = None, X = None, y = None, criterion = None, tr
     return loss
 
 
-def plot_model(model, data_loader = None, X = None, y = None, transform_label=None):
+def plot_model(model, data_loader=None, X=None, y=None, transform_label=None):
+    if transform_label is None:
+        transform_label = Transform_Label()
     if data_loader is not None:
         assert X is None and y is None
         X_all = []
@@ -901,8 +905,10 @@ def plot_model(model, data_loader = None, X = None, y = None, transform_label=No
         model.plot(X, transform_label(y))
 
 
-def prepare_inspection(model, data_loader = None, X = None, y = None, transform_label=None, **kwargs):
+def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=None, **kwargs):
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
+    if transform_label is None:
+        transform_label = Transform_Label()
     if data_loader is None:
         assert X is not None and y is not None
         all_dict_summary = model.prepare_inspection(X, transform_label(y), **kwargs)
