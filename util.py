@@ -1239,6 +1239,22 @@ def save_model(model_dict, filename, mode="pickle"):
         raise Exception("mode {} is not valid!".format(mode))
 
 
+def to_cpu_recur(item):
+    if isinstance(item, dict):
+        return {key: to_cpu_recur(value) for key, value in item.items()}
+    elif isinstance(item, list):
+        return [to_cpu_recur(element) for element in item]
+    elif isinstance(item, tuple):
+        return tuple(to_cpu_recur(element) for element in item)
+    elif isinstance(item, set):
+        return {to_cpu_recur(element) for element in item}
+    else:
+        if isinstance(item, torch.Tensor):
+            if item.is_cuda:
+                return item.cpu()
+        return item
+
+
 def serialize(item):
     if isinstance(item, dict):
         return {str(key): serialize(value) for key, value in item.items()}

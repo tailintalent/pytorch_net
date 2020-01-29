@@ -28,7 +28,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
 from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL
-from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model
+from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur
 
 
 # ## Training functionality:
@@ -2988,7 +2988,7 @@ class Wide_ResNet(nn.Module):
     @property
     def model_dict(self):
         model_dict = {"type": "Wide_ResNet"}
-        model_dict["state_dict"] = self.state_dict()
+        model_dict["state_dict"] = to_cpu_recur(self.state_dict())
         model_dict["depth"] = self.depth
         model_dict["widen_factor"] = self.widen_factor
         model_dict["input_channels"] = self.input_channels
