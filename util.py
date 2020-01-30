@@ -915,9 +915,7 @@ def fill_triangular(vec, dim, mode = "lower"):
     """Fill an lower or upper triangular matrices with given vectors"""
     num_examples, size = vec.shape
     assert size == dim * (dim + 1) // 2
-    matrix = torch.zeros(num_examples, dim, dim)
-    if vec.is_cuda:
-        matrix = matrix.cuda()
+    matrix = torch.zeros(num_examples, dim, dim).to(vec.device)
     idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
     idx = idx.repeat(num_examples,1,1)
     if mode == "lower":

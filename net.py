@@ -186,7 +186,7 @@ def train(
 
     # Initialize inspect_items:
     if inspect_items is not None:
-        print("{0}:".format(-1), end = "")
+        print("{}:".format(-1), end = "")
         print("\tlr: {0:.3e}\t loss:{1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_original, inspect_loss_precision), end = "")
         info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
         if len(inspect_items_train) > 0:
@@ -426,7 +426,7 @@ def train(
                     to_stop = early_stopping.monitor(info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
-                    print("{0}:".format(i), end = "")
+                    print("{}:".format(i), end = "")
                     print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
                     info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
                     if len(inspect_items_train) > 0:
@@ -766,7 +766,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
                           is_cuda = is_cuda,
                          )
     else:
-        raise Exception("net_type {0} not recognized!".format(net_type))
+        raise Exception("net_type {} not recognized!".format(net_type))
         
 
 def load_model_dict(model_dict, is_cuda = False):
@@ -798,7 +798,7 @@ def load_model_dict(model_dict, is_cuda = False):
         else:
             raise
         for k in range(model_ensemble.num_models):
-            setattr(model_ensemble, "model_{0}".format(k), load_model_dict(model_dict["model_{0}".format(k)], is_cuda = is_cuda))
+            setattr(model_ensemble, "model_{}".format(k), load_model_dict(model_dict["model_{}".format(k)], is_cuda = is_cuda))
         return model_ensemble
     elif net_type == "Model_with_Uncertainty":
         return Model_with_Uncertainty(model_pred = load_model_dict(model_dict["model_pred"], is_cuda = is_cuda),
@@ -806,7 +806,7 @@ def load_model_dict(model_dict, is_cuda = False):
     elif net_type == "Mixture_Gaussian":
         return load_model_dict_Mixture_Gaussian(model_dict, is_cuda = is_cuda)
     else:
-        raise Exception("net_type {0} not recognized!".format(net_type))
+        raise Exception("net_type {} not recognized!".format(net_type))
 
 
 ## Helper functions:
@@ -833,9 +833,7 @@ def fill_triangular(vec, dim, mode = "lower"):
     """Fill an lower or upper triangular matrices with given vectors"""
     num_examples, size = vec.shape
     assert size == dim * (dim + 1) // 2
-    matrix = torch.zeros(num_examples, dim, dim)
-    if vec.is_cuda:
-        matrix = matrix.cuda()
+    matrix = torch.zeros(num_examples, dim, dim).to(vec.device)
     idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
     idx = idx.repeat(num_examples,1,1)
     if mode == "lower":
@@ -843,7 +841,7 @@ def fill_triangular(vec, dim, mode = "lower"):
     elif mode == "upper":
         matrix[idx] = vec.contiguous().view(-1)
     else:
-        raise Exception("mode {0} not recognized!".format(mode))
+        raise Exception("mode {} not recognized!".format(mode))
     return matrix
 
 
@@ -916,14 +914,16 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
     return loss
 
 
-def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, data_loader_apply=None):
+def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, **kwargs):
+    data_loader_apply = kwargs["data_loader_apply"] if "data_loader_apply" in kwargs else None
+    max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
     if data_loader is not None:
         assert X is None and y is None
         X_all = []
         y_all = []
-        for data_batch in data_loader:
+        for i, data_batch in enumerate(data_loader):
             if isinstance(data_batch, tuple):
                 X_batch, y_batch = data_batch
                 if data_loader_apply is not None:
@@ -932,6 +932,8 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, da
                 X_batch, y_batch = data_loader_apply(data_batch)
             X_all.append(X_batch)
             y_all.append(y_batch)
+            if max_validation_iter is not None and i >= max_validation_iter:
+                break
         if not isinstance(X_all[0], torch.Tensor):
             X_all = Zip(*X_all, function = torch.cat)
         else:
@@ -1044,12 +1046,12 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
 
     for mode_ele in mode:
         if verbose >= 1:
-            print("\n" + "=" * 48 + "\nSimplifying mode: {0}".format(mode_ele), end = "")
+            print("\n" + "=" * 48 + "\nSimplifying mode: {}".format(mode_ele), end = "")
             if mode_ele == "snap":
                 snap_mode = kwargs["snap_mode"] if "snap_mode" in kwargs else "integer"
-                print(" {0}".format(snap_mode), end = "")
+                print(" {}".format(snap_mode), end = "")
             if target_name is not None:
-                print(" for {0}".format(target_name))
+                print(" for {}".format(target_name))
             else:
                 print()
             print("=" * 48)
@@ -1060,7 +1062,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
             loss_original = to_np_array(criterion(pred_valid, y_valid))
             loss_list = [loss_original]
             if verbose >= 1:
-                print("original_loss: {0}".format(loss_original))
+                print("original_loss: {}".format(loss_original))
             mse_record_whole = [to_np_array(nn.MSELoss()(pred_valid, y_valid))]
             data_DL_whole = [to_np_array(DL_criterion(pred_valid, y_valid))]
         model_DL_whole = [get_model_DL(model)]
@@ -1114,7 +1116,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                 new_layer_info = {}
                 for current_start, layer_ids in collapse_dict.items():
                     for i, layer_id in enumerate(layer_ids):
-                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        layer = getattr(model_ele, "layer_{}".format(layer_id))
                         if i == 0:
                             W_accum = layer.W_core
                             b_accum = layer.b_core
@@ -1130,7 +1132,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                                                     }
                     new_layer_info[current_start].pop("snap_dict", None)
                 if verbose >= 1:
-                    print("model_id {0}, layers collapsed: {1}".format(model_id, collapse_dict))
+                    print("model_id {}, layers collapsed: {}".format(model_id, collapse_dict))
                 
                 # Rebuild the Net:
                 if len(collapse_dict) > 0:
@@ -1174,7 +1176,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                 pred_valid = forward(model, X_valid, **kwargs)
                 loss_new = to_np_array(criterion(pred_valid, y_valid))
                 if verbose >= 1:
-                    print("after collapsing linear layers in all models, new loss {0}".format(loss_new))
+                    print("after collapsing linear layers in all models, new loss {}".format(loss_new))
                 loss_list.append(loss_new)
                 mse_record_whole.append(to_np_array(nn.MSELoss()(pred_valid, y_valid)))
                 data_DL_whole.append(to_np_array(DL_criterion(pred_valid, y_valid)))
@@ -1204,7 +1206,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
             excluded_idx_dict = {item[0]: [] for item in target_params}
             target_layer_ids_exclude = []
             for (model_id, layer_id), target_list in target_params:
-                layer = getattr(model[model_id], "layer_{0}".format(layer_id))
+                layer = getattr(model[model_id], "layer_{}".format(layer_id))
                 if isinstance(target_list, list):
                     max_passes = len(target_list)
                 elif target_list == "snap":
@@ -1212,7 +1214,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                     if "max_passes" in kwargs:
                         max_passes = min(max_passes, kwargs["max_passes"])
                 else:
-                    raise Exception("target_list {0} not recognizable!".format(target_list))
+                    raise Exception("target_list {} not recognizable!".format(target_list))
                 if verbose >= 2:
                     print("\n****starting model:****")
                     model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True)
@@ -1272,7 +1274,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                 model[model_id].load_model_dict(pivot_dict["model_dict"])
                 model[model_id].synchronize_settings()
                 if verbose >= 2:
-                    print("\n****pivot model at {0}th transformation:****".format(pivot_id))
+                    print("\n****pivot model at {}th transformation:****".format(pivot_id))
                     model[model_id].get_weights_bias(W_source = "core", b_source = "core", verbose = True)
                     print("********\n" )
 
@@ -1281,7 +1283,7 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
             for model_id, model_ele in enumerate(model):
                 for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
                     if layer_struct_param[1] == "Symbolic_Layer":
-                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        layer = getattr(model_ele, "layer_{}".format(layer_id))
                         max_passes = len(layer.get_param_dict()) - 1
                         if "max_passes" in kwargs:
                             max_passes = min(max_passes, kwargs["max_passes"])
@@ -1340,10 +1342,10 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
             is_multi_model = True if len(model) > 1 else False
             for model_id, model_ele in enumerate(model):
                 for layer_id, layer_struct_param in enumerate(model_ele.struct_param):
-                    prefix = "L{0}_".format(layer_id)
+                    prefix = "L{}_".format(layer_id)
                     if layer_struct_param[1] == "Simple_Layer":
                         # Obtain loss before simplification:
-                        layer = getattr(model_ele, "layer_{0}".format(layer_id))
+                        layer = getattr(model_ele, "layer_{}".format(layer_id))
                         if X is not None:
                             criteria_prev, criteria_result_prev = get_criteria_value(model, X, y, criteria_type = simplify_criteria[0], criterion = criterion, **kwargs)
                         
@@ -1359,9 +1361,9 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
                                 if pos == "weight":
                                     subs_targets.append((Symbol("W{0}{1}".format(true_idx[0], true_idx[1])), item["new_value"]))
                                 elif pos == "bias":
-                                    subs_targets.append((Symbol("b{0}".format(true_idx)), item["new_value"]))
+                                    subs_targets.append((Symbol("b{}".format(true_idx)), item["new_value"]))
                                 else:
-                                    raise Exception("pos {0} not recognized!".format(pos))
+                                    raise Exception("pos {} not recognized!".format(pos))
                             new_expression = [expression.subs(subs_targets) for expression in new_layer.symbolic_expression]
                             new_layer.set_symbolic_expression(new_expression)
                             model_ele.settings["snap_dict"].pop(layer_id)
