@@ -465,7 +465,7 @@ def train(
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
                     if "param_grad" in record_keys:
                         record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
-                    print()
+                    print("\n")
                     try:
                         sys.stdout.flush()
                     except:

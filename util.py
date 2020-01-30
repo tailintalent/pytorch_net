@@ -203,11 +203,7 @@ def to_Variable(*arrays, **kwargs):
             array = torch.tensor(array).float()
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
             array = Variable(array, requires_grad = requires_grad)
-        if isinstance(is_cuda, str):
-            array = array.cuda(is_cuda)
-        else:
-            if is_cuda:
-                array = array.cuda()
+        array = set_cuda(array, is_cuda)
         array_list.append(array)
     if len(array_list) == 1:
         array_list = array_list[0]
@@ -1491,11 +1487,20 @@ class RampupLR(_LRScheduler):
         return [base_lr * np.logspace(-12, 0, self.num_steps + 1)[self.last_epoch]
                 for base_lr in self.base_lrs]
 
+    
+def set_cuda(tensor, is_cuda):
+    if isinstance(is_cuda, str):
+        return tensor.cuda(is_cuda)
+    else:
+        if is_cuda:
+            return tensor.cuda()
+        else:
+            return tensor
+
 
 def isin(ar1, ar2):
     ar2 = torch.LongTensor(ar2)
-    if ar1.is_cuda:
-        ar2 = ar2.cuda()
+    ar2 = ar2.to(ar1.device)
     return (ar1[..., None] == ar2).any(-1)
 
 
