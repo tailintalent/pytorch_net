@@ -305,7 +305,7 @@ def train(
                 info_dict_step = {key: [] for key in inspect_items}
 
             for k, data_batch in enumerate(train_loader):
-                if isinstance(data_batch, tuple):
+                if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                     X_batch, y_batch = data_batch
                     if data_loader_apply is not None:
                         X_batch, y_batch = data_loader_apply(X_batch, y_batch)
@@ -887,7 +887,7 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
         count = 0
         # Taking the average of all metrics:
         for j, data_batch in enumerate(data_loader):
-            if isinstance(data_batch, tuple):
+            if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                 X_batch, y_batch = data_batch
                 if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
                     X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
@@ -924,7 +924,7 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, **
         X_all = []
         y_all = []
         for i, data_batch in enumerate(data_loader):
-            if isinstance(data_batch, tuple):
+            if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                 X_batch, y_batch = data_batch
                 if data_loader_apply is not None:
                     X_batch, y_batch = data_loader_apply(X_batch, y_batch)
@@ -960,7 +960,7 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
         assert X is None and y is None
         all_dict = {}
         for j, data_batch in enumerate(data_loader):
-            if isinstance(data_batch, tuple):
+            if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                 X_batch, y_batch = data_batch
                 if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
                     X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
