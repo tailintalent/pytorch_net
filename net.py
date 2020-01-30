@@ -213,7 +213,7 @@ def train(
                         print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
                         if item in record_keys and item != "loss":
                             record_data(data_record, [to_np_array(co_info_dict[item])], [item])
-        print()
+        print("\n")
 
     # Setting up gradient noise:
     if gradient_noise is not None:
@@ -304,9 +304,13 @@ def train(
             if inspect_step is not None:
                 info_dict_step = {key: [] for key in inspect_items}
 
-            for k, (X_batch, y_batch) in enumerate(train_loader):
-                if data_loader_apply is not None:
-                    X_batch, y_batch = data_loader_apply(X_batch, y_batch)
+            for k, data_batch in enumerate(train_loader):
+                if isinstance(data_batch, tuple):
+                    X_batch, y_batch = data_batch
+                    if data_loader_apply is not None:
+                        X_batch, y_batch = data_loader_apply(X_batch, y_batch)
+                else:
+                    X_batch, y_batch = data_loader_apply(data_batch)
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
                     reg = get_regularization(model, loss_epoch = i, **kwargs)
@@ -876,6 +880,7 @@ def Zip(*data, **kwargs):
 
 def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_label=None, **kwargs):
     """Get loss using the whole data or data_loader. Return the average validation loss with np.ndarray format"""
+    max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
     if data_loader is not None:
@@ -883,9 +888,13 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
         loss_record = 0
         count = 0
         # Taking the average of all metrics:
-        for j, (X_batch, y_batch) in enumerate(data_loader):
-            if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
-                X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
+        for j, data_batch in enumerate(data_loader):
+            if isinstance(data_batch, tuple):
+                X_batch, y_batch = data_batch
+                if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
+                    X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
+            else:
+                X_batch, y_batch = kwargs["data_loader_apply"](data_batch)
             loss_ele = to_np_array(model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, **kwargs))
             if j == 0:
                 all_info_dict = {key: 0 for key in model.info_dict.keys()}
@@ -893,6 +902,10 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
             count += 1
             for key in model.info_dict:
                 all_info_dict[key] = all_info_dict[key] + model.info_dict[key]
+
+            if max_validation_iter is not None and count > max_validation_iter:
+                break
+
         for key in model.info_dict:
             all_info_dict[key] = all_info_dict[key] / count
         loss = loss_record / count
@@ -910,9 +923,13 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, da
         assert X is None and y is None
         X_all = []
         y_all = []
-        for X_batch, y_batch in data_loader:
-            if data_loader_apply is not None:
-                X_batch, y_batch = data_loader_apply(X_batch, y_batch)
+        for data_batch in data_loader:
+            if isinstance(data_batch, tuple):
+                X_batch, y_batch = data_batch
+                if data_loader_apply is not None:
+                    X_batch, y_batch = data_loader_apply(X_batch, y_batch)
+            else:
+                X_batch, y_batch = data_loader_apply(data_batch)
             X_all.append(X_batch)
             y_all.append(y_batch)
         if not isinstance(X_all[0], torch.Tensor):
@@ -928,6 +945,7 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, da
 
 def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=None, **kwargs):
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
+    max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
     if data_loader is None:
@@ -939,9 +957,13 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
     else:
         assert X is None and y is None
         all_dict = {}
-        for X_batch, y_batch in data_loader:
-            if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
-                X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
+        for j, data_batch in enumerate(data_loader):
+            if isinstance(data_batch, tuple):
+                X_batch, y_batch = data_batch
+                if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
+                    X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
+            else:
+                X_batch, y_batch = kwargs["data_loader_apply"](data_batch)
             info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
             for key, item in info_dict.items():
                 if key not in all_dict:
@@ -955,6 +977,8 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
                         all_dict[inspect_function_key] = [inspect_function_result]
                     else:
                         all_dict[inspect_function_key].append(inspect_function_result)
+            if max_validation_iter is not None and j >= max_validation_iter:
+                break
         all_dict_summary = {}
         for key, item in all_dict.items():
             all_dict_summary[key] = np.mean(all_dict[key])
