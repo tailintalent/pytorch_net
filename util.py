@@ -1239,19 +1239,26 @@ def save_model(model_dict, filename, mode="pickle"):
         raise Exception("mode {} is not valid!".format(mode))
 
 
-def to_cpu_recur(item):
+def to_cpu_recur(item, to_target=None):
     if isinstance(item, dict):
-        return {key: to_cpu_recur(value) for key, value in item.items()}
+        return {key: to_cpu_recur(value, to_target=to_target) for key, value in item.items()}
     elif isinstance(item, list):
-        return [to_cpu_recur(element) for element in item]
+        return [to_cpu_recur(element, to_target=to_target) for element in item]
     elif isinstance(item, tuple):
-        return tuple(to_cpu_recur(element) for element in item)
+        return tuple(to_cpu_recur(element, to_target=to_target) for element in item)
     elif isinstance(item, set):
-        return {to_cpu_recur(element) for element in item}
+        return {to_cpu_recur(element, to_target=to_target) for element in item}
     else:
         if isinstance(item, torch.Tensor):
             if item.is_cuda:
-                return item.cpu()
+                item = item.cpu()
+            if to_target is not None and to_target == "np":
+                item = item.detach().numpy()
+            return item
+        if to_target is not None and to_target == "torch":
+            if isinstance(item, np.ndarray):
+                item = torch.FloatTensor(item)
+                return item
         return item
 
 

@@ -27,7 +27,7 @@ from torch.distributions.utils import broadcast_all
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
-from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL
+from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
 from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur
 
 
@@ -83,6 +83,7 @@ def train(
     optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
     scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
     gradient_noise = kwargs["gradient_noise"] if "gradient_noise" in kwargs else None
+    data_loader_apply = kwargs["data_loader_apply"] if "data_loader_apply" in kwargs else None
 
     # Inspection kwargs:
     inspect_step = kwargs["inspect_step"] if "inspect_step" in kwargs else None  # Whether to inspect each step
@@ -304,6 +305,8 @@ def train(
                 info_dict_step = {key: [] for key in inspect_items}
 
             for k, (X_batch, y_batch) in enumerate(train_loader):
+                if data_loader_apply is not None:
+                    X_batch, y_batch = data_loader_apply(X_batch, y_batch)
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
                     reg = get_regularization(model, loss_epoch = i, **kwargs)
@@ -472,10 +475,10 @@ def train(
                     if i % inspect_image_interval == 0:
                         if gradient_noise is not None:
                             print("gradient_noise: {0:.9f}".format(current_gradient_noise_scale))
-                        plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label)
+                        plot_model(model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label, data_loader_apply=data_loader_apply)
                 if co_kwargs is not None and "inspect_image_interval" in co_kwargs and co_kwargs["inspect_image_interval"] and hasattr(co_model, "plot"):
                     if i % co_kwargs["inspect_image_interval"] == 0:
-                        plot_model(co_model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label)
+                        plot_model(co_model, data_loader = validation_loader, X = X_valid, y = y_valid, transform_label=transform_label, data_loader_apply=data_loader_apply)
         if save_interval is not None:
             if i % save_interval == 0:
                 record_data(data_record, [model.model_dict], ["model_dict"])
@@ -680,6 +683,15 @@ def load_model_dict_net(model_dict, is_cuda = False):
                    settings = model_dict["settings"] if "settings" in model_dict else {},
                    is_cuda = is_cuda,
                   )
+    elif net_type == "Labelmix_MLP":
+        model = Labelmix_MLP(input_size=model_dict["input_size"],
+                             struct_param=model_dict["struct_param"],
+                             idx_label=model_dict["idx_label"] if "idx_label" in model_dict else None,
+                             is_cuda=is_cuda,
+                            )
+        if "state_dict" in model_dict:
+            model.load_state_dict(model_dict["state_dict"])
+        return model
     elif net_type == "Multi_MLP":
         return Multi_MLP(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
@@ -872,6 +884,8 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
         count = 0
         # Taking the average of all metrics:
         for j, (X_batch, y_batch) in enumerate(data_loader):
+            if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
+                X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
             loss_ele = to_np_array(model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, **kwargs))
             if j == 0:
                 all_info_dict = {key: 0 for key in model.info_dict.keys()}
@@ -889,7 +903,7 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
     return loss
 
 
-def plot_model(model, data_loader=None, X=None, y=None, transform_label=None):
+def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, data_loader_apply=None):
     if transform_label is None:
         transform_label = Transform_Label()
     if data_loader is not None:
@@ -897,6 +911,8 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None):
         X_all = []
         y_all = []
         for X_batch, y_batch in data_loader:
+            if data_loader_apply is not None:
+                X_batch, y_batch = data_loader_apply(X_batch, y_batch)
             X_all.append(X_batch)
             y_all.append(y_batch)
         if not isinstance(X_all[0], torch.Tensor):
@@ -924,6 +940,8 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
         assert X is None and y is None
         all_dict = {}
         for X_batch, y_batch in data_loader:
+            if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
+                X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
             info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
             for key, item in info_dict.items():
                 if key not in all_dict:
@@ -1774,9 +1792,7 @@ class MLP(nn.Module):
 
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
-        reg = Variable(torch.FloatTensor([0]), requires_grad = False)
-        if self.is_cuda:
-            reg = reg.cuda()
+        reg = to_Variable([0], is_cuda=self.is_cuda)
         for k in range(len(self.struct_param)):
             layer = getattr(self, "layer_{}".format(k))
             reg = reg + layer.get_regularization(mode = mode, source = source)
@@ -2030,6 +2046,90 @@ class MLP(nn.Module):
                     print("Layer {} is not a symbolic layer.".format(i))
                 expressions[i] = None
         return expressions
+
+
+# ## Labelmix_MLP:
+
+# In[ ]:
+
+
+class Labelmix_MLP(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        struct_param,
+        idx_label=None,
+        is_cuda=False,
+    ):
+        super(Labelmix_MLP, self).__init__()
+        self.input_size = input_size
+        self.struct_param = struct_param
+        self.num_layers = len(struct_param)
+        if idx_label is not None and len(idx_label) == input_size:
+            idx_label = None
+        if idx_label is not None:
+            self.idx_label = torch.LongTensor(idx_label)
+            idx_main = list(set(range(input_size)) - set(to_np_array(idx_label).astype(int).tolist()))
+            self.idx_main = torch.LongTensor(idx_main)
+        else:
+            self.idx_label = None
+            self.idx_main = torch.LongTensor(list(range(input_size)))
+        num_neurons_prev = len(self.idx_main)
+        for i, layer_struct_param in enumerate(struct_param):
+            num_neurons = layer_struct_param[0]
+            setattr(self, "W_{}_main".format(i), nn.Parameter(torch.randn(num_neurons_prev, num_neurons)))
+            setattr(self, "b_{}_main".format(i), nn.Parameter(torch.zeros(num_neurons)))
+            init_weight(getattr(self, "W_{}_main".format(i)), init=None)
+            num_neurons_prev = num_neurons
+            if self.idx_label is not None:
+                setattr(self, "W_{}_mul".format(i), nn.Parameter(torch.randn(len(self.idx_label), num_neurons)))
+                setattr(self, "W_{}_add".format(i), nn.Parameter(torch.randn(len(self.idx_label), num_neurons)))
+                init_weight(getattr(self, "W_{}_mul".format(i)), init=None)
+                init_weight(getattr(self, "W_{}_add".format(i)), init=None)
+        self.set_cuda(is_cuda)
+    
+
+    def forward(self, input):
+        output = input[:, self.idx_main]
+        if self.idx_label is not None:
+            labels = input[:, self.idx_label]
+        for i, layer_struct_param in enumerate(self.struct_param):
+            output = torch.matmul(output, getattr(self, "W_{}_main".format(i))) + getattr(self, "b_{}_main".format(i))
+            if i != self.num_layers - 1:
+                if "activation" in layer_struct_param[2]:
+                    output = get_activation(layer_struct_param[2]["activation"])(output)
+            if self.idx_label is not None:
+                A_mul = torch.matmul(labels, getattr(self, "W_{}_mul".format(i)))
+                A_add = torch.matmul(labels, getattr(self, "W_{}_add".format(i)))
+                output = output * A_mul + A_add
+        return output
+
+
+    def set_cuda(self, is_cuda):
+        if isinstance(is_cuda, str):
+            self.cuda(is_cuda)
+        else:
+            if is_cuda:
+                self.cuda()
+            else:
+                self.cpu()
+        self.is_cuda = is_cuda
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1", **kwargs):
+        reg = to_Variable([0], is_cuda=self.is_cuda)
+        return reg
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Labelmix_MLP"}
+        model_dict["input_size"] = self.input_size
+        model_dict["struct_param"] = self.struct_param
+        if self.idx_label is not None:
+            model_dict["idx_label"] = to_np_array(self.idx_label).astype(int)
+        model_dict["state_dict"] = to_cpu_recur(self.state_dict())
+        return model_dict
 
 
 # ## Multi_MLP (MLPs in series):
