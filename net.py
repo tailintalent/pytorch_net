@@ -240,7 +240,10 @@ def train(
     # Ramping or learning rate for the first lr_rampup_steps steps:
     if lr_rampup_steps is not None and train_loader is not None:
         scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
-        data_size = train_loader.dataset.tensors[0].shape[0]
+        if hasattr(train_loader, "dataset"):
+            data_size = train_loader.dataset.tensors[0].shape[0]
+        else:
+            data_size = kwargs["data_size"]
 
     # Initialize logdir:
     if logdir is not None:
