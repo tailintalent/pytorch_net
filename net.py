@@ -145,22 +145,22 @@ def train(
 
     # Get original loss:
     if len(inspect_items_train) > 0:
-        loss_value_train = get_loss(model, train_loader, X, y, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
+        loss_value_train = get_loss(model, train_loader, X, y, criterion=criterion, loss_epoch=-1, transform_label=transform_label, **kwargs)
         info_dict_train = prepare_inspection(model, train_loader, X, y, transform_label=transform_label, **kwargs)
         if "loss" in record_keys:
             record_data(data_record, [loss_value_train], ["loss_tr"])
-    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **kwargs)
+    loss_original = get_loss(model, validation_loader, X_valid, y_valid, criterion=criterion, loss_epoch=-1, transform_label=transform_label, **kwargs)
     if "loss" in record_keys:
         record_data(data_record, [-1, loss_original], ["iter", "loss"])
     if "reg" in record_keys and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
-        reg_value = get_regularization(model, loss_epoch = 0, **kwargs)
+        reg_value = get_regularization(model, loss_epoch=0, **kwargs)
         record_data(data_record, [reg_value], ["reg"])
     if "param" in record_keys:
-        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+        record_data(data_record, [model.get_weights_bias(W_source="core", b_source="core")], ["param"])
     if "param_grad" in record_keys:
-        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+        record_data(data_record, [model.get_weights_bias(W_source="core", b_source="core", is_grad=True)], ["param_grad"])
     if co_kwargs is not None:
-        co_loss_original = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = -1, transform_label=transform_label, **co_kwargs)
+        co_loss_original = get_loss(co_model, validation_loader, X_valid, y_valid, criterion=criterion, loss_epoch=-1, transform_label=transform_label, **co_kwargs)
         if "co_loss" in record_keys:
             record_data(data_record, [co_loss_original], ["co_loss"])
     if filename is not None and save_interval is not None:
@@ -205,7 +205,7 @@ def train(
         if co_kwargs is not None:
             co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
             if "co_loss" in inspect_items:
-                co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch=-1, transform_label=transform_label, **co_kwargs)
+                co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion=criterion, loss_epoch=-1, transform_label=transform_label, **co_kwargs)
                 print("\tco_loss: {}".format(formalize_value(co_loss_value, inspect_loss_precision)), end="")
             if len(co_info_dict) > 0:
                 for item in inspect_items:
@@ -277,8 +277,8 @@ def train(
         if X is not None and y is not None:
             if optim_type != "LBFGS":
                 optimizer.zero_grad()
-                reg = get_regularization(model, loss_epoch = i, **kwargs)
-                loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
+                reg = get_regularization(model, loss_epoch=i, **kwargs)
+                loss = model.get_loss(X, transform_label(y), criterion=criterion, loss_epoch=i, **kwargs) + reg
                 loss.backward()
                 optimizer.step()
             else:
@@ -286,7 +286,7 @@ def train(
                 def closure():
                     optimizer.zero_grad()
                     reg = get_regularization(model, loss_epoch = i, **kwargs)
-                    loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch = i, **kwargs) + reg
+                    loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch=i, **kwargs) + reg
                     loss.backward()
                     return loss
                 optimizer.step(closure)
@@ -296,8 +296,8 @@ def train(
                 if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
                     for _ in range(co_multi_step):
                         co_optimizer.zero_grad()
-                        co_reg = get_regularization(co_model, loss_epoch = i, **co_kwargs)
-                        co_loss = co_model.get_loss(X, transform_label(y), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                        co_reg = get_regularization(co_model, loss_epoch=i, **co_kwargs)
+                        co_loss = co_model.get_loss(X, transform_label(y), criterion=co_criterion, loss_epoch=i, **co_kwargs) + co_reg
                         co_loss.backward()
                         co_optimizer.step()
         else:
@@ -313,8 +313,8 @@ def train(
                     X_batch, y_batch = data_loader_apply(data_batch)
                 if optim_type != "LBFGS":
                     optimizer.zero_grad()
-                    reg = get_regularization(model, loss_epoch = i, **kwargs)
-                    loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
+                    reg = get_regularization(model, loss_epoch=i, **kwargs)
+                    loss = model.get_loss(X_batch, transform_label(y_batch), criterion=criterion, loss_epoch=i, loss_step=k, **kwargs) + reg
                     loss.backward()
                     if logdir is not None:
                         batch_idx += 1
@@ -326,8 +326,8 @@ def train(
                 else:
                     def closure():
                         optimizer.zero_grad()
-                        reg = get_regularization(model, loss_epoch = i, **kwargs)
-                        loss = model.get_loss(X_batch, transform_label(y_batch), criterion = criterion, loss_epoch = i, **kwargs) + reg
+                        reg = get_regularization(model, loss_epoch=i, **kwargs)
+                        loss = model.get_loss(X_batch, transform_label(y_batch), criterion=criterion, loss_epoch=i, loss_step=k, **kwargs) + reg
                         loss.backward()
                         return loss
                     if logdir is not None:
@@ -347,8 +347,8 @@ def train(
                     if "co_warmup_epochs" not in co_kwargs or "co_warmup_epochs" in co_kwargs and i >= co_kwargs["co_warmup_epochs"]:
                         for _ in range(co_multi_step):
                             co_optimizer.zero_grad()
-                            co_reg = get_regularization(co_model, loss_epoch = i, **co_kwargs)
-                            co_loss = co_model.get_loss(X_batch, transform_label(y_batch), criterion = co_criterion, loss_epoch = i, **co_kwargs) + co_reg
+                            co_reg = get_regularization(co_model, loss_epoch=i, **co_kwargs)
+                            co_loss = co_model.get_loss(X_batch, transform_label(y_batch), criterion=co_criterion, loss_epoch=i, loss_step=k, **co_kwargs) + co_reg
                             co_loss.backward()
                             if logdir is not None:
                                 if len(co_info_dict) > 0:
@@ -493,7 +493,7 @@ def train(
         if to_stop:
             break
 
-    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = epochs, transform_label=transform_label, **kwargs)
+    loss_value = get_loss(model, validation_loader, X_valid, y_valid, criterion=criterion, loss_epoch=epochs, transform_label=transform_label, **kwargs)
     if isplot:
         import matplotlib.pylab as plt
         for key, item in data_record.items():
@@ -2112,6 +2112,8 @@ class Labelmix_MLP(nn.Module):
                 setattr(self, "W_{}_add".format(i), nn.Parameter(torch.randn(len(self.idx_label), num_neurons)))
                 init_weight(getattr(self, "W_{}_mul".format(i)), init=None)
                 init_weight(getattr(self, "W_{}_add".format(i)), init=None)
+                setattr(self, "b_{}_mul".format(i), nn.Parameter(torch.zeros(num_neurons)))
+                setattr(self, "b_{}_add".format(i), nn.Parameter(torch.zeros(num_neurons)))
         self.set_cuda(is_cuda)
     
 
@@ -2121,12 +2123,11 @@ class Labelmix_MLP(nn.Module):
             labels = input[:, self.idx_label]
         for i, layer_struct_param in enumerate(self.struct_param):
             output = torch.matmul(output, getattr(self, "W_{}_main".format(i))) + getattr(self, "b_{}_main".format(i))
-            if i != self.num_layers - 1:
-                if "activation" in layer_struct_param[2]:
-                    output = get_activation(layer_struct_param[2]["activation"])(output)
+            if "activation" in layer_struct_param[2]:
+                output = get_activation(layer_struct_param[2]["activation"])(output)
             if self.idx_label is not None:
-                A_mul = torch.matmul(labels, getattr(self, "W_{}_mul".format(i)))
-                A_add = torch.matmul(labels, getattr(self, "W_{}_add".format(i)))
+                A_mul = torch.matmul(labels, getattr(self, "W_{}_mul".format(i))) + getattr(self, "b_{}_mul".format(i))
+                A_add = torch.matmul(labels, getattr(self, "W_{}_add".format(i))) + getattr(self, "b_{}_add".format(i))
                 output = output * A_mul + A_add
         return output
 
