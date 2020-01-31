@@ -1,6 +1,9 @@
 # Code referenced from https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
 """Simple example on how to log scalars and images to tensorboard without tensor ops.
 License: Copyleft
+Require: 
+tensorflow==1.15.0
+tensorboard==1.15.0
 """
 __author__ = "Michael Gygli"
 

@@ -1081,6 +1081,8 @@ def sort_filename(filename_list):
 def remove_files_in_directory(directory, is_remove_subdir = False):
     """Remove files in a directory"""
     import os, shutil
+    if directory is None:
+        return
     if not os.path.isdir(directory):
         print("Directory {0} does not exist!".format(directory))
         return

@@ -218,12 +218,12 @@ def train(
     # Setting up gradient noise:
     if gradient_noise is not None:
         from pytorch_net.util import Gradient_Noise_Scale_Gen
-        scale_gen = Gradient_Noise_Scale_Gen(epochs = epochs,
-                                             gamma = gradient_noise["gamma"],  # decay rate
-                                             eta = gradient_noise["eta"],      # starting variance
-                                             gradient_noise_interval_epoch = 1,
+        scale_gen = Gradient_Noise_Scale_Gen(epochs=epochs,
+                                             gamma=gradient_noise["gamma"],  # decay rate
+                                             eta=gradient_noise["eta"],      # starting variance
+                                             gradient_noise_interval_epoch=1,
                                             )
-        gradient_noise_scale = scale_gen.generate_scale(verbose = True)
+        gradient_noise_scale = scale_gen.generate_scale(verbose=True)
 
     # Set up learning rate scheduler:
     if scheduler_type is not None:
@@ -231,10 +231,10 @@ def train(
             scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 40
             scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
             scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
-            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
+            scheduler = ReduceLROnPlateau(optimizer, factor=scheduler_factor, patience=scheduler_patience, verbose=scheduler_verbose)
         elif scheduler_type == "LambdaLR":
-            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
-            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
+            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 0.97 ** (epoch // 2))
+            scheduler = LambdaLR(optimizer, lr_lambda=scheduler_lr_lambda)
         else:
             raise
     # Ramping or learning rate for the first lr_rampup_steps steps:
@@ -270,8 +270,8 @@ def train(
                 for param_group in optimizer.param_groups:
                     for param in param_group["params"]:
                         if param.requires_grad:
-                            h = param.register_hook(lambda grad: grad + Variable(torch.normal(mean = torch.zeros(grad.size()),
-                                                                                              std = current_gradient_noise_scale * torch.ones(grad.size()))))
+                            h = param.register_hook(lambda grad: grad + Variable(torch.normal(mean=torch.zeros(grad.size()),
+                                                                                              std=current_gradient_noise_scale * torch.ones(grad.size()))))
                             hook_handle_list.append(h)
 
         if X is not None and y is not None:
@@ -285,8 +285,8 @@ def train(
                 # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
                 def closure():
                     optimizer.zero_grad()
-                    reg = get_regularization(model, loss_epoch = i, **kwargs)
-                    loss = model.get_loss(X, transform_label(y), criterion = criterion, loss_epoch=i, **kwargs) + reg
+                    reg = get_regularization(model, loss_epoch=i, **kwargs)
+                    loss = model.get_loss(X, transform_label(y), criterion=criterion, loss_epoch=i, **kwargs) + reg
                     loss.backward()
                     return loss
                 optimizer.step(closure)
