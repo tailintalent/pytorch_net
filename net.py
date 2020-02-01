@@ -307,6 +307,8 @@ def train(
             if inspect_step is not None:
                 info_dict_step = {key: [] for key in inspect_items}
 
+            if "loader_process" in kwargs and kwargs["loader_process"] is not None:
+                train_loader = kwargs["loader_process"]("train")
             for k, data_batch in enumerate(train_loader):
                 if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                     X_batch, y_batch = data_batch
@@ -884,6 +886,8 @@ def get_loss(model, data_loader=None, X=None, y=None, criterion=None, transform_
     max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
+    if "loader_process" in kwargs and kwargs["loader_process"] is not None:
+        data_loader = kwargs["loader_process"]("test")
     if data_loader is not None:
         assert X is None and y is None
         loss_record = 0
@@ -922,6 +926,8 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, **
     max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
+    if "loader_process" in kwargs and kwargs["loader_process"] is not None:
+        data_loader = kwargs["loader_process"]("test")
     if data_loader is not None:
         assert X is None and y is None
         X_all = []
@@ -953,6 +959,8 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
     max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
     if transform_label is None:
         transform_label = Transform_Label()
+    if "loader_process" in kwargs and kwargs["loader_process"] is not None:
+        data_loader = kwargs["loader_process"]("test")
     if data_loader is None:
         assert X is not None and y is not None
         all_dict_summary = model.prepare_inspection(X, transform_label(y), **kwargs)
@@ -2133,6 +2141,11 @@ class Labelmix_MLP(nn.Module):
                 A_add = torch.matmul(labels, getattr(self, "W_{}_add".format(i))) + getattr(self, "b_{}_add".format(i))
                 output = output * A_mul + A_add
         return output
+    
+    
+    def get_loss(self, X, y, criterion, **kwargs):
+        y_pred = self(X)
+        return criterion(y_pred, y)
 
 
     def set_cuda(self, is_cuda):
