@@ -957,6 +957,7 @@ def plot_model(model, data_loader=None, X=None, y=None, transform_label=None, **
 def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=None, **kwargs):
     inspect_functions = kwargs["inspect_functions"] if "inspect_functions" in kwargs else None
     max_validation_iter = kwargs["max_validation_iter"] if "max_validation_iter" in kwargs else None
+    verbose = kwargs["verbose"] if "verbose" in kwargs else False
     if transform_label is None:
         transform_label = Transform_Label()
     if "loader_process" in kwargs and kwargs["loader_process"] is not None:
@@ -971,6 +972,8 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
         assert X is None and y is None
         all_dict = {}
         for j, data_batch in enumerate(data_loader):
+            if verbose is True:
+                print("valid step: {}".format(j))
             if isinstance(data_batch, tuple) or isinstance(data_batch, list):
                 X_batch, y_batch = data_batch
                 if "data_loader_apply" in kwargs and kwargs["data_loader_apply"] is not None:
