@@ -2451,7 +2451,6 @@ class Mixture_Model(nn.Module):
                 setattr(self, "model_{}".format(i), load_model_dict(model_dict_list, is_cuda=is_cuda))
         self.weight_logits_model = load_model_dict(weight_logits_model_dict, is_cuda=is_cuda)
         self.is_cuda = is_cuda
-        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
 
 
     def forward(self, input):
@@ -2468,7 +2467,7 @@ class Mixture_Model(nn.Module):
         model_dict = {"type": "Mixture_Model",
                       "model_dict_list": [getattr(self, "model_{}".format(i)).model_dict for i in range(self.num_components)],
                       "weight_logits_model_dict": self.weight_logits_model.model_dict,
-                      "num_components": num_components,
+                      "num_components": self.num_components,
                      }
         return model_dict
 
@@ -3125,7 +3124,7 @@ class Wide_ResNet(nn.Module):
         is_cuda=False,
     ):
         super(Wide_ResNet, self).__init__()
-        
+
         self.depth = depth
         self.widen_factor = widen_factor
         self.input_channels = input_channels
@@ -4126,11 +4125,12 @@ class Mixture_Gaussian_reparam(nn.Module):
             logits = - (input - self.mean_list) ** 2 / 2 / self.scale_list ** 2 - torch.log(self.scale_list * np.sqrt(2 * np.pi))
         else:
             raise
-        return torch.matmul(torch.exp(logits), F.softmax(self.weight_logits, -1).unsqueeze(-1)).squeeze(-1)
+        prob = torch.matmul(torch.exp(logits), F.softmax(self.weight_logits, -1).unsqueeze(-1)).squeeze(-1)
+        return prob
 
 
     def log_prob(self, input):
-        return torch.log(self.prob(input) + 1e-35)
+        return torch.log(self.prob(input) + 1e-15)
 
 
     def sample(self, n=None):

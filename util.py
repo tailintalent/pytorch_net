@@ -2207,3 +2207,14 @@ class Batch_Generator(object):
 def logmeanexp(tensor, axis, keepdims=False):
     """Calculate logmeanexp of tensor."""
     return torch.logsumexp(tensor, axis=axis, keepdims=keepdims) - np.log(tensor.shape[axis])
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('true'):
+        return True
+    elif v.lower() in ('false'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
