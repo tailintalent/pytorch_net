@@ -732,7 +732,6 @@ def load_model_dict_net(model_dict, is_cuda = False):
                             input_channels=model_dict["input_channels"],
                             output_size=model_dict["output_size"],
                             dropout_rate=model_dict["dropout_rate"],
-                            input_size_final_layer=model_dict["input_size_final_layer"],
                             is_cuda=is_cuda,
                            )
         if "state_dict" in model_dict:
@@ -776,7 +775,7 @@ def load_model_dict_net(model_dict, is_cuda = False):
 
 def load_model_dict(model_dict, is_cuda = False):
     net_type = model_dict["type"]
-    if net_type not in ["Model_Ensemble", "LSTM"]:
+    if net_type not in ["Model_Ensemble", "LSTM", "Model_with_Uncertainty", "Mixture_Model", "Mixture_Gaussian"]:
         return load_model_dict_net(model_dict, is_cuda = is_cuda)
     elif net_type == "Model_Ensemble":
         if model_dict["model_type"] == "MLP":
@@ -808,6 +807,12 @@ def load_model_dict(model_dict, is_cuda = False):
     elif net_type == "Model_with_Uncertainty":
         return Model_with_Uncertainty(model_pred = load_model_dict(model_dict["model_pred"], is_cuda = is_cuda),
                                       model_logstd = load_model_dict(model_dict["model_logstd"], is_cuda = is_cuda))
+    elif net_type == "Mixture_Model":
+        return Mixture_Model(model_dict_list=model_dict["model_dict_list"],
+                             weight_logits_model_dict=model_dict["weight_logits_model_dict"],
+                             num_components=model_dict["num_components"],
+                             is_cuda=is_cuda,
+                            )
     elif net_type == "Mixture_Gaussian":
         return load_model_dict_Mixture_Gaussian(model_dict, is_cuda = is_cuda)
     else:
@@ -2423,6 +2428,51 @@ class Fan_in_MLP(nn.Module):
         save_model(self.model_dict, filename, mode=mode)
 
 
+# ##  Mixture_Model:
+
+# In[ ]:
+
+
+class Mixture_Model(nn.Module):
+    def __init__(
+        self,
+        model_dict_list,
+        weight_logits_model_dict,
+        num_components,
+        is_cuda=False,
+    ):
+        super(Mixture_Model, self).__init__()
+        self.num_components = num_components
+        for i in range(self.num_components):
+            if isinstance(model_dict_list, list):
+                setattr(self, "model_{}".format(i), load_model_dict(model_dict_list[i], is_cuda=is_cuda))
+            else:
+                assert isinstance(model_dict_list, dict)
+                setattr(self, "model_{}".format(i), load_model_dict(model_dict_list, is_cuda=is_cuda))
+        self.weight_logits_model = load_model_dict(weight_logits_model_dict, is_cuda=is_cuda)
+        self.is_cuda = is_cuda
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
+
+
+    def forward(self, input):
+        output_list = []
+        for i in range(self.num_components):
+            output = getattr(self, "model_{}".format(i))(input)
+            output_list.append(output)
+        output_list = torch.stack(output_list, -1)
+        weight_logits = self.weight_logits_model(input)
+        return output_list, weight_logits
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Mixture_Model",
+                      "model_dict_list": [getattr(self, "model_{}".format(i)).model_dict for i in range(self.num_components)],
+                      "weight_logits_model_dict": self.weight_logits_model.model_dict,
+                      "num_components": num_components,
+                     }
+        return model_dict
+
+
 # ## Model_Ensemble:
 
 # In[ ]:
@@ -3072,30 +3122,29 @@ class Wide_ResNet(nn.Module):
         input_channels,
         output_size,
         dropout_rate=None,
-        input_size_final_layer=None,
         is_cuda=False,
     ):
         super(Wide_ResNet, self).__init__()
-        self.in_planes = 16
+        
         self.depth = depth
         self.widen_factor = widen_factor
         self.input_channels = input_channels
         self.dropout_rate = dropout_rate
-        self.input_size_final_layer = input_size_final_layer
         self.output_size = output_size
 
         assert ((depth-4)%6 ==0), 'Wide-resnet depth should be 6n+4'
         n = (depth-4)//6
         k = widen_factor
 
-        nStages = [16, 16*k, 32*k, 64*k]
+        nStages = [16*k, 16*k, 32*k, 64*k]
+        self.in_planes = nStages[0]
 
         self.conv1 = conv3x3(self.input_channels,nStages[0])
         self.layer1 = self._wide_layer(wide_basic, nStages[1], n, dropout_rate, stride=1)
         self.layer2 = self._wide_layer(wide_basic, nStages[2], n, dropout_rate, stride=2)
         self.layer3 = self._wide_layer(wide_basic, nStages[3], n, dropout_rate, stride=2)
         self.bn1 = nn.BatchNorm2d(nStages[3], momentum=0.9)
-        self.linear = nn.Linear(nStages[3] if input_size_final_layer is None else input_size_final_layer, output_size)
+        self.linear = nn.Linear(nStages[3], output_size)
         self.set_cuda(is_cuda)
 
     def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride):
@@ -3114,7 +3163,7 @@ class Wide_ResNet(nn.Module):
         out = self.layer2(out)
         out = self.layer3(out)
         out = F.relu(self.bn1(out))
-        out = F.avg_pool2d(out, 8)
+        out = out.mean((-1,-2))  # replacing the out= F.avg_pool2d(out, 8) which is sensitive to the input shape.
         out = out.view(out.size(0), -1)
         out = self.linear(out)
 
@@ -3139,7 +3188,6 @@ class Wide_ResNet(nn.Module):
         model_dict["widen_factor"] = self.widen_factor
         model_dict["input_channels"] = self.input_channels
         model_dict["output_size"] = self.output_size
-        model_dict["input_size_final_layer"] = self.input_size_final_layer
         model_dict["dropout_rate"] = self.dropout_rate
         return model_dict
 
@@ -3826,6 +3874,8 @@ class Net_reparam(nn.Module):
 def reparameterize(model, input, mode = "full", size = None):
     if mode == "diag":
         return reparameterize_diagonal(model, input)
+    elif mode.startswith("diag-mix"):
+        return reparameterize_mixture_diagonal(model, input)
     elif mode == "full":
         return reparameterize_full(model, input, size = size)
     else:
@@ -3838,9 +3888,21 @@ def reparameterize_diagonal(model, input):
         mean_logit = mean_logit[0]
     size = int(mean_logit.size(-1) / 2)
     mean = mean_logit[:, :size]
-    std = F.softplus(mean_logit[:, size:], beta = 1)
+    std = F.softplus(mean_logit[:, size:], beta=1)
     dist = Normal(mean, std)
     return dist, (mean, std)
+
+
+def reparameterize_mixture_diagonal(model, input):
+    mean_logit, weight_logits = model(input)
+    size = int(mean_logit.size(-2) / 2)
+    mean_list = mean_logit[:, :size]
+    scale_list = F.softplus(mean_logit[:, size:], beta=1)
+    dist = Mixture_Gaussian_reparam(mean_list=mean_list,
+                                    scale_list=scale_list,
+                                    weight_logits=weight_logits,
+                                   )
+    return dist, (mean_list, scale_list)
 
 
 def reparameterize_full(model, input, size = None):
@@ -4036,6 +4098,59 @@ class Mixture_Gaussian(nn.Module):
     def get_regularization(self, source = ["weights", "bias"], mode = "L1", **kwargs):
         reg = to_Variable([0], requires_grad = False).to(self.device)
         return reg
+
+
+# ### Mixture_Gaussian for reparameterization:
+
+# In[ ]:
+
+
+class Mixture_Gaussian_reparam(nn.Module):
+    def __init__(
+        self,
+        mean_list,
+        scale_list,
+        weight_logits,
+        reparam_mode="diag",
+    ):
+        super(Mixture_Gaussian_reparam, self).__init__()
+        self.mean_list = mean_list         # size: [B, Z, m]
+        self.scale_list = scale_list       # size: [B, Z, m]
+        self.weight_logits = weight_logits # size: [B, m]
+        self.reparam_mode = reparam_mode
+
+
+    def prob(self, input):
+        input = input.unsqueeze(-1)
+        if self.reparam_mode == "diag":
+            logits = - (input - self.mean_list) ** 2 / 2 / self.scale_list ** 2 - torch.log(self.scale_list * np.sqrt(2 * np.pi))
+        else:
+            raise
+        return torch.matmul(torch.exp(logits), F.softmax(self.weight_logits, -1).unsqueeze(-1)).squeeze(-1)
+
+
+    def log_prob(self, input):
+        return torch.log(self.prob(input) + 1e-35)
+
+
+    def sample(self, n=None):
+        if n is None:
+            n_core = 1
+        else:
+            assert isinstance(n, tuple)
+            n_core = n[0]
+        weight_probs = F.softmax(self.weight_logits, -1)  # size: [B, m]
+        idx = torch.multinomial(weight_probs, n_core, replacement=True).unsqueeze(-2).expand(-1, self.mean_list.shape[-2], -1)  # multinomial result: [B, S]; result: [B, Z, S]
+        mean_list  = torch.gather(self.mean_list,  dim=-1, index=idx)  # [B, Z, S]
+        scale_list = torch.gather(self.scale_list, dim=-1, index=idx)  # [B, Z, S]
+        Z = torch.normal(mean_list, scale_list).permute(2, 0, 1)
+        if n is None:
+            Z = Z.squeeze(0)
+        return Z
+
+
+    def rsample(self, n=None):
+        return self.sample(n=n)
 
 
 # ### Triangular distribution:
