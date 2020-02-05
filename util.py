@@ -2234,6 +2234,7 @@ def compute_class_correspondence(predicted_domain, true_domain, verbose=True):
             new_domain[domain == current_id] = new_ids[i]
         return new_domain
 
+    assert len(predicted_domain.shape) == len(true_domain.shape) == 1
     assert isinstance(predicted_domain, np.ndarray)
     assert isinstance(true_domain, np.ndarray)
     predicted_domain = predicted_domain.flatten().astype(int)
@@ -2264,11 +2265,66 @@ def compute_class_correspondence(predicted_domain, true_domain, verbose=True):
     return predicted_domain_argmin, min_num_mismatches, list(zip(union_ids, argmin_permute))
 
 
+def compute_class_correspondence_greedy(predicted_domain, true_domain, verbose=True, threshold=7):
+    """Compute the best match of two lists of labels among all permutations; if number of labels
+        is greater than the threshold, the labels with top threshold + 1 numbers perform its own permutation.
+    """
+    def mismatches(domain1, domain2):
+        return (domain1 != domain2).sum()
+
+    def associate(domain, current_ids, new_ids):
+        new_domain = deepcopy(domain)
+        for i, current_id in enumerate(current_ids):
+            new_domain[domain == current_id] = new_ids[i]
+        return new_domain
+
+    assert len(predicted_domain.shape) == len(true_domain.shape) == 1
+    assert isinstance(predicted_domain, np.ndarray)
+    assert isinstance(true_domain, np.ndarray)
+    predicted_domain = predicted_domain.flatten().astype(int)
+    true_domain = true_domain.flatten().astype(int)
+    predicted_ids, _ = get_sorted_counts(predicted_domain)
+    true_ids, _ = get_sorted_counts(true_domain)
+    assert len(predicted_ids) == len(true_ids)
+
+    if len(true_ids) > threshold:
+        num_greedy_ids = max(2, len(true_ids) - threshold)
+    else:
+        num_greedy_ids = -1
+
+    min_num_mismatches = np.inf
+    argmin_permute = None
+    predicted_domain_argmin = None  
+
+    total = 0
+    for i, ids_permute_greedy in enumerate(itertools.permutations(true_ids[:num_greedy_ids + 1])):
+        ids_inner = ids_permute_greedy[-1:] + tuple(true_ids[num_greedy_ids + 1:])
+        for j, ids_permute_all in enumerate(itertools.permutations(ids_inner)):
+            permuted_id = ids_permute_greedy[:-1] + ids_permute_all
+            predicted_domain_permute = associate(predicted_domain, predicted_ids, permuted_id)
+            try:
+                num_mismatches = mismatches(predicted_domain_permute, true_domain)
+            except:
+                import pdb; pdb.set_trace()
+            if num_mismatches < min_num_mismatches:
+                min_num_mismatches = num_mismatches
+                argmin_permute = (predicted_ids, permuted_id)
+                predicted_domain_argmin = predicted_domain_permute
+            if verbose and total % 100000 == 0:
+                print(total)
+            total += 1
+            if min_num_mismatches == 0:
+                break
+    return predicted_domain_argmin, min_num_mismatches, list(zip(*argmin_permute))
+
+
 def acc_spectral_clutering(
     X, y,
     n_neighbors=10,
     num_runs=1,
     affinity="nearest_neighbors",
+    matching_method="full_permute",
+    **kwargs
 ):
     X, y = to_np_array(X, y)
     n_clusters = len(np.unique(y))
@@ -2285,7 +2341,18 @@ def acc_spectral_clutering(
         ).fit(X)
         cluster_labels = clustering.labels_
 
-        _, min_num_mismatches, _ = compute_class_correspondence(cluster_labels, y, verbose=True)
+        if matching_method == "full_permute":
+            _, min_num_mismatches, _ = compute_class_correspondence(cluster_labels, y, verbose=True)
+        elif matching_method == "greedy_permute":
+            _, min_num_mismatches, _ = compute_class_correspondence_greedy(cluster_labels, y, verbose=True, **kwargs)
+        else:
+            raise
         acc = 1 - min_num_mismatches / float(len(y))
         acc_list.append(acc)
-    return np.max(acc_list)
+    return np.max(acc_list), cluster_labels
+
+
+def get_sorted_counts(array):
+    array_unique, counts = np.unique(array, return_counts=True)
+    counts, array_unique = sort_two_lists(counts, array_unique, reverse=True)
+    return array_unique, counts
