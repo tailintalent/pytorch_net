@@ -3,9 +3,11 @@ import os
 from numbers import Number
 import numpy as np
 from copy import deepcopy
+import itertools
 import json
 import pickle
 import random
+from sklearn.cluster import SpectralClustering
 from sklearn.model_selection import train_test_split
 import scipy.linalg
 import torch
@@ -2210,6 +2212,7 @@ def logmeanexp(tensor, axis, keepdims=False):
 
 
 def str2bool(v):
+    """used for argparse, 'type=str2bool', so that can pass in string True or False."""
     if isinstance(v, bool):
         return v
     if v.lower() in ('true'):
@@ -2218,3 +2221,71 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+def compute_class_correspondence(predicted_domain, true_domain, verbose=True):
+    """Compute the best match of two lists of labels among all permutations."""
+    def mismatches(domain1, domain2):
+        return (domain1 != domain2).sum()
+
+    def associate(domain, current_ids, new_ids):
+        new_domain = deepcopy(domain)
+        for i, current_id in enumerate(current_ids):
+            new_domain[domain == current_id] = new_ids[i]
+        return new_domain
+
+    assert isinstance(predicted_domain, np.ndarray)
+    assert isinstance(true_domain, np.ndarray)
+    predicted_domain = predicted_domain.flatten().astype(int)
+    true_domain = true_domain.flatten().astype(int)
+    predicted_ids = np.unique(predicted_domain)
+    true_ids = np.unique(true_domain)
+
+    union_ids = np.sort(list(set(predicted_ids).union(set(true_ids))))
+    if len(union_ids) > 10:
+        if verbose:
+            print("num_domains = {0}, too large!".format(len(union_ids)))
+        return None, None, None
+    min_num_mismatches = np.inf
+    argmin_permute = None
+    predicted_domain_argmin = None
+
+    for i, union_ids_permute in enumerate(itertools.permutations(union_ids)):
+        predicted_domain_permute = associate(predicted_domain, union_ids, union_ids_permute)
+        num_mismatches = mismatches(predicted_domain_permute, true_domain)
+        if num_mismatches < min_num_mismatches:
+            min_num_mismatches = num_mismatches
+            argmin_permute = union_ids_permute
+            predicted_domain_argmin = predicted_domain_permute
+        if verbose and i % 100000 == 0:
+            print(i)
+        if min_num_mismatches == 0:
+            break
+    return predicted_domain_argmin, min_num_mismatches, list(zip(union_ids, argmin_permute))
+
+
+def acc_spectral_clutering(
+    X, y,
+    n_neighbors=10,
+    num_runs=1,
+    affinity="nearest_neighbors",
+):
+    X, y = to_np_array(X, y)
+    n_clusters = len(np.unique(y))
+    n_components = n_clusters
+    
+    acc_list = []
+    for i in range(num_runs):
+        clustering = SpectralClustering(
+            n_clusters=n_clusters,
+            n_components=n_components,
+            affinity="nearest_neighbors",
+            n_neighbors=n_neighbors,
+            assign_labels="kmeans",
+        ).fit(X)
+        cluster_labels = clustering.labels_
+
+        _, min_num_mismatches, _ = compute_class_correspondence(cluster_labels, y, verbose=True)
+        acc = 1 - min_num_mismatches / float(len(y))
+        acc_list.append(acc)
+    return np.max(acc_list)

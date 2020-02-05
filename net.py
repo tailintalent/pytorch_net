@@ -3871,10 +3871,11 @@ class Net_reparam(nn.Module):
     
 
 def reparameterize(model, input, mode = "full", size = None):
-    if mode == "diag":
-        return reparameterize_diagonal(model, input)
-    elif mode.startswith("diag-mix"):
-        return reparameterize_mixture_diagonal(model, input)
+    if mode.startswith("diag"):
+        if model.__class__.__name__ == "Mixture_Model":
+            return reparameterize_mixture_diagonal(model, input)
+        else:
+            return reparameterize_diagonal(model, input)
     elif mode == "full":
         return reparameterize_full(model, input, size = size)
     else:
@@ -3896,7 +3897,7 @@ def reparameterize_mixture_diagonal(model, input):
     mean_logit, weight_logits = model(input)
     size = int(mean_logit.size(-2) / 2)
     mean_list = mean_logit[:, :size]
-    scale_list = F.softplus(mean_logit[:, size:], beta=1)
+    scale_list = F.softplus(mean_logit[:, size:], beta=1) + 0.01  # Avoid the std to go to 0
     dist = Mixture_Gaussian_reparam(mean_list=mean_list,
                                     scale_list=scale_list,
                                     weight_logits=weight_logits,
