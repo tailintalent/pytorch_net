@@ -323,10 +323,10 @@ def train(
                     loss.backward()
                     if logdir is not None:
                         batch_idx += 1
-                        if len(info_dict) > 0:
+                        if len(model.info_dict) > 0:
                             for item in inspect_items:
-                                if item in info_dict:
-                                    logger.log_scalar(item, info_dict[item], batch_idx)
+                                if item in model.info_dict:
+                                    logger.log_scalar(item, model.info_dict[item], batch_idx)
                     optimizer.step()
                 else:
                     def closure():
@@ -337,10 +337,10 @@ def train(
                         return loss
                     if logdir is not None:
                         batch_idx += 1
-                        if len(info_dict) > 0:
+                        if len(model.info_dict) > 0:
                             for item in inspect_items:
-                                if item in info_dict:
-                                    logger.log_scalar(item, info_dict[item], batch_idx)
+                                if item in model.info_dict:
+                                    logger.log_scalar(item, model.info_dict[item], batch_idx)
                     optimizer.step(closure)
 
                 # Rampup scheduler:
@@ -356,10 +356,10 @@ def train(
                             co_loss = co_model.get_loss(X_batch, transform_label(y_batch), criterion=co_criterion, loss_epoch=i, loss_step=k, **co_kwargs) + co_reg
                             co_loss.backward()
                             if logdir is not None:
-                                if len(co_info_dict) > 0:
+                                if len(co_model.info_dict) > 0:
                                     for item in inspect_items:
-                                        if item in co_info_dict:
-                                            logger.log_scalar(item, co_info_dict[item], batch_idx)
+                                        if item in co_model.info_dict:
+                                            logger.log_scalar(item, co_model.info_dict[item], batch_idx)
                             co_optimizer.step()
 
                 # Inspect at each step:
@@ -431,6 +431,7 @@ def train(
                     to_stop = early_stopping.monitor(info_dict[early_stopping_monitor])
             if inspect_items is not None:
                 if i % inspect_items_interval == 0:
+                    # Get loss:
                     print("{}:".format(i), end = "")
                     print("\tlr: {0:.3e}\tloss: {1:.{2}f}".format(optimizer.param_groups[0]["lr"], loss_value, inspect_loss_precision), end = "")
                     info_dict = prepare_inspection(model, validation_loader, X_valid, y_valid, transform_label=transform_label, **kwargs)
@@ -440,13 +441,22 @@ def train(
                         info_dict.update(info_dict_train)
                     if "reg" in inspect_items and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
                         print("\treg:{0:.{1}f}".format(to_np_array(reg_value), inspect_loss_precision), end="")
+                    
+                    # Print and record:
                     if len(info_dict) > 0:
                         for item in inspect_items:
-                            if item in info_dict:
-                                print(" \t{0}: {1}".format(item, formalize_value(info_dict[item], inspect_loss_precision)), end = "")
+                            if item + "_val" in info_dict:
+                                print(" \t{0}: {1}".format(item, formalize_value(info_dict[item + "_val"], inspect_loss_precision)), end = "")
                                 if item in record_keys and item not in ["loss", "reg"]:
-                                    record_data(data_record, [to_np_array(info_dict[item])], [item])
+                                    record_data(data_record, [to_np_array(info_dict[item + "_val"])], [item])
 
+                        # logger:
+                        if logdir is not None:
+                            for item in inspect_items:
+                                if item + "_val" in info_dict:
+                                    logger.log_scalar(item + "_val", info_dict[item + "_val"], i)
+
+                    # Co_model:
                     if co_kwargs is not None:
                         co_loss_value = get_loss(co_model, validation_loader, X_valid, y_valid, criterion = criterion, loss_epoch = i, transform_label=transform_label, **co_kwargs)
                         co_info_dict = prepare_inspection(co_model, validation_loader, X_valid, y_valid, transform_label=transform_label, **co_kwargs)
@@ -454,18 +464,22 @@ def train(
                             print("\tco_loss: {0:.{1}f}".format(co_loss_value, inspect_loss_precision), end="")
                         if len(co_info_dict) > 0:
                             for item in inspect_items:
-                                if item in co_info_dict:
-                                    print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item], inspect_loss_precision)), end="")
+                                if item + "_val" in co_info_dict:
+                                    print(" \t{0}: {1}".format(item, formalize_value(co_info_dict[item + "_val"], inspect_loss_precision)), end="")
                                     if item in record_keys and item != "co_loss":
-                                        record_data(data_record, [to_np_array(co_info_dict[item])], [item])
+                                        record_data(data_record, [to_np_array(co_info_dict[item + "_val"])], [item])
                         if "co_loss" in record_keys:
                             record_data(data_record, [co_loss_value], ["co_loss"])
+
+                    # Training metrics:
                     if inspect_step is not None:
                         for item in info_dict_step:
                             if len(info_dict_step[item]) > 0:
                                 print(" \t{0}_s: {1}".format(item, formalize_value(np.mean(info_dict_step[item]), inspect_loss_precision)), end = "")
                                 if item in record_keys and item != "loss":
                                     record_data(data_record, [np.mean(info_dict_step[item])], ["{}_s".format(item)])
+
+                    # Record loss:
                     if "loss" in record_keys:
                         record_data(data_record, [i, loss_value], ["iter", "loss"])
                     if "reg" in record_keys and "reg_dict" in kwargs and len(kwargs["reg_dict"]) > 0:
@@ -1002,8 +1016,7 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
                 break
         all_dict_summary = {}
         for key, item in all_dict.items():
-            all_dict_summary[key] = np.mean(all_dict[key])
-    model.info_dict = deepcopy(all_dict_summary)
+            all_dict_summary[key + "_val"] = np.mean(all_dict[key])
     return all_dict_summary
 
 
@@ -3108,7 +3121,6 @@ class wide_basic(nn.Module):
             out = self.dropout(out)
         out = self.conv2(F.relu(self.bn2(out)))
         out += self.shortcut(x)
-
         return out
 
 
