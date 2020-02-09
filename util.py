@@ -2342,9 +2342,9 @@ def acc_spectral_clutering(
         cluster_labels = clustering.labels_
 
         if matching_method == "full_permute":
-            _, min_num_mismatches, _ = compute_class_correspondence(cluster_labels, y, verbose=True)
+            _, min_num_mismatches, _ = compute_class_correspondence(cluster_labels, y, **kwargs)
         elif matching_method == "greedy_permute":
-            _, min_num_mismatches, _ = compute_class_correspondence_greedy(cluster_labels, y, verbose=True, **kwargs)
+            _, min_num_mismatches, _ = compute_class_correspondence_greedy(cluster_labels, y, **kwargs)
         else:
             raise
         acc = 1 - min_num_mismatches / float(len(y))

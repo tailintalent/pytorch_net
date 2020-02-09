@@ -999,7 +999,7 @@ def prepare_inspection(model, data_loader=None, X=None, y=None, transform_label=
                     X_batch, y_batch = kwargs["data_loader_apply"](X_batch, y_batch)
             else:
                 X_batch, y_batch = kwargs["data_loader_apply"](data_batch)
-            info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), **kwargs)
+            info_dict = model.prepare_inspection(X_batch, transform_label(y_batch), valid_step=j, **kwargs)
             for key, item in info_dict.items():
                 if key not in all_dict:
                     all_dict[key] = [item]
