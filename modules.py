@@ -17,7 +17,7 @@ from copy import deepcopy
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..'))
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from pytorch_net.util import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook, ACTIVATION_LIST
+from pytorch_net.util import get_activation, get_activation_noise, init_weight, init_bias, init_module_weights, init_module_bias, to_np_array, to_Variable, zero_grad_hook, ACTIVATION_LIST
 from pytorch_net.util import standardize_symbolic_expression, get_param_name_list, get_variable_name_list, get_list_DL, get_coeffs_tree, snap, unsnap
 AVAILABLE_REG = ["L1", "L2", "param"]
 Default_Activation = "linear"
@@ -321,6 +321,11 @@ class Simple_Layer(nn.Module):
 
         # Perform activation function:
         output = get_activation(self.activation)(output)
+
+        # Add activation noise:
+        if "act_noise" in self.settings:
+            output = get_activation_noise(self.settings["act_noise"])(output)
+
         if hasattr(self, "output_size_original"):
             output = output.view(*((-1,) + self.output_size_original))
         assert output.size(0) == input.size(0), "output_size {0} must have same length as input_size {1}. Check shape!".format(output.size(0), input.size(0))

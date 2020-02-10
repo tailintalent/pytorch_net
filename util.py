@@ -325,6 +325,19 @@ def get_activation(activation):
     return f
 
 
+def get_activation_noise(act_noise):
+    noise_type = act_noise["type"]
+    if noise_type == "identity":
+        f = lambda x: x
+    elif noise_type == "gaussian":
+        f = lambda x: x + torch.randn(x.shape) * act_noise["scale"]
+    elif noise_type == "uniform":
+        f = lambda x: x + (torch.rand(x.shape) - 0.5) * act_noise["scale"]
+    else:
+        raise Exception("act_noise {} is not valid!".format(noise_type))
+    return f
+
+
 class MAELoss(_Loss):
     """Mean absolute loss"""
     def __init__(self, size_average=None, reduce=None):
