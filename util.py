@@ -855,16 +855,17 @@ def set_variational_output_size(model_dict, reparam_mode, latent_size):
     if reparam_mode.startswith("full"):
         model_dict["struct_param"][-1][0] = int((latent_size + 3) * latent_size / 2)
     elif reparam_mode.startswith("diag"):
-        if model_dict["type"] == "Mixture_Model":
-            for i in range(model_dict["num_components"]):
-                if isinstance(model_dict["model_dict_list"], list):
-                    model_dict["model_dict_list"][i]["struct_param"][-1][0] = 2 * latent_size
-                elif isinstance(model_dict["model_dict_list"], dict):
-                    model_dict["model_dict_list"]["struct_param"][-1][0] = 2 * latent_size
-                else:
-                    raise
-        else:
-            model_dict["struct_param"][-1][0] = 2 * latent_size
+        if not reparam_mode.startswith("diagg"):
+            if model_dict["type"] == "Mixture_Model":
+                for i in range(model_dict["num_components"]):
+                    if isinstance(model_dict["model_dict_list"], list):
+                        model_dict["model_dict_list"][i]["struct_param"][-1][0] = 2 * latent_size
+                    elif isinstance(model_dict["model_dict_list"], dict):
+                        model_dict["model_dict_list"]["struct_param"][-1][0] = 2 * latent_size
+                    else:
+                        raise
+            else:
+                model_dict["struct_param"][-1][0] = 2 * latent_size
     else:
         raise
 

@@ -3882,34 +3882,49 @@ class Net_reparam(nn.Module):
         save_model(self.model_dict, filename, mode=mode)
     
 
-def reparameterize(model, input, mode = "full", size = None):
+def reparameterize(model, input, mode="full", size=None):
     if mode.startswith("diag"):
         if model.__class__.__name__ == "Mixture_Model":
-            return reparameterize_mixture_diagonal(model, input)
+            return reparameterize_mixture_diagonal(model, input, mode=mode)
         else:
-            return reparameterize_diagonal(model, input)
+            return reparameterize_diagonal(model, input, mode=mode)
     elif mode == "full":
-        return reparameterize_full(model, input, size = size)
+        return reparameterize_full(model, input, size=size)
     else:
         raise Exception("Mode {0} is not valid!".format(mode))
 
 
-def reparameterize_diagonal(model, input):
+def reparameterize_diagonal(model, input, mode):
     mean_logit = model(input)
-    if isinstance(mean_logit, tuple):
-        mean_logit = mean_logit[0]
-    size = int(mean_logit.size(-1) / 2)
-    mean = mean_logit[:, :size]
-    std = F.softplus(mean_logit[:, size:], beta=1)
-    dist = Normal(mean, std)
-    return dist, (mean, std)
+    if mode.startswith("diagg"):
+        if isinstance(mean_logit, tuple):
+            mean = mean_logit[0]
+        else:
+            mean = mean_logit
+        std = torch.ones(mean.shape).to(mean.device)
+        dist = Normal(mean, std)
+        return dist, (mean, std)
+    elif mode.startswith("diag"):
+        if isinstance(mean_logit, tuple):
+            mean_logit = mean_logit[0]
+        size = int(mean_logit.size(-1) / 2)
+        mean = mean_logit[:, :size]
+        std = F.softplus(mean_logit[:, size:], beta=1)
+        dist = Normal(mean, std)
+        return dist, (mean, std)
+    else:
+        raise Exception("mode {} is not valid!".format(mode))
 
 
-def reparameterize_mixture_diagonal(model, input):
+def reparameterize_mixture_diagonal(model, input, mode):
     mean_logit, weight_logits = model(input)
-    size = int(mean_logit.size(-2) / 2)
-    mean_list = mean_logit[:, :size]
-    scale_list = F.softplus(mean_logit[:, size:], beta=1) + 0.01  # Avoid the std to go to 0
+    if mode.startswith("diagg"):
+        mean_list = mean_logit
+        scale_list = torch.ones(mean_list.shape).to(mean_list.device)
+    else:
+        size = int(mean_logit.size(-2) / 2)
+        mean_list = mean_logit[:, :size]
+        scale_list = F.softplus(mean_logit[:, size:], beta=1) + 0.01  # Avoid the std to go to 0
     dist = Mixture_Gaussian_reparam(mean_list=mean_list,
                                     scale_list=scale_list,
                                     weight_logits=weight_logits,
