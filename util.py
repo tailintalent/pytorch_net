@@ -212,6 +212,24 @@ def to_Variable(*arrays, **kwargs):
     return array_list
 
 
+def to_Variable_recur(item, type='float'):
+    """Recursively transform numpy array into PyTorch tensor."""
+    if isinstance(item, dict):
+        return {key: to_Variable_recur(value, type=type) for key, value in item.items()}
+    elif isinstance(item, tuple):
+        return tuple(to_Variable_recur(element, type=type) for element in item)
+    else:
+        try:
+            if type == "long":
+                return torch.LongTensor(item)
+            elif type == "float":
+                return torch.FloatTensor(item)
+            elif type == "bool":
+                return torch.BoolTensor(item)
+        except:
+            return [to_Variable_recur(element, type=type) for element in item]
+
+
 def to_Boolean(tensor):
     """Transform to Boolean tensor. For PyTorch version >= 1.2, use bool(). Otherwise use byte()"""
     version = torch.__version__
