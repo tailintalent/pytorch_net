@@ -241,7 +241,7 @@ def train(
     if lr_rampup_steps is not None and train_loader is not None:
         scheduler_rampup = RampupLR(optimizer, num_steps=lr_rampup_steps)
         if hasattr(train_loader, "dataset"):
-            data_size = train_loader.dataset.tensors[0].shape[0]
+            data_size = len(train_loader.dataset)
         else:
             data_size = kwargs["data_size"]
 
