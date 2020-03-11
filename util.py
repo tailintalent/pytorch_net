@@ -710,6 +710,8 @@ def eval_tuple(arg_return):
                 item = eval(item)
             except:
                 pass
+            if item == "":
+                continue
             List.append(item)
         arg_return = tuple(List)
     return arg_return
