@@ -698,6 +698,23 @@ def normalize_tensor(X, new_range = None, mean = None, std = None):
     return X_normalized
 
 
+def eval_tuple(arg_return):
+    """Evaluate a tuple string into a tuple."""
+    if arg_return[0] not in ["(", "["]:
+        arg_return = eval(arg_return)
+    else:
+        splitted = arg_return[1:-1].split(",")
+        List = []
+        for item in splitted:
+            try:
+                item = eval(item)
+            except:
+                pass
+            List.append(item)
+        arg_return = tuple(List)
+    return arg_return
+
+
 def get_args(arg, arg_id = 1, type = "str"):
     """get sys arguments from either command line or Jupyter"""
     try:
@@ -716,18 +733,7 @@ def get_args(arg, arg_id = 1, type = "str"):
             elif type == "eval":
                 arg_return = eval(arg_return)
             elif type == "tuple":
-                if arg_return[0] not in ["(", "["]:
-                    arg_return = eval(arg_return)
-                else:
-                    splitted = arg_return[1:-1].split(",")
-                    List = []
-                    for item in splitted:
-                        try:
-                            item = eval(item)
-                        except:
-                            pass
-                        List.append(item)
-                    arg_return = tuple(List)
+                arg_return = eval_tuple(arg_return)
             elif type == "str":
                 pass
             else:
