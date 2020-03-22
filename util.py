@@ -2396,3 +2396,11 @@ def get_sorted_counts(array):
     array_unique, counts = np.unique(array, return_counts=True)
     counts, array_unique = sort_two_lists(counts, array_unique, reverse=True)
     return array_unique, counts
+
+
+def filter_kwargs(kwargs, param_names):
+    new_kwargs = {}
+    for key, item in kwargs.items():
+        if key in param_names:
+            new_kwargs[key] = item
+    return new_kwargs

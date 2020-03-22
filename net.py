@@ -28,7 +28,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
 from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
-from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur
+from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur, filter_kwargs
 
 
 # ## Training functionality:
@@ -1807,16 +1807,17 @@ class MLP(nn.Module):
             setattr(self, "layer_{}".format(k), layer)
 
 
-    def forward(self, input, p_dict = None, **kwargs):
+    def forward(self, input, p_dict=None, **kwargs):
+        kwargs = filter_kwargs(kwargs, ["res_forward", "is_res_block", "act_noise_scale"])  # only allow certain kwargs to be passed
         output = input
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
         for k in range(len(self.struct_param)):
             p_dict_ele = p_dict[k] if p_dict is not None else None
             if res_forward and k > 0:
-                output = getattr(self, "layer_{}".format(k))(torch.cat([output, input], -1), p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(torch.cat([output, input], -1), p_dict=p_dict_ele, **kwargs)
             else:
-                output = getattr(self, "layer_{}".format(k))(output, p_dict = p_dict_ele)
+                output = getattr(self, "layer_{}".format(k))(output, p_dict=p_dict_ele, **kwargs)
         if is_res_block:
             output = output + input
         return output
