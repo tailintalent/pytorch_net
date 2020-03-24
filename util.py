@@ -199,12 +199,17 @@ def to_Variable(*arrays, **kwargs):
     requires_grad = kwargs["requires_grad"] if "requires_grad" in kwargs else False
     array_list = []
     for array in arrays:
-        if isinstance(array, int):
+        is_int = False
+        if isinstance(array, Number):
+            is_int = True if isinstance(array, int) else False
             array = [array]
         if isinstance(array, np.ndarray) or isinstance(array, list):
+            is_int = True if np.array(array).dtype.name == "int64" else False
             array = torch.tensor(array).float()
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
-            array = Variable(array, requires_grad = requires_grad)
+            array = Variable(array, requires_grad=requires_grad)
+        if is_int:
+            array = array.long()
         array = set_cuda(array, is_cuda)
         array_list.append(array)
     if len(array_list) == 1:
