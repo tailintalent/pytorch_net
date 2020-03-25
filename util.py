@@ -208,7 +208,7 @@ def to_Variable(*arrays, **kwargs):
             array = torch.tensor(array).float()
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
             array = Variable(array, requires_grad=requires_grad)
-        if is_int:
+        if "preserve_int" in kwargs and kwargs["preserve_int"] is True and is_int:
             array = array.long()
         array = set_cuda(array, is_cuda)
         array_list.append(array)
