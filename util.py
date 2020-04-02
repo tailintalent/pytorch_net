@@ -203,7 +203,7 @@ def to_Variable(*arrays, **kwargs):
         if isinstance(array, Number):
             is_int = True if isinstance(array, int) else False
             array = [array]
-        if isinstance(array, np.ndarray) or isinstance(array, list):
+        if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, tuple):
             is_int = True if np.array(array).dtype.name == "int64" else False
             array = torch.tensor(array).float()
         if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
