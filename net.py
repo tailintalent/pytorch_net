@@ -3885,7 +3885,7 @@ class Net_reparam(nn.Module):
 
 def reparameterize(model, input, mode="full", size=None):
     if mode.startswith("diag"):
-        if model.__class__.__name__ == "Mixture_Model":
+        if model is not None and model.__class__.__name__ == "Mixture_Model":
             return reparameterize_mixture_diagonal(model, input, mode=mode)
         else:
             return reparameterize_diagonal(model, input, mode=mode)
@@ -3896,7 +3896,10 @@ def reparameterize(model, input, mode="full", size=None):
 
 
 def reparameterize_diagonal(model, input, mode):
-    mean_logit = model(input)
+    if model is not None:
+        mean_logit = model(input)
+    else:
+        mean_logit = input
     if mode.startswith("diagg"):
         if isinstance(mean_logit, tuple):
             mean = mean_logit[0]
@@ -3933,8 +3936,11 @@ def reparameterize_mixture_diagonal(model, input, mode):
     return dist, (mean_list, scale_list)
 
 
-def reparameterize_full(model, input, size = None):
-    mean_logit = model(input)
+def reparameterize_full(model, input, size=None):
+    if model is not None:
+        mean_logit = model(input)
+    else:
+        mean_logit = input
     if isinstance(mean_logit, tuple):
         mean_logit = mean_logit[0]
     if size is None:
@@ -3945,6 +3951,14 @@ def reparameterize_full(model, input, size = None):
     scale_tril = matrix_diag_transform(scale_tril, F.softplus)
     dist = MultivariateNormal(mean, scale_tril = scale_tril)
     return dist, (mean, scale_tril)
+
+
+def sample(dist, n=None):
+    """Sample n instances from distribution dist"""
+    if n is None:
+        return dist.rsample()
+    else:
+        return dist.rsample((n,))
 
 
 # ## Probability models:
