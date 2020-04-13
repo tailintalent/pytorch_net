@@ -54,6 +54,12 @@ def get_Layer(layer_type, input_size, output_size, W_init = None, b_init = None,
                                settings=settings,
                                is_cuda=is_cuda,
                               )
+    elif layer_type == "Utility_Layer":
+        layer = Utility_Layer(input_size=input_size,
+                              output_size=output_size,
+                              settings=settings,
+                              is_cuda=is_cuda,
+                             )
     else:
         raise Exception("layer_type '{}' not recognized!".format(layer_type))
     return layer
@@ -604,6 +610,62 @@ class Simple_Layer(nn.Module):
                 self.W_core.requires_grad = False
             if self.bias_on:
                 self.b_core.requires_grad = False
+
+
+# ## Utility layers:
+
+# In[ ]:
+
+
+class Utility_Layer(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        settings={},
+        is_cuda=False,
+    ):
+        super(Utility_Layer, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.is_cuda = is_cuda
+        self.settings = settings
+
+
+    def forward(self, input, **kwargs):
+        layer_type = self.settings["type"]
+        if layer_type == "reshape":
+            return input.reshape(self.output_size)
+        elif layer_type == "flatten":
+            return input.view(-1)
+        else:
+            raise Exception("layer_type {} is not valid".format(layer_type))
+
+    @property
+    def model_dict(self):
+        model_dict = {}
+        model_dict["input_size"] = self.input_size
+        model_dict["output_size"] = self.output_size
+        model_dict["settings"] = self.settings
+        return model_dict
+
+
+    @property
+    def struct_param(self):
+        return [self.output_size, "Utility_Layer", self.settings]
+
+
+    def get_regularization(self, mode, source=["weight"], **kwargs):
+        reg = to_Variable([0], is_cuda=self.is_cuda)
+        return reg
+
+
+    def set_trainable(self, is_trainable):
+        pass
+
+
+    def set_cuda(self, is_cuda):
+        self.is_cuda = is_cuda
 
 
 # ## Symbolic Layer:
