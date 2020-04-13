@@ -1082,6 +1082,46 @@ def to_string(List, connect = "-", num_digits = None, num_strings = None):
             return connect.join(["{0:.{1}f}".format(element, num_digits)[:num_strings] for element in List])
 
 
+def split_string(string):
+    """Given a string, return the core string and the number suffix.
+    If there is no number suffix, the num_core will be None.
+    """
+    # Get the starting index for the number suffix:
+    assert isinstance(string, str)
+    i = 1
+    for i in range(1, len(string) + 1):
+        if string[-i] in [str(k) for k in range(10)]:
+            continue
+        else:
+            break
+    idx = len(string) - i + 1
+    # Obtain string_core and num_core:
+    string_core = string[:idx]
+    if len(string[idx:]) > 0:
+        num_core = eval(string[idx:])
+    else:
+        num_core = None
+
+    return string_core, num_core
+
+
+def get_rename_mapping(base_keys, adding_keys):
+    """Given a list of base_keys and adding keys, return a mapping of how to 
+    rename adding_keys s.t. adding_keys do not have name conflict with base_keys.
+    """
+    mapping = {}
+    for key in adding_keys:
+        if key in base_keys:
+            string_core, num_core = split_string(key)
+            num_proposed = num_core + 1 if num_core is not None else 1
+            proposed_name = "{}{}".format(string_core, num_proposed)
+            while proposed_name in base_keys:
+                num_proposed += 1
+                proposed_name = "{}{}".format(string_core, num_proposed)
+            mapping[key] = proposed_name
+    return mapping
+
+
 def view_item(dict_list, key):
     if not isinstance(key, tuple):
         return [element[key] for element in dict_list]
