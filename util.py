@@ -5,6 +5,7 @@ import numpy as np
 from copy import deepcopy
 import itertools
 import json
+import operator
 import pickle
 import random
 from sklearn.cluster import SpectralClustering
@@ -2449,3 +2450,7 @@ def filter_kwargs(kwargs, param_names):
         if key in param_names:
             new_kwargs[key] = item
     return new_kwargs
+
+
+def get_key_of_largest_value(Dict):
+    return max(Dict.items(), key=operator.itemgetter(1))[0]
