@@ -151,9 +151,13 @@ def recursive_index(data, idx):
     return data_new
 
 
-def record_data(data_record_dict, data_list, key_list, nolist = False):
+def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_duplicate=False):
     """Record data to the dictionary data_record_dict. It records each key: value pair in the corresponding location of 
     key_list and data_list into the dictionary."""
+    if not isinstance(data_list, list):
+        data_list = [data_list]
+    if not isinstance(key_list, list):
+        key_list = [key_list]
     assert len(data_list) == len(key_list), "the data_list and key_list should have the same length!"
     for data, key in zip(data_list, key_list):
         if nolist:
@@ -162,7 +166,8 @@ def record_data(data_record_dict, data_list, key_list, nolist = False):
             if key not in data_record_dict:
                 data_record_dict[key] = [data]
             else: 
-                data_record_dict[key].append(data)
+                if (not ignore_duplicate) or (data not in data_record_dict[key]):
+                    data_record_dict[key].append(data)
 
 
 def to_np_array(*arrays, **kwargs):
