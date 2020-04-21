@@ -2459,3 +2459,104 @@ def filter_kwargs(kwargs, param_names):
 
 def get_key_of_largest_value(Dict):
     return max(Dict.items(), key=operator.itemgetter(1))[0]
+
+
+def remove_duplicates(seq):
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]
+
+
+def compose_two_keylists(keys1, keys2):
+    """Return a fully broadcast list of keys, combining keys1 and keys2."""
+    length1 = [len(key) for key in keys1]
+    length2 = [len(key) for key in keys2]
+    assert len(np.unique(length1)) <= 1
+    assert len(np.unique(length2)) <= 1
+    if len(length1) == 0:
+        return keys2
+    if len(length2) == 0:
+        return keys1
+    length1 = length1[0]
+    length2 = length2[0]
+
+    # Find the maximum length where both keys share the same sub_keys:
+    is_same = True
+    for i in range(1, min(length1, length2) + 1):
+        sub_keys1 = [key[:i] for key in keys1]
+        sub_keys2 = [key[:i] for key in keys2]
+        if set(sub_keys1) != set(sub_keys2):
+            assert len(set(sub_keys1).intersection(set(sub_keys2))) == 0
+            is_same = False
+            break
+    if is_same:
+        largest_common_length = i
+    else:
+        largest_common_length = i - 1
+
+    new_keys = []
+    keys_common = remove_duplicates([key[:largest_common_length] for key in keys1])
+    keys1_reduced = remove_duplicates([key[largest_common_length:] for key in keys1])
+    keys2_reduced = remove_duplicates([key[largest_common_length:] for key in keys2])
+    for key_common in keys_common:
+        if length1 > largest_common_length:
+            for key1 in keys1_reduced:
+                if length2 > largest_common_length:
+                    for key2 in keys2_reduced:
+                        key = key_common + key1 + key2
+                        new_keys.append(key)
+                else:
+                    key = key_common + key1
+                    new_keys.append(key)
+
+        else:
+            if length2 > largest_common_length:
+                for key2 in keys2_reduced:
+                    key = key_common + key2
+                    print(key)
+                    new_keys.append(key)
+            else:
+                key = key_common
+                new_keys.append(key)
+    return new_keys
+
+
+def broadcast_keys(key_list_all):
+    """Return a fully broadcast {new_broadcast_key: list of Arg keys}
+
+    key_list_all: a list of items, where each item is a list of keys.
+    For example, key_list_all = [[(0, "s"), (0, "d"), (1, "d)], [0, 1]], it will return:
+
+    key_dict = {(0, "s"): [(0, "s"), 0],
+                (0, "d"): [(0, "d"), 0],
+                (1, "d"): [(1, "d"), 1]}
+    """
+    # First: get all the combinations
+    new_key_list = []
+    for i, keys in enumerate(key_list_all):
+        keys = [(ele,) if not isinstance(ele, tuple) else ele for ele in keys]
+        new_key_list = compose_two_keylists(new_key_list, keys)
+
+    ## new_key_list: a list of fully broadcast keys
+    ## key_list_all: a list of original_key_list, each of which corresponds to
+    ##               the keys of an OrderedDict()
+    key_dict = {}
+    for new_key in new_key_list:
+        new_key_map_list = []
+        is_match_all = True
+        for original_key_list in key_list_all:
+            is_match = False
+            for key in original_key_list:
+                key = (key,) if not isinstance(key, tuple) else key
+                if set(key).issubset(set(new_key)):
+                    is_match = True
+                    if len(key) == 1:
+                        key = key[0]
+                    new_key_map_list.append(key)
+                    break
+            is_match_all = is_match_all and is_match
+        if is_match_all:
+            if len(new_key) == 1:
+                new_key = new_key[0]
+            key_dict[new_key] = new_key_map_list
+    return key_dict
