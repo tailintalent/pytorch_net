@@ -184,7 +184,7 @@ def to_np_array(*arrays, **kwargs):
             array = array.numpy()
         if isinstance(array, Number):
             pass
-        elif isinstance(array, list):
+        elif isinstance(array, list) or isinstance(array, tuple):
             array = np.array(array)
         elif array.shape == (1,):
             if "full_reduce" in kwargs and kwargs["full_reduce"] is False:
