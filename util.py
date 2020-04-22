@@ -2513,7 +2513,6 @@ def compose_two_keylists(keys1, keys2):
             if length2 > largest_common_length:
                 for key2 in keys2_reduced:
                     key = key_common + key2
-                    print(key)
                     new_keys.append(key)
             else:
                 key = key_common
