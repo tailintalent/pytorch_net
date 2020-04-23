@@ -1,4 +1,5 @@
 from __future__ import print_function
+from collections import Counter
 import os
 from numbers import Number
 import numpy as np
@@ -1109,6 +1110,30 @@ def split_string(string):
         num_core = None
 
     return string_core, num_core
+
+
+def canonicalize_strings(operators):
+    """Given a list of strings, return the canonical version.
+    
+    Example:
+        operators = ["EqualRow1", "EqualRow2", "EqualWidth3"]
+    
+        Returns: mapping = {'EqualRow1': 'EqualRow',
+                            'EqualRow2': 'EqualRow1',
+                            'EqualWidth3': 'EqualWidth'}
+    """
+    operators_core = [split_string(ele)[0] for ele in operators]
+    counts = Counter(operators_core)
+    new_counts = {key: 0 for key in counts}
+    mapping = {}
+    for operator, operator_core in zip(operators, operators_core):
+        count = new_counts[operator_core]
+        if count == 0:
+            mapping[operator] = operator_core
+        else:
+            mapping[operator] = "{}{}".format(operator_core, count)
+        new_counts[operator_core] += 1
+    return mapping
 
 
 def get_rename_mapping(base_keys, adding_keys):
