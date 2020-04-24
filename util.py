@@ -1,5 +1,5 @@
 from __future__ import print_function
-from collections import Counter
+from collections import Counter, OrderedDict
 import os
 from numbers import Number
 import numpy as np
@@ -1040,11 +1040,10 @@ def matrix_diag_transform(matrix, fun):
 
 def sort_two_lists(list1, list2, reverse = False):
     """Sort two lists according to the first list."""
-    from operator import itemgetter
     if reverse:
-        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=itemgetter(0), reverse=True))])
+        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=operator.itemgetter(0), reverse=True))])
     else:
-        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=itemgetter(0)))])
+        List = deepcopy([list(x) for x in zip(*sorted(zip(deepcopy(list1), deepcopy(list2)), key=operator.itemgetter(0)))])
     if len(List) == 0:
         return [], []
     else:
@@ -2584,3 +2583,22 @@ def broadcast_keys(key_list_all):
                 new_key = new_key[0]
             key_dict[new_key] = new_key_map_list
     return key_dict
+
+
+def split_bucket(dictionary, num_common):
+    """Split the dictionary into multiple buckets, determined by key[num_common:]."""
+    from multiset import Multiset
+    keys_common = remove_duplicates([key[:num_common] for key in dictionary.keys()])
+    # Find the different keys:
+    keys_diff = []
+    for key in dictionary.keys():
+        if Multiset(keys_common[0]).issubset(Multiset(key)):
+            if key[num_common:]  not in keys_diff:
+                keys_diff.append(key[num_common:])
+    keys_diff = sorted(keys_diff)
+
+    buckets = [OrderedDict() for _ in range(len(keys_diff))]
+    for key, item in dictionary.items():
+        id = keys_diff.index(key[num_common:])
+        buckets[id][key[:num_common]] = item
+    return buckets
