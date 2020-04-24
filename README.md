@@ -10,3 +10,10 @@ See [tutorial.ipynb](https://github.com/tailintalent/pytorch_net/blob/master/Tut
 - [PyTorch](https://pytorch.org/) >= 0.4.1
 - scikit-learn
 - sympy >= 1.3 for symbolic layers
+
+
+## My projects that use this library:
+- [AI Physicist](https://github.com/tailintalent/AI_physicist)
+- [Phase Transition for the Information Bottleneck](https://github.com/tailintalent/phase_transition)
+- [Causal learning](https://github.com/tailintalent/causal)
+- [Meta-learning autoencoder](https://github.com/tailintalent/mela)
