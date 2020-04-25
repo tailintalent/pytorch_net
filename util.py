@@ -2602,3 +2602,37 @@ def split_bucket(dictionary, num_common):
         id = keys_diff.index(key[num_common:])
         buckets[id][key[:num_common]] = item
     return buckets
+
+
+def get_list_elements(List, string_idx):
+    """Select elements of the list based on string_idx.
+    
+    Format of string_idx:
+        "100:200": 
+        "100:"
+        ":200"
+        "150"
+    """
+    if string_idx == "::":
+        return List
+    elif ":" in string_idx:
+        string_split = string_idx.split(":")
+        string_split = [string for string in string_split if len(string) != 0]
+        if len(string_split) == 2:
+            start_idx, end_idx = string_idx.split(":")
+            start_idx, end_idx = eval(start_idx), eval(end_idx)
+            if end_idx > len(List):
+                raise Exception("The end index exceeds the length of the list!")
+            list_selected = List[start_idx: end_idx]
+        elif len(string_split) == 1:
+            print("aha", string_split)
+            if string_idx.startswith(":"):
+                list_selected = List[:eval(string_idx[1:])]
+            else:
+                list_selected = List[eval(string_idx[:-1]):]
+        else:
+            raise
+    else:
+        string_idx = eval(string_idx)
+        list_selected = [List[string_idx]]
+    return list_selected

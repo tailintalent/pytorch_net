@@ -12,8 +12,7 @@ See [tutorial.ipynb](https://github.com/tailintalent/pytorch_net/blob/master/Tut
 - sympy >= 1.3 for symbolic layers
 
 
-## My projects that use this library:
+## Some projects using this library:
 - [AI Physicist](https://github.com/tailintalent/AI_physicist)
-- [Phase Transition for the Information Bottleneck](https://github.com/tailintalent/phase_transition)
 - [Causal learning](https://github.com/tailintalent/causal)
 - [Meta-learning autoencoder](https://github.com/tailintalent/mela)
