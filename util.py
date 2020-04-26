@@ -2636,3 +2636,34 @@ def get_list_elements(List, string_idx):
         string_idx = eval(string_idx)
         list_selected = [List[string_idx]]
     return list_selected
+
+
+def get_generalized_mean(List, cumu_mode="mean", epsilon=1e-10):
+    """Get generalized-mean of elements in the list"""
+    List = np.array(list(List))
+    assert len(List.shape) == 1
+
+    if cumu_mode[0] == "gm" and cumu_mode[1] == 1:
+        cumu_mode = "mean"
+    elif cumu_mode[0] == "gm" and cumu_mode[1] == 0:
+        cumu_mode = "geometric"
+    elif cumu_mode[0] == "gm" and cumu_mode[1] == -1:
+        cumu_mode = "harmonic"
+
+    # Obtain mean:
+    if cumu_mode == "mean":
+        mean = List.mean()
+    elif cumu_mode == "min":
+        mean = np.min(List)
+    elif cumu_mode == "max":
+        mean = np.max(List)
+    elif cumu_mode == "harmonic":
+        mean = len(List) / (1 / (List + epsilon)).sum()
+    elif cumu_mode == "geometric":
+        mean = (List + epsilon).prod() ** (1 / float(len(List)))
+    elif cumu_mode[0] == "gm":
+        order = cumu_mode[1]
+        mean = (np.minimum((List + epsilon) ** order, 1e30).mean()) ** (1 / float(order))
+    else:
+        raise
+    return mean
