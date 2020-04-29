@@ -2608,10 +2608,11 @@ def get_list_elements(List, string_idx):
     """Select elements of the list based on string_idx.
     
     Format of string_idx:
-        "100:200": 
-        "100:"
-        ":200"
-        "150"
+        "100:200": the 100th to 199th elements
+        "100:" : the 100th elements and onward
+        ":200" : the 0th to 199th elements
+        "150" : the 150th element
+        "::" : all elements
     """
     if string_idx == "::":
         return List
@@ -2625,7 +2626,6 @@ def get_list_elements(List, string_idx):
                 raise Exception("The end index exceeds the length of the list!")
             list_selected = List[start_idx: end_idx]
         elif len(string_split) == 1:
-            print("aha", string_split)
             if string_idx.startswith(":"):
                 list_selected = List[:eval(string_idx[1:])]
             else:
