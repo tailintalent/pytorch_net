@@ -710,6 +710,14 @@ def normalize_tensor(X, new_range = None, mean = None, std = None):
     return X_normalized
 
 
+def try_eval(string):
+    """Try to evaluate a string. If failed, use original string."""
+    try:
+        return eval(string)
+    except:
+        return string
+
+
 def eval_tuple(arg_return):
     """Evaluate a tuple string into a tuple."""
     if arg_return[0] not in ["(", "["]:
