@@ -2616,12 +2616,18 @@ def get_list_elements(List, string_idx):
     """Select elements of the list based on string_idx.
     
     Format of string_idx:
+        if starting with "r", means first performs random permutation.
         "100:200": the 100th to 199th elements
         "100:" : the 100th elements and onward
         ":200" : the 0th to 199th elements
         "150" : the 150th element
         "::" : all elements
     """
+    # Permute if starting with "r":
+    if string_idx.startswith("r"):
+        List = np.random.permutation(List).tolist()
+        string_idx = string_idx[1:]
+    # Select indices:
     if string_idx == "::":
         return List
     elif ":" in string_idx:
