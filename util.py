@@ -2556,17 +2556,19 @@ def broadcast_keys(key_list_all):
     """Return a fully broadcast {new_broadcast_key: list of Arg keys}
 
     key_list_all: a list of items, where each item is a list of keys.
-    For example, key_list_all = [[(0, "s"), (0, "d"), (1, "d)], [0, 1]], it will return:
+    For example, key_list_all = [[(0, "s"), (0, "d"), (1, "d)], [0, 1], None], it will return:
 
-    key_dict = {(0, "s"): [(0, "s"), 0],
-                (0, "d"): [(0, "d"), 0],
-                (1, "d"): [(1, "d"), 1]}
+    key_dict = {(0, "s"): [(0, "s"), 0, None],
+                (0, "d"): [(0, "d"), 0, None],
+                (1, "d"): [(1, "d"), 1, None]}
+    Here None denotes that there is only one input, which will be broadcast to all.
     """
     # First: get all the combinations
     new_key_list = []
     for i, keys in enumerate(key_list_all):
-        keys = [(ele,) if not isinstance(ele, tuple) else ele for ele in keys]
-        new_key_list = compose_two_keylists(new_key_list, keys)
+        if keys is not None:
+            keys = [(ele,) if not isinstance(ele, tuple) else ele for ele in keys]
+            new_key_list = compose_two_keylists(new_key_list, keys)
 
     ## new_key_list: a list of fully broadcast keys
     ## key_list_all: a list of original_key_list, each of which corresponds to
@@ -2576,15 +2578,19 @@ def broadcast_keys(key_list_all):
         new_key_map_list = []
         is_match_all = True
         for original_key_list in key_list_all:
-            is_match = False
-            for key in original_key_list:
-                key = (key,) if not isinstance(key, tuple) else key
-                if set(key).issubset(set(new_key)):
-                    is_match = True
-                    if len(key) == 1:
-                        key = key[0]
-                    new_key_map_list.append(key)
-                    break
+            if original_key_list is None:
+                new_key_map_list.append(None)
+                is_match = True
+            else:
+                is_match = False
+                for key in original_key_list:
+                    key = (key,) if not isinstance(key, tuple) else key
+                    if set(key).issubset(set(new_key)):
+                        is_match = True
+                        if len(key) == 1:
+                            key = key[0]
+                        new_key_map_list.append(key)
+                        break
             is_match_all = is_match_all and is_match
         if is_match_all:
             if len(new_key) == 1:
@@ -2681,3 +2687,19 @@ def get_generalized_mean(List, cumu_mode="mean", epsilon=1e-10):
     else:
         raise
     return mean
+
+
+def upper_first(string):
+    """return a new string with the first letter capitalized."""
+    if len(string) > 0:
+        return string[0].upper() + string[1:]
+    else:
+        return string
+
+
+def lower_first(string):
+    """return a new string with the first letter capitalized."""
+    if len(string) > 0:
+        return string[0].lower() + string[1:]
+    else:
+        return string
