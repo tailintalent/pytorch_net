@@ -2689,8 +2689,9 @@ def get_generalized_mean(List, cumu_mode="mean", epsilon=1e-10):
     return mean
 
 
+
 def upper_first(string):
-    """return a new string with the first letter capitalized."""
+    """Return a new string with the first letter capitalized."""
     if len(string) > 0:
         return string[0].upper() + string[1:]
     else:
@@ -2698,7 +2699,7 @@ def upper_first(string):
 
 
 def lower_first(string):
-    """return a new string with the first letter capitalized."""
+    """Return a new string with the first letter capitalized."""
     if len(string) > 0:
         return string[0].lower() + string[1:]
     else:
