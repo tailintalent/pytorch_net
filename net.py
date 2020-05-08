@@ -1807,8 +1807,10 @@ class MLP(nn.Module):
             setattr(self, "layer_{}".format(k), layer)
 
 
-    def forward(self, input, p_dict=None, **kwargs):
+    def forward(self, *input, p_dict=None, **kwargs):
         kwargs = filter_kwargs(kwargs, ["res_forward", "is_res_block", "act_noise_scale"])  # only allow certain kwargs to be passed
+        if isinstance(input, tuple):
+            input = torch.cat(input, -1)
         output = input
         res_forward = self.settings["res_forward"] if "res_forward" in self.settings else False
         is_res_block = self.settings["is_res_block"] if "is_res_block" in self.settings else False
