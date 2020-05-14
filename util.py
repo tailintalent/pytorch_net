@@ -2708,6 +2708,8 @@ def lower_first(string):
     
 def update_dict(Dict, key, value):
     """Return a new dictionary with the item with key updated by the corresponding value"""
+    if Dict is None:
+        return None
     new_dict = deepcopy(Dict)
     new_dict[key] = value
     return new_dict
