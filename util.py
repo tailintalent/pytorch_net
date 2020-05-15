@@ -1082,8 +1082,8 @@ def get_dict_items(Dict, idx):
 
 def to_string(List, connect = "-", num_digits = None, num_strings = None):
     """Turn a list into a string, with specified format"""
-    if List is None:
-        return None
+    if not isinstance(List, list) and not isinstance(List, tuple):
+        return List
     if num_strings is None:
         if num_digits is None:
             return connect.join([str(element) for element in List])
