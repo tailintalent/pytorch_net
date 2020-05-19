@@ -138,7 +138,7 @@ def Simple_2_Symbolic(simple_layer, settings={}, mode="normal", prefix=""):
 
 # ## Simple Layer:
 
-# In[3]:
+# In[1]:
 
 
 class Simple_Layer(nn.Module):
@@ -204,6 +204,21 @@ class Simple_Layer(nn.Module):
             self.initialize_param_freeze(update_values=True)
         else:
             self.snap_dict = {}
+
+
+    def __repr__(self):
+        string = ""
+        if not self.weight_on:
+            string += ", weight_on=False"
+        if not self.bias_on:
+            string += ", bias_on=False"
+        if not self.reg_on:
+            string += ", reg_on=False"
+        if "dropout_rate" in self.settings:
+            string += ", dropout_rate={}".format(self.settings["dropout_rate"])
+        if "act_noise" in self.settings:
+            string += ", act_noise={}".format(self.settings["act_noise"])
+        return 'Simple_Layer({}, "{}"{})'.format(self.output_size, self.activation, string)
 
 
     def change(self, target, new_property):
