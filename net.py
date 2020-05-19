@@ -4173,7 +4173,7 @@ class Mixture_Gaussian_reparam(nn.Module):
             self.n_components = n_components
             self.Z_size = Z_size
             self.mean_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 2 - 1)
-            self.scale_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 0.2 - 1)
+            self.scale_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 0.2)
             self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
             self.is_reparam = False
         self.reparam_mode = reparam_mode
