@@ -4157,6 +4157,8 @@ class Mixture_Gaussian_reparam(nn.Module):
         weight_logits=None,
         Z_size=None,
         n_components=None,
+        mean_scale=0.1,
+        scale_scale=0.1,
         reparam_mode="diag",
     ):
         super(Mixture_Gaussian_reparam, self).__init__()
@@ -4172,8 +4174,8 @@ class Mixture_Gaussian_reparam(nn.Module):
             assert mean_list is None and scale_list is None and weight_logits is None
             self.n_components = n_components
             self.Z_size = Z_size
-            self.mean_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 2 - 1)
-            self.scale_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 0.2)
+            self.mean_list = nn.Parameter((torch.rand(1, Z_size, n_components) - 0.5) * mean_scale)
+            self.scale_list = nn.Parameter(torch.log(torch.exp((torch.rand(1, Z_size, n_components) * 0.2 + 0.9) * scale_scale) - 1))
             self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
             self.is_reparam = False
         self.reparam_mode = reparam_mode
@@ -4211,7 +4213,10 @@ class Mixture_Gaussian_reparam(nn.Module):
         weight_probs = F.softmax(self.weight_logits, -1)  # size: [B, m]
         idx = torch.multinomial(weight_probs, n_core, replacement=True).unsqueeze(-2).expand(-1, self.mean_list.shape[-2], -1)  # multinomial result: [B, S]; result: [B, Z, S]
         mean_list  = torch.gather(self.mean_list,  dim=-1, index=idx)  # [B, Z, S]
-        scale_list = torch.gather(self.scale_list, dim=-1, index=idx)  # [B, Z, S]
+        if self.is_reparam:
+            scale_list = torch.gather(self.scale_list, dim=-1, index=idx)  # [B, Z, S]
+        else:
+            scale_list = F.softplus(torch.gather(self.scale_list, dim=-1, index=idx), beta=1)  # [B, Z, S]
         Z = torch.normal(mean_list, scale_list).permute(2, 0, 1)
         if n is None:
             Z = Z.squeeze(0)
