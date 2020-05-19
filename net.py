@@ -4368,7 +4368,6 @@ def load_model_dict_distribution(model_dict, is_cuda = False):
             is_cuda=is_cuda,
         )
         model.initialize(model_dict = model_dict)
-        return model
     elif model_dict["type"] == "Mixture_Gaussian_reparam":
         model = Mixture_Gaussian_reparam(
             is_reparam=model_dict["is_reparam"],
@@ -4381,11 +4380,12 @@ def load_model_dict_distribution(model_dict, is_cuda = False):
             is_cuda=is_cuda,
         )
     elif model_dict["type"] == "Triangular_dist":
-        return Triangular_dist(
+        model = Triangular_dist(
             loc=model_dict["loc"],
             a=model_dict["a"],
             b=model_dict["b"],
         )
     else:
         raise Exception("Type {} is not valid!".format(model_dict["type"]))
+    return model
 
