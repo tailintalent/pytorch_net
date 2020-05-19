@@ -4162,26 +4162,34 @@ class Mixture_Gaussian_reparam(nn.Module):
         mean_scale=0.1,
         scale_scale=0.1,
         # Mode:
+        is_reparam=True,
         reparam_mode="diag",
+        is_cuda=False,
     ):
         super(Mixture_Gaussian_reparam, self).__init__()
-        if mean_list is not None:
-            assert Z_size is None and n_components is None
+        self.is_reparam = is_reparam
+        self.reparam_mode = reparam_mode
+        self.is_cuda = is_cuda
+        self.device = torch.device(self.is_cuda if isinstance(self.is_cuda, str) else "cuda" if self.is_cuda else "cpu")
+
+        if self.is_reparam:
             self.mean_list = mean_list         # size: [B, Z, k]
             self.scale_list = scale_list       # size: [B, Z, k]
             self.weight_logits = weight_logits # size: [B, k]
-            self.is_reparam = True
             self.n_components = self.weight_logits.shape[-1]
             self.Z_size = self.mean_list.shape[-2]
         else:
-            assert mean_list is None and scale_list is None and weight_logits is None
             self.n_components = n_components
             self.Z_size = Z_size
             self.mean_list = nn.Parameter((torch.rand(1, Z_size, n_components) - 0.5) * mean_scale)
             self.scale_list = nn.Parameter(torch.log(torch.exp((torch.rand(1, Z_size, n_components) * 0.2 + 0.9) * scale_scale) - 1))
             self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
-            self.is_reparam = False
-        self.reparam_mode = reparam_mode
+            if mean_list is not None:
+                self.mean_list.data = to_Variable(mean_list)
+                self.scale_list.data = to_Variable(scale_list)
+                self.weight_logits.data = to_Variable(weight_logits)
+
+        self.to(self.device)
 
 
     def log_prob(self, input):
@@ -4232,6 +4240,19 @@ class Mixture_Gaussian_reparam(nn.Module):
 
     def __repr__(self):
         return "Mixture_Gaussian_reparam({}, Z_size={})".format(self.n_components, self.Z_size)
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Mixture_Gaussian_reparam"}
+        model_dict["is_reparam"] = self.is_reparam
+        model_dict["reparam_mode"] = self.reparam_mode
+        model_dict["Z_size"] = self.Z_size
+        model_dict["n_components"] = self.n_components
+        model_dict["mean_list"] = to_np_array(self.mean_list)
+        model_dict["scale_list"] = to_np_array(self.scale_list)
+        model_dict["weight_logits"] = to_np_array(self.weight_logits)
+        return model_dict
 
 
 # ### Triangular distribution:
@@ -4340,18 +4361,31 @@ class Triangular_dist(Distribution):
 
 def load_model_dict_distribution(model_dict, is_cuda = False):
     if model_dict["type"] == "Mixture_Gaussian":
-        model = Mixture_Gaussian(num_components=model_dict["num_components"],
-                                 dim=model_dict["dim"],
-                                 param_mode=model_dict["param_mode"],
-                                 is_cuda=is_cuda,
-                                )
+        model = Mixture_Gaussian(
+            num_components=model_dict["num_components"],
+            dim=model_dict["dim"],
+            param_mode=model_dict["param_mode"],
+            is_cuda=is_cuda,
+        )
         model.initialize(model_dict = model_dict)
         return model
+    elif model_dict["type"] == "Mixture_Gaussian_reparam":
+        model = Mixture_Gaussian_reparam(
+            is_reparam=model_dict["is_reparam"],
+            reparam_mode=model_dict["reparam_mode"],
+            mean_list=model_dict["mean_list"],
+            scale_list=model_dict["scale_list"],
+            weight_logits=model_dict["weight_logits"],
+            Z_size=model_dict["Z_size"],
+            n_components=model_dict["n_components"],
+            is_cuda=is_cuda,
+        )
     elif model_dict["type"] == "Triangular_dist":
-        return Triangular_dist(loc=model_dict["loc"],
-                               a=model_dict["a"],
-                               b=model_dict["b"],
-                              )
+        return Triangular_dist(
+            loc=model_dict["loc"],
+            a=model_dict["a"],
+            b=model_dict["b"],
+        )
     else:
         raise Exception("Type {} is not valid!".format(model_dict["type"]))
 
