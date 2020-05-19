@@ -4152,30 +4152,54 @@ class Mixture_Gaussian(nn.Module):
 class Mixture_Gaussian_reparam(nn.Module):
     def __init__(
         self,
-        mean_list,
-        scale_list,
-        weight_logits,
+        mean_list=None,
+        scale_list=None,
+        weight_logits=None,
+        Z_size=None,
+        n_components=None,
         reparam_mode="diag",
     ):
         super(Mixture_Gaussian_reparam, self).__init__()
-        self.mean_list = mean_list         # size: [B, Z, m]
-        self.scale_list = scale_list       # size: [B, Z, m]
-        self.weight_logits = weight_logits # size: [B, m]
+        if mean_list is not None:
+            assert Z_size is None and n_components is None
+            self.mean_list = mean_list         # size: [B, Z, k]
+            self.scale_list = scale_list       # size: [B, Z, k]
+            self.weight_logits = weight_logits # size: [B, k]
+            self.is_reparam = True
+            self.n_components = self.weight_logits.shape[-1]
+            self.Z_size = self.mean_list.shape[-2]
+        else:
+            assert mean_list is None and scale_list is None and weight_logits is None
+            self.n_components = n_components
+            self.Z_size = Z_size
+            self.mean_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 2 - 1)
+            self.scale_list = nn.Parameter(torch.rand(1, Z_size, n_components) * 0.2 - 1)
+            self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
+            self.is_reparam = False
         self.reparam_mode = reparam_mode
 
 
-    def prob(self, input):
-        input = input.unsqueeze(-1)
+    def log_prob(self, input):
+        """Obtain the log_prob of the input."""
+        input = input.unsqueeze(-1)  # [S, B, Z, 1]
         if self.reparam_mode == "diag":
-            logits = - (input - self.mean_list) ** 2 / 2 / self.scale_list ** 2 - torch.log(self.scale_list * np.sqrt(2 * np.pi))
+            if self.is_reparam:
+                # logits: [S, B, Z, k]
+                logits = - (input - self.mean_list) ** 2 / 2 / self.scale_list ** 2 - torch.log(self.scale_list * np.sqrt(2 * np.pi))
+            else:
+                scale_list = F.softplus(self.scale_list, beta=1)
+                logits = - (input - self.mean_list) ** 2 / 2 / scale_list ** 2 - torch.log(scale_list * np.sqrt(2 * np.pi))
         else:
             raise
-        prob = torch.matmul(torch.exp(logits), F.softmax(self.weight_logits, -1).unsqueeze(-1)).squeeze(-1)
-        return prob
+        # log_softmax(weight_logits): [B, k]
+        # logits: [S, B, Z, k]
+        # log_prob: [S, B, Z]
+        log_prob = torch.logsumexp(logits + F.log_softmax(self.weight_logits, -1), axis=-1)
+        return log_prob
 
 
-    def log_prob(self, input):
-        return torch.log(self.prob(input) + 1e-15)
+    def prob(self, Z):
+        return torch.exp(self.log_prob(Z))
 
 
     def sample(self, n=None):
@@ -4196,6 +4220,10 @@ class Mixture_Gaussian_reparam(nn.Module):
 
     def rsample(self, n=None):
         return self.sample(n=n)
+
+
+    def __repr__(self):
+        return "Mixture_Gaussian_reparam({}, Z_size={})".format(self.n_components, self.Z_size)
 
 
 # ### Triangular distribution:
