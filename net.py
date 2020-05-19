@@ -4152,13 +4152,16 @@ class Mixture_Gaussian(nn.Module):
 class Mixture_Gaussian_reparam(nn.Module):
     def __init__(
         self,
+        # Use as reparamerization:
         mean_list=None,
         scale_list=None,
         weight_logits=None,
+        # Use as prior:
         Z_size=None,
         n_components=None,
         mean_scale=0.1,
         scale_scale=0.1,
+        # Mode:
         reparam_mode="diag",
     ):
         super(Mixture_Gaussian_reparam, self).__init__()
