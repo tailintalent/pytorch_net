@@ -3883,7 +3883,7 @@ class Net_reparam(nn.Module):
     def save(self, filename):
         mode = "json" if filename.endswith(".json") else "pickle"
         save_model(self.model_dict, filename, mode=mode)
-    
+
 
 def reparameterize(model, input, mode="full", size=None):
     if mode.startswith("diag"):
@@ -3894,7 +3894,7 @@ def reparameterize(model, input, mode="full", size=None):
     elif mode == "full":
         return reparameterize_full(model, input, size=size)
     else:
-        raise Exception("Mode {0} is not valid!".format(mode))
+        raise Exception("Mode {} is not valid!".format(mode))
 
 
 def reparameterize_diagonal(model, input, mode):
@@ -3915,7 +3915,7 @@ def reparameterize_diagonal(model, input, mode):
             mean_logit = mean_logit[0]
         size = int(mean_logit.size(-1) / 2)
         mean = mean_logit[:, :size]
-        std = F.softplus(mean_logit[:, size:], beta=1)
+        std = F.softplus(mean_logit[:, size:], beta=1) + 1e-10
         dist = Normal(mean, std)
         return dist, (mean, std)
     else:
