@@ -97,7 +97,7 @@ def plot_matrices(
         try:
             xlabel = "({0:.4f},{1:.4f})\nshape: ({2}, {3})".format(np.min(image), np.max(image), image.shape[0], image.shape[1])
             if x_axis_list is not None:
-                xlabel += "\n{0}".format(x_axis_list[i])
+                xlabel += "\n{}".format(x_axis_list[i])
             plt.xlabel(xlabel)
         except:
             pass
