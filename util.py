@@ -2713,3 +2713,11 @@ def update_dict(Dict, key, value):
     new_dict = deepcopy(Dict)
     new_dict[key] = value
     return new_dict
+
+
+def get_root_dir(suffix):
+    dirname = os.getcwd()
+    dirname_split = dirname.split("/")
+    index = dirname_split.index(suffix)
+    dirname = "/".join(dirname_split[:index + 1])
+    return dirname
