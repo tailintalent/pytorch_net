@@ -4207,7 +4207,7 @@ class Mixture_Gaussian_reparam(nn.Module):
         # log_softmax(weight_logits): [B, k]
         # logits: [S, B, Z, k]
         # log_prob: [S, B, Z]
-        log_prob = torch.logsumexp(logits + F.log_softmax(self.weight_logits, -1), axis=-1)
+        log_prob = torch.logsumexp(logits + F.log_softmax(self.weight_logits, -1).unsqueeze(-2), axis=-1)  # F(...).unsqueeze(-2): [B, 1, k]
         return log_prob
 
 
