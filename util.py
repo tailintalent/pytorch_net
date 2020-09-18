@@ -2725,6 +2725,8 @@ def get_root_dir(suffix):
 
 def check_same_set(List_of_List):
     """Return True if each element list has the same set of elements."""
+    if len(List_of_List) == 0:
+        return None
     List = List_of_List[0]
     for List_ele in List_of_List:
         if set(List) != set(List_ele):
