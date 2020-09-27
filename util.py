@@ -2732,3 +2732,29 @@ def check_same_set(List_of_List):
         if set(List) != set(List_ele):
             return False
     return True
+
+
+def check_same_dict(Dict, value_list, key_list):
+    """Check if the value stored is the same as the newly given value_list.
+    Return a list of keys whose values are different from the stored ones.
+    """
+    if len(Dict) == 0:
+        for key, value in zip(key_list, value_list):
+            Dict[key] = value
+        return []
+    else:
+        not_equal_list = []
+        for key, value in zip(key_list, value_list):
+            value_stored = Dict[key]
+            if isinstance(value, Number) or isinstance(value, tuple) or isinstance(value, list):
+                is_equal = value == value_stored
+                if not is_equal:
+                    not_equal_list.append(key)
+            else:
+                if tuple(value.shape) != tuple(value_stored.shape):
+                    not_equal_list.append(key)
+                else:
+                    is_equal = (value == value_stored).all()
+                    if not is_equal:
+                        not_equal_list.append(key)
+        return not_equal_list
