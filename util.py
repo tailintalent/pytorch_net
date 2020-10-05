@@ -2061,9 +2061,9 @@ def unsnap_recur(expr, param_dict, unsnapped_param_dict):
         return expr.func(*unsnapped_sub_expr_list)
 
 
-def get_next_available_key(iterable, key, midfix="", suffix="", is_underscore=True):
+def get_next_available_key(iterable, key, midfix="", suffix="", is_underscore=True, start_from_null=False):
     """Get the next available key that does not collide with the keys in the dictionary."""
-    if key + suffix not in iterable:
+    if start_from_null and key + suffix not in iterable:
         return key + suffix
     else:
         i = 0
