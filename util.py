@@ -2758,3 +2758,8 @@ def check_same_dict(Dict, value_list, key_list):
                     if not is_equal:
                         not_equal_list.append(key)
         return not_equal_list
+
+
+def print_banner(string):
+    """Pring the string sandwidched by two lines."""
+    print("\n" + "=" * 100 + "\n" + string + "\n" + "=" * 100 + "\n")
