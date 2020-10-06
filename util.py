@@ -2760,6 +2760,6 @@ def check_same_dict(Dict, value_list, key_list):
         return not_equal_list
 
 
-def print_banner(string):
+def print_banner(string, banner_size=100):
     """Pring the string sandwidched by two lines."""
-    print("\n" + "=" * 100 + "\n" + string + "\n" + "=" * 100 + "\n")
+    print("\n" + "=" * banner_size + "\n" + string + "\n" + "=" * banner_size + "\n")
