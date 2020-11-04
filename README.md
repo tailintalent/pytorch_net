@@ -14,5 +14,6 @@ See [tutorial.ipynb](https://github.com/tailintalent/pytorch_net/blob/master/Tut
 
 ## Some projects using this library:
 - [AI Physicist](https://github.com/tailintalent/AI_physicist)
+- [GIB](https://github.com/snap-stanford/GIB)
 - [Causal learning](https://github.com/tailintalent/causal)
 - [Meta-learning autoencoder](https://github.com/tailintalent/mela)
