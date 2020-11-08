@@ -2763,3 +2763,10 @@ def check_same_dict(Dict, value_list, key_list):
 def print_banner(string, banner_size=100):
     """Pring the string sandwidched by two lines."""
     print("\n" + "=" * banner_size + "\n" + string + "\n" + "=" * banner_size + "\n")
+
+
+def switch_dict_keys(Dict, key1, key2):
+    inter = Dict[key1]
+    Dict[key1] = Dict[key2]
+    Dict[key2] = inter
+    return Dict
