@@ -718,6 +718,17 @@ def try_eval(string):
         return string
 
 
+def try_remove(List, item, is_copy=True):
+    """Try to remove an item from the List. If failed, return the original List."""
+    if is_copy:
+        List = deepcopy(List)
+    try:
+        List.remove(item)
+    except:
+        pass
+    return List
+
+
 def eval_tuple(arg_return):
     """Evaluate a tuple string into a tuple."""
     if arg_return[0] not in ["(", "["]:
