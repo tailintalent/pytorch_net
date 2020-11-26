@@ -2781,3 +2781,110 @@ def switch_dict_keys(Dict, key1, key2):
     Dict[key1] = Dict[key2]
     Dict[key2] = inter
     return Dict
+
+
+def get_hashing(string_repr, length=None):
+    """Get the hashing of a string."""
+    import hashlib, base64
+    hashing = base64.b64encode(hashlib.md5(string_repr.encode('utf-8')).digest()).decode().replace("/", "a")[:-2]
+    if length is not None:
+        hashing = hashing[:length]
+    return hashing
+
+
+def get_filename(short_str_dict, args_dict, suffix=".p"):
+    """Get the filename using given short_str_dict and info of args_dict.
+
+    Args:
+        short_str_dict: mapping of long args name and short string, e.g. {"dataset": "data", "epoch": "ep", "lr": "lr#1"} (the #{Number} means multiple
+            args share the same short_str).
+        args_dict: args.__dict__.
+        suffix: suffix for the filename.
+    """
+    string_list = []
+    for k, v in short_str_dict.items():
+        if args_dict[k] is None:
+            continue
+        elif v == "":
+            string_list.append(args_dict[k])
+        else:
+            if len(v.split("#")) == 2:
+                id = eval(v.split("#")[1])
+                if id == 1:
+                    string_list.append("{}_{}".format(v.split("#")[0], args_dict[k]))
+                else:
+                    string_list.append("{}".format(args_dict[k]))
+            elif k == "gpuid":
+                string_list.append("{}:{}".format(v, args_dict[k]))
+            else:
+                string_list.append("{}_{}".format(v, args_dict[k]))
+    return "_".join(string_list) + suffix
+
+
+def get_filename_short(
+    args_shown,
+    short_str_dict,
+    args_dict,
+    hash_exclude_shown=False,
+    hash_length=8,
+    print_excluded_args=False,
+    suffix=".p"
+):
+    """Get the filename using given short_str_dict, args_shown and info of args_dict.
+        The args not in args_shown will not be put explicitly in the filename, but the full
+        args_dict will be turned into a unique hash.
+
+    Args:
+        args_shown: fields of the args that need to appear explicitly in the filename
+        short_str_dict: mapping of long args name and short string, e.g. {"dataset": "data", "epoch": "ep"}
+        args_dict: args.__dict__.
+        hash_exclude_shown: if True, will exclude the args that are in the args_shown when computing the hash.
+        hash_length: length of the hash.
+        suffix: suffix for the filename.
+    """
+    # Get the short name from short_str_dict:
+    str_dict = {}
+    for key in args_shown:
+        if key in args_dict:
+            str_dict[key] = short_str_dict[key]
+        else:
+            raise Exception("'{}' not in the short_str_dict. Need to add its short name into it.".format(key))
+    short_filename = get_filename(str_dict, args_dict, suffix="")
+
+    # Get the hashing for the full args_dict:
+    args_dict_excluded = deepcopy(args_dict)
+    for key in args_shown:
+        args_dict_excluded.pop(key)
+    if print_excluded_args:
+        print("Excluded args in explicit filename: {}".format(list(args_dict_excluded)))
+    hashing = get_hashing(str(args_dict_excluded) if hash_exclude_shown else str(args_dict), length=hash_length)
+    return short_filename + "_Hash_{}{}".format(hashing, suffix)
+
+
+def write_to_config(args, filename):
+    """Write to a yaml configuration file. The filename contains path to that file.
+    """
+    import yaml
+    dirname = "/".join(filename.split("/")[:-1])
+    config_filename = os.path.join(dirname, "config", filename.split("/")[-1][:-2] + ".yaml")
+    make_dir(config_filename)
+    with open(config_filename, "w") as f:
+        yaml.dump(args.__dict__, f)
+
+
+def load_config(config_filename):
+    """Load a configuration file."""
+    import yaml
+    with open(config_filename, "r") as f:
+        Dict = yaml.load(f, Loader=yaml.FullLoader)
+    return Dict
+
+
+def check_injective(Dict, exclude=[""]):
+    """Check if the value of a dictionary is injective, excluding certain values as given by 'exclude'."""
+    List = []
+    for k, v in Dict.items():
+        if v in List and v not in exclude:
+            raise Exception("the value {} of {} has duplicates!".format(v, k))
+        else:
+            List.append(v)
