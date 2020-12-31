@@ -1,4 +1,5 @@
 from __future__ import print_function
+import argparse
 from collections import Counter, OrderedDict
 import os
 from numbers import Number
@@ -2888,3 +2889,11 @@ def check_injective(Dict, exclude=[""]):
             raise Exception("the value {} of {} has duplicates!".format(v, k))
         else:
             List.append(v)
+
+
+def init_args(args_dict):
+    """Init argparse from dictionary."""
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args([])
+    args.__dict__ = args_dict
+    return args
