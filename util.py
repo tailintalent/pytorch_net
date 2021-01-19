@@ -2,9 +2,11 @@ from __future__ import print_function
 import argparse
 from collections import Counter, OrderedDict
 import os
+from math import gcd
 from numbers import Number
 import numpy as np
 from copy import deepcopy
+from functools import reduce
 import itertools
 import json
 import operator
@@ -21,6 +23,7 @@ import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
 from torch.optim.lr_scheduler import _LRScheduler
+
 
 PrecisionFloorLoss = 2 ** (-32)
 CLASS_TYPES = ["MLP", "Multi_MLP", "Branching_Net", "Fan_in_MLP", "Model_Ensemble", "Model_with_uncertainty",
@@ -2897,3 +2900,8 @@ def init_args(args_dict):
     args = parser.parse_args([])
     args.__dict__ = args_dict
     return args
+
+
+def lcm(denominators):
+    """Get least common multiplier"""
+    return reduce(lambda a,b: a*b // gcd(a,b), denominators)
