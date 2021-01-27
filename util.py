@@ -1,6 +1,6 @@
 from __future__ import print_function
 import argparse
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, Iterable
 import os
 from math import gcd
 from numbers import Number
@@ -2905,3 +2905,80 @@ def init_args(args_dict):
 def lcm(denominators):
     """Get least common multiplier"""
     return reduce(lambda a,b: a*b // gcd(a,b), denominators)
+
+
+def get_triu_index(size, order):
+    """Obtain generalized upper triangular tensor mask with specific order."""
+    matrices = torch.meshgrid((torch.arange(size),) * order)
+    for i in range(len(matrices) - 1):
+        if i == 0:
+            idx = matrices[i] <= matrices[i+1]
+        else:
+            idx = idx & (matrices[i] <= matrices[i+1])
+    idx = idx[None, ...]
+    return idx
+
+
+def get_poly_basis_tensor(x, order):
+    """Obtain generalized upper triangular tensor with specific order, using Einsum."""
+    strings = "abcdefghijklmn"
+    if isinstance(order, Iterable):
+        x_list = []
+        for order_ele in order:
+            x_list.append(get_poly_basis_tensor(x, order_ele))
+        return torch.cat(x_list, -1)
+    elif order == 1:
+        return x
+    elif order == 0 or order > len(strings):
+        raise Exception("Order must be an integer between 1 and {}".format(len(string)))
+    batch_size, size = x.shape
+    # Generate einsum string:
+    einsum_str = ""
+    for i in range(order):
+        einsum_str += "z{},".format(strings[i])
+    einsum_str = einsum_str[:-1] + "->z" + strings[:order]
+    # Compute the outer product:
+    tensor = torch.einsum(einsum_str, *((x,) * order))
+    # Obtain generalized upper triangular tensor with specific order:
+    idx = get_triu_index(size=size, order=order).expand(batch_size, *((size,)*order))
+    out = tensor[idx].reshape(batch_size,-1)
+    return out
+
+
+def get_poly_basis(x, order):
+    """Obtain generalized upper triangular tensor with specific order."""
+    x_list = []
+    size = x.shape[-1]
+    if isinstance(order, Iterable):
+        x_list = []
+        for order_ele in order:
+            x_list.append(get_poly_basis(x, order_ele))
+        return torch.cat(x_list, -1)
+    elif order == 1:
+        return x
+    elif order == 2:
+        for i in range(size):
+            for j in range(i, size):
+                x_list.append(x[..., i] * x[..., j])
+    elif order == 3:
+        for i in range(size):
+            for j in range(i, size):
+                for k in range(j, size):
+                    x_list.append(x[..., i] * x[..., j] * x[..., k])
+    elif order == 4:
+        for i in range(size):
+            for j in range(i, size):
+                for k in range(j, size):
+                    for l in range(k, size):
+                        x_list.append(x[..., i] * x[..., j] * x[..., k] * x[..., l])
+    elif order == 5:
+        for i in range(size):
+            for j in range(i, size):
+                for k in range(j, size):
+                    for l in range(k, size):
+                        for m in range(l, size):
+                            x_list.append(x[..., i] * x[..., j] * x[..., k] * x[..., l] * x[..., m])
+    else:
+        raise Exception("Order can only be integers from 1 to 5.")
+    x_list = torch.stack(x_list, -1)
+    return x_list
