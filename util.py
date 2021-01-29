@@ -2496,11 +2496,33 @@ def get_sorted_counts(array):
     return array_unique, counts
 
 
-def filter_kwargs(kwargs, param_names):
+def filter_kwargs(kwargs, param_names=None, contains=None):
+    """Build a new dictionary based on the filtering criteria.
+
+    Args:
+        param_names: if not None, will find the keys that are in the list of 'param_names'.
+        contains: if not None, will find the keys that contain the substrings in the list of 'contains'.
+
+    Returns:
+        new_kwargs: new kwargs dictionary.
+    """
     new_kwargs = {}
-    for key, item in kwargs.items():
-        if key in param_names:
-            new_kwargs[key] = item
+    if param_names is not None:
+        assert contains is None
+        if not isinstance(param_names, list):
+            param_names = [param_names]
+        for key, item in kwargs.items():
+            if key in param_names:
+                new_kwargs[key] = item
+    else:
+        assert contains is not None
+        if not isinstance(contains, list):
+            contains = [contains]
+        for key, item in kwargs.items():
+            for ele in contains:
+                if ele in key:
+                    new_kwargs[key] = item
+                    break
     return new_kwargs
 
 
