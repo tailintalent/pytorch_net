@@ -122,6 +122,36 @@ def plot_matrices(
     print()
 
 
+def plot_vectors(Dict, x_range=None, xlabel=None, ylabel=None, fontsize=14, figsize=(15,5), **kwargs):
+    """Plot learning curve (all losses)."""
+    from matplotlib import pyplot as plt
+    if not isinstance(Dict, dict):
+        Dict = {"item": Dict}
+    plt.figure(figsize=figsize)
+    plt.subplot(1,2,1)
+    first_key = next(iter(Dict))
+    x_range = np.arange(len(Dict[first_key])) if x_range is None else x_range
+    for key in Dict:
+        plt.plot(x_range, to_np_array(Dict[key]), label=key, **kwargs)
+    if xlabel is not None:
+        plt.xlabel(xlabel, fontsize=fontsize)
+    if ylabel is not None:
+        plt.ylabel(ylabel, fontsize=fontsize)
+    plt.tick_params(labelsize=fontsize)
+    plt.legend(fontsize=fontsize-2)
+
+    plt.subplot(1,2,2)
+    for key in Dict:
+        plt.semilogy(x_range, to_np_array(Dict[key]), label=key, **kwargs)
+    if xlabel is not None:
+        plt.xlabel(xlabel, fontsize=fontsize)
+    if ylabel is not None:
+        plt.ylabel(ylabel, fontsize=fontsize)
+    plt.tick_params(labelsize=fontsize)
+    plt.legend(fontsize=fontsize-2)
+    plt.show()
+
+
 class Recursive_Loader(object):
     """A recursive loader, able to deal with any depth of X"""
     def __init__(self, X, y, batch_size):
@@ -3055,6 +3085,8 @@ class Batch(object):
                 if self.is_absorb_batch:
                     tensor = tensor.view(-1, *tensor.shape[2:])
                 return tensor
+            elif elem is None:
+                return None
             elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
                 and elem_type.__name__ != 'string_':
                 if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
@@ -3101,3 +3133,25 @@ def ddeepcopy(item):
         return item.copy()
     else:
         return deepcopy(item)
+
+def get_pdict():
+    """Obtain pdict with additional functionalities."""
+    from pstar import pdict
+    class Pdict(pdict):
+        def to(self, device):
+            return to_device_recur(self, device)
+
+        def copy(self):
+            return Pdict(dict.copy(self))
+    return Pdict
+
+
+def to_device_recur(src, device):
+    if isinstance(src, dict):
+        return src.__class__([(key, to_device_recur(item, device)) for key, item in src.items()])
+    elif isinstance(src, list):
+        return [to_device_recur(item, device) for item in src]
+    elif isinstance(src, torch.Tensor):
+        return src.to(device)
+    else:
+        return src
