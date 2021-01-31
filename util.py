@@ -551,7 +551,7 @@ def get_full_struct_param(struct_param, settings):
 
 class Early_Stopping(object):
     """Class for monitoring and suggesting early stopping"""
-    def __init__(self, patience = 100, epsilon = 0, mode = "min"):
+    def __init__(self, patience=100, epsilon=0, mode="min"):
         self.patience = patience
         self.epsilon = epsilon
         self.mode = mode
@@ -563,6 +563,9 @@ class Early_Stopping(object):
         self.wait = 0
         
     def monitor(self, value):
+        if self.patience == -1:
+            self.weight += 1
+            return False
         to_stop = False
         if self.patience is not None:
             if self.best_value is None:
