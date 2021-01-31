@@ -3158,3 +3158,27 @@ def to_device_recur(src, device):
         return src.to(device)
     else:
         return src
+
+
+def get_boundary_locations(size, sector_size, stride):
+    """Get a list of 1D sector boundary positions.
+    Args:
+        size: length of the full domain.
+        sector_size: length of the sector.
+        stride: how far each sector moves to the right
+    Returns:
+        boundaries: a list of 1D sector boundary positions
+    """
+    boundaries = []
+    sector_l, sector_r = 0, sector_size  # left and right pos of the sector
+    while sector_l < size:
+        if sector_l < size and sector_r > size:
+            boundaries.append((size - sector_size, size))
+            break
+        else:
+            boundaries.append((sector_l, sector_r))
+            if (sector_l, sector_r) == (size - sector_size, size):
+                break
+        sector_l += stride
+        sector_r += stride
+    return boundaries
