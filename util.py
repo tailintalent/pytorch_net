@@ -564,7 +564,7 @@ class Early_Stopping(object):
         
     def monitor(self, value):
         if self.patience == -1:
-            self.weight += 1
+            self.wait += 1
             return False
         to_stop = False
         if self.patience is not None:
