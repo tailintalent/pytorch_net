@@ -3109,7 +3109,7 @@ class Batch(object):
             elif isinstance(elem, container_abcs.Mapping):
                 Dict = {key: collate_fn([d[key] for d in batch]) for key in elem}
                 if isinstance(elem, pdict):
-                    Dict = pdict(**Dict)
+                    Dict = elem.__class__(**Dict)
                 return Dict
             elif isinstance(elem, tuple):
                 if hasattr(elem, '_fields'):  # namedtuple:
