@@ -3151,7 +3151,9 @@ def get_pdict():
 
 def to_device_recur(src, device):
     if isinstance(src, dict):
-        return src.__class__([(key, to_device_recur(item, device)) for key, item in src.items()])
+        for key, item in src.items():
+            src[key] = to_device_recur(item, device)
+        return src
     elif isinstance(src, list):
         return [to_device_recur(item, device) for item in src]
     elif isinstance(src, torch.Tensor):
