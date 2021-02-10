@@ -3184,3 +3184,11 @@ def get_boundary_locations(size, sector_size, stride):
         sector_l += stride
         sector_r += stride
     return boundaries
+
+
+def set_seed(seed):
+    """Set up seed."""
+    if seed is not None:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
