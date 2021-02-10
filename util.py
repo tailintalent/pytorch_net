@@ -122,8 +122,25 @@ def plot_matrices(
     print()
 
 
-def plot_vectors(Dict, x_range=None, xlabel=None, ylabel=None, fontsize=14, figsize=(15,5), **kwargs):
+def plot_vectors(
+    Dict,
+    x_range=None,
+    xlabel=None,
+    ylabel=None,
+    fontsize=14,
+    linestyle_dict=None,
+    figsize=(15,5),
+    **kwargs
+):
     """Plot learning curve (all losses)."""
+    def get_setting(key, setting_dict):
+        setting = "-"
+        if setting_dict is not None:
+            for setting_key in setting_dict:
+                if setting_key in key:
+                    setting = setting_dict[setting_key]
+                    break
+        return setting
     from matplotlib import pyplot as plt
     if not isinstance(Dict, dict):
         Dict = {"item": Dict}
@@ -132,23 +149,22 @@ def plot_vectors(Dict, x_range=None, xlabel=None, ylabel=None, fontsize=14, figs
     first_key = next(iter(Dict))
     x_range = np.arange(len(Dict[first_key])) if x_range is None else x_range
     for key in Dict:
-        plt.plot(x_range, to_np_array(Dict[key]), label=key, **kwargs)
+        plt.plot(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:
         plt.ylabel(ylabel, fontsize=fontsize)
     plt.tick_params(labelsize=fontsize)
-    plt.legend(fontsize=fontsize-2)
 
     plt.subplot(1,2,2)
     for key in Dict:
-        plt.semilogy(x_range, to_np_array(Dict[key]), label=key, **kwargs)
+        plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:
         plt.ylabel(ylabel, fontsize=fontsize)
     plt.tick_params(labelsize=fontsize)
-    plt.legend(fontsize=fontsize-2)
+    plt.legend(bbox_to_anchor=[1, 1], fontsize=fontsize-2)
     plt.show()
 
 
