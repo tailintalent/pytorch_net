@@ -3188,6 +3188,8 @@ def get_boundary_locations(size, sector_size, stride):
 
 def set_seed(seed):
     """Set up seed."""
+    if seed == -1:
+        seed = None
     if seed is not None:
         np.random.seed(seed)
         torch.manual_seed(seed)
