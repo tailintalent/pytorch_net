@@ -3217,5 +3217,5 @@ def reshape_weight_to_matrix(weight, dim=0):
         # permute dim to front
         weight = weight.permute(dim, *[d for d in range(weight.dim()) if d != dim])
     height = weight.size(0)
-    weight.reshape(height, -1)
+    weight = weight.reshape(height, -1)
     return weight
