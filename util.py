@@ -3219,3 +3219,47 @@ def reshape_weight_to_matrix(weight, dim=0):
     height = weight.size(0)
     weight = weight.reshape(height, -1)
     return weight
+
+
+def slice_divmod(slice_item, denom):
+    """Given a slice(start, stop, step) and a denominator, return
+    a single quotient and a remainder slice.
+    """
+    if isinstance(slice_item, Number):
+        return divmod(slice_item, denom)
+    start, stop, step = slice_item.start, slice_item.stop, slice_item.step
+    if start is None:
+        start = 0
+    if step is None:
+        step = 1
+    idx = np.arange(start, stop, step)
+    sim_id = idx // denom
+    sim_id_set = np.unique(sim_id)
+    assert len(sim_id_set) == 1, "The number of returned sim_id must be 1. Here the sim_id are: {}".format(sim_id_set)
+    sim_id = sim_id_set[0]
+    start_new = start - sim_id * denom
+    stop_new = stop - sim_id * denom
+    slice_item_new = slice(start_new, stop_new, step)
+    return sim_id, slice_item_new
+
+
+def slice_add(slice_item, num):
+    if isinstance(slice_item, Number):
+        return slice_item + num
+    start, stop, step = slice_item.start, slice_item.stop, slice_item.step
+    if start is None:
+        start = 0
+    if step is None:
+        step = 1
+    return slice(start+num, stop+num, step)
+
+
+def slice_mul(slice_item, num):
+    if isinstance(slice_item, Number):
+        return slice_item * num
+    start, stop, step = slice_item.start, slice_item.stop, slice_item.step
+    if start is None:
+        start = 0
+    if step is None:
+        step = 1
+    return slice(start*num, stop*num, step*num)
