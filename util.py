@@ -3244,6 +3244,7 @@ def slice_divmod(slice_item, denom):
 
 
 def slice_add(slice_item, num):
+    """Perform addition of a slice by a scaler."""
     if isinstance(slice_item, Number):
         return slice_item + num
     start, stop, step = slice_item.start, slice_item.stop, slice_item.step
@@ -3255,6 +3256,7 @@ def slice_add(slice_item, num):
 
 
 def slice_mul(slice_item, num):
+    """Perform multiplication of a slice by a scaler."""
     if isinstance(slice_item, Number):
         return slice_item * num
     start, stop, step = slice_item.start, slice_item.stop, slice_item.step
@@ -3265,12 +3267,88 @@ def slice_mul(slice_item, num):
     return slice(start*num, stop*num, step*num)
 
 
-def forward_Runge_Kutta(model, x):
+def tuple_mul(tuple_item, num):
+    """Perform element-wise multiplication by a scaler for a tuple or a number."""
+    if not isinstance(tuple_item, tuple):
+        return tuple_item * num
+    List = []
+    for item in tuple_item:
+        if item is not None:
+            List.append(item * num)
+        else:
+            List.append(None)
+    return tuple(List)
+
+
+def tuple_divide(tuple_item, num):
+    """Perform element-wise division by a scaler for a tuple or a number."""
+    return tuple_mul(tuple_item, 1/num)
+
+
+def tuple_add(*tuples):
+    """Perform element-wise addition of multiple tuples or numbers."""
+    # Number addition:
+    if not isinstance(tuples[0], tuple):
+        for item in tuples:
+            assert not isinstance(item, tuple)
+        return sum(tuples)
+
+    # Check if all the tuples have the same length:
+    length = len(tuples[0])
+    for tuple_item in tuples:
+        assert len(tuple_item) == length, "All the tuples must have the same length."
+
+    # Perform element-wise addition:
+    List = []
+    for k in range(length):
+        # k is the k'th element in each tuple:
+        is_None = False  # Whether the k'th element is None for all tuples
+        item_sum = 0
+        for tuple_item in tuples:
+            # for each tuple:
+            if tuple_item[k] is None or is_None:
+                assert tuple_item[k] is None, "Either all {}th elements are None or are not None".format(k)
+                is_None = True
+            else:
+                item_sum = item_sum + tuple_item[k]
+        if is_None:
+            List.append(None)
+        else:
+            List.append(item_sum)
+    return tuple(List)
+
+
+def tuple_subtract(tuple1, tuple2):
+    """Perform element-wise subtraction of two tuples or numbers."""
+    return tuple_add(tuple1, tuple_mul(tuple2, -1))
+
+
+def tuple_shape_length_equal(tuple1, tuple2):
+    """Check if the number of dimensions for each element of tuples or numbers are the same."""
+    if not isinstance(tuple1, tuple):
+        assert not isinstance(tuple2, tuple)
+        return len(tuple1.shape) == len(tuple2.shape)
+    else:
+        is_equal = True
+        for tuple_item1, tuple_item2 in zip(tuple1, tuple2):
+            if tuple_item1 is None:
+                assert tuple_item2 is None
+            else:
+                if len(tuple_item1.shape) != len(tuple_item2.shape):
+                    is_equal = False
+                    break
+        return is_equal
+
+
+def forward_Runge_Kutta(model, x, mode="RK4"):
     """Perform forward prediction using Runge-Kutta scheme."""
-    k1 = model.forward_core(x)
-    assert len(k1.shape) == len(x.shape), "the number of dimensions for the output of model and input must be the same!"
-    k2 = model.forward_core(x + k1/2)
-    k3 = model.forward_core(x + k2/2)
-    k4 = model.forward_core(x + k3)
-    x = x + (k1 + k2*2 + k3*2 + k4)/6
+    if mode == "RK4":
+        k1 = model.forward_core(x)
+        assert tuple_shape_length_equal(k1, x), "the number of dimensions for the output of model and input must be the same!"
+        k2 = model.forward_core(tuple_add(x, tuple_divide(k1, 2)))
+        k3 = model.forward_core(tuple_add(x, tuple_divide(k2, 2)))
+        k4 = model.forward_core(tuple_add(x, k3))
+        x = tuple_add(x, tuple_divide(tuple_add(k1, tuple_mul(k2, 2), tuple_mul(k3, 2), k4), 6))
+    else:
+        raise Exception("mode '{}' is not supported!".format(mode))
     return x
