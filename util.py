@@ -3342,13 +3342,23 @@ def tuple_shape_length_equal(tuple1, tuple2):
 
 def forward_Runge_Kutta(model, x, mode="RK4"):
     """Perform forward prediction using Runge-Kutta scheme."""
-    if mode == "RK4":
+    if mode.startswith("RK"):
         k1 = model.forward_core(x)
         assert tuple_shape_length_equal(k1, x), "the number of dimensions for the output of model and input must be the same!"
-        k2 = model.forward_core(tuple_add(x, tuple_divide(k1, 2)))
-        k3 = model.forward_core(tuple_add(x, tuple_divide(k2, 2)))
-        k4 = model.forward_core(tuple_add(x, k3))
-        x = tuple_add(x, tuple_divide(tuple_add(k1, tuple_mul(k2, 2), tuple_mul(k3, 2), k4), 6))
+        if mode == "RK2":
+            k2 = model.forward_core(tuple_add(x, tuple_divide(k1, 2)))
+            x = tuple_add(x, k2)
+        elif mode == "RK3":
+            k2 = model.forward_core(tuple_add(x, tuple_divide(k1, 2)))
+            k3 = model.forward_core(tuple_add(x, tuple_mul(k1, -1), tuple_mul(k2, 2)))
+            x = tuple_add(x, tuple_divide(tuple_add(k1, tuple_mul(k2, 4), k3), 6))
+        elif mode == "RK4":
+            k2 = model.forward_core(tuple_add(x, tuple_divide(k1, 2)))
+            k3 = model.forward_core(tuple_add(x, tuple_divide(k2, 2)))
+            k4 = model.forward_core(tuple_add(x, k3))
+            x = tuple_add(x, tuple_divide(tuple_add(k1, tuple_mul(k2, 2), tuple_mul(k3, 2), k4), 6))
+        else:
+            raise Exception("mode '{}' is not supported!".format(mode))
     else:
         raise Exception("mode '{}' is not supported!".format(mode))
     return x
