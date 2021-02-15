@@ -3263,3 +3263,14 @@ def slice_mul(slice_item, num):
     if step is None:
         step = 1
     return slice(start*num, stop*num, step*num)
+
+
+def forward_Runge_Kutta(model, x):
+    """Perform forward prediction using Runge-Kutta scheme."""
+    k1 = model.forward_core(x)
+    assert len(k1.shape) == len(x.shape), "the number of dimensions for the output of model and input must be the same!"
+    k2 = model.forward_core(x + k1/2)
+    k3 = model.forward_core(x + k2/2)
+    k4 = model.forward_core(x + k3)
+    x = x + (k1 + k2*2 + k3*2 + k4)/6
+    return x
