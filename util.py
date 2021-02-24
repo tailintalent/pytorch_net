@@ -127,9 +127,12 @@ def plot_vectors(
     x_range=None,
     xlabel=None,
     ylabel=None,
+    title=None,
+    ylim=None,
     fontsize=14,
     linestyle_dict=None,
     figsize=(15,5),
+    is_logscale=True,
     **kwargs
 ):
     """Plot learning curve (all losses)."""
@@ -145,7 +148,8 @@ def plot_vectors(
     if not isinstance(Dict, dict):
         Dict = {"item": Dict}
     plt.figure(figsize=figsize)
-    plt.subplot(1,2,1)
+    if is_logscale:
+        plt.subplot(1,2,1)
     first_key = next(iter(Dict))
     x_range = np.arange(len(Dict[first_key])) if x_range is None else x_range
     for key in Dict:
@@ -154,16 +158,25 @@ def plot_vectors(
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:
         plt.ylabel(ylabel, fontsize=fontsize)
+    if title is not None:
+        plt.title(title, fontsize=fontsize)
+    if ylim is not None:
+        plt.ylim(ylim)
     plt.tick_params(labelsize=fontsize)
 
-    plt.subplot(1,2,2)
-    for key in Dict:
-        plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
-    if xlabel is not None:
-        plt.xlabel(xlabel, fontsize=fontsize)
-    if ylabel is not None:
-        plt.ylabel(ylabel, fontsize=fontsize)
-    plt.tick_params(labelsize=fontsize)
+    if is_logscale:
+        plt.subplot(1,2,2)
+        for key in Dict:
+            plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
+        if xlabel is not None:
+            plt.xlabel(xlabel, fontsize=fontsize)
+        if ylabel is not None:
+            plt.ylabel(ylabel, fontsize=fontsize)
+        if title is not None:
+            plt.title("{} (log-scale)".format(title), fontsize=fontsize)
+        if ylim is not None:
+            plt.ylim(ylim)
+        plt.tick_params(labelsize=fontsize)
     plt.legend(bbox_to_anchor=[1, 1], fontsize=fontsize-2)
     plt.show()
 
