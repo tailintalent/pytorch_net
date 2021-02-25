@@ -29,6 +29,12 @@ PrecisionFloorLoss = 2 ** (-32)
 CLASS_TYPES = ["MLP", "Multi_MLP", "Branching_Net", "Fan_in_MLP", "Model_Ensemble", "Model_with_uncertainty",
                "RNNCellBase", "LSTM", "Wide_ResNet", "Conv_Net", "Conv_Model", "Conv_Autoencoder", "VAE", "Net_reparam", "Mixture_Gaussian", "Triangular_dist"]
 ACTIVATION_LIST = ["relu", "leakyRelu", "leakyReluFlat", "tanh", "softplus", "sigmoid", "selu", "elu", "sign", "heaviside", "softmax", "negLogSoftmax", "naturalLogSoftmax"]
+COLOR_LIST = ["b", "r", "g", "y", "c", "m", "skyblue", "indigo", "goldenrod", "salmon", "pink",
+                  "silver", "darkgreen", "lightcoral", "navy", "orchid", "steelblue", "saddlebrown", 
+                  "orange", "olive", "tan", "firebrick", "maroon", "darkslategray", "crimson", "dodgerblue", "aquamarine",
+             "b", "r", "g", "y", "c", "m", "skyblue", "indigo", "goldenrod", "salmon", "pink",
+                  "silver", "darkgreen", "lightcoral", "navy", "orchid", "steelblue", "saddlebrown", 
+                  "orange", "olive", "tan", "firebrick", "maroon", "darkslategray", "crimson", "dodgerblue", "aquamarine"]
 
 
 def plot_matrices(
@@ -151,9 +157,16 @@ def plot_vectors(
     if is_logscale:
         plt.subplot(1,2,1)
     first_key = next(iter(Dict))
-    x_range = np.arange(len(Dict[first_key])) if x_range is None else x_range
+    if x_range is None:
+        if len(Dict[first_key].shape) == 1:
+            x_range = np.arange(len(Dict[first_key]))
+        elif len(Dict[first_key].shape) == 2:
+            x_range = np.arange(Dict[first_key].shape[1])
     for key in Dict:
-        plt.plot(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
+        if len(Dict[key].shape) == 1:
+            plt.plot(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
+        elif len(Dict[key].shape) == 2:
+            plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:
@@ -167,7 +180,12 @@ def plot_vectors(
     if is_logscale:
         plt.subplot(1,2,2)
         for key in Dict:
-            plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
+            if len(Dict[key].shape) == 1:
+                plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
+            elif len(Dict[key].shape) == 2:
+                plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
+                ax = plt.gca()
+                ax.set_yscale("log")
         if xlabel is not None:
             plt.xlabel(xlabel, fontsize=fontsize)
         if ylabel is not None:
