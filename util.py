@@ -2,6 +2,7 @@ from __future__ import print_function
 import argparse
 from collections import Counter, OrderedDict, Iterable
 import os
+import pdb
 from math import gcd
 from numbers import Number
 import numpy as np
@@ -158,14 +159,14 @@ def plot_vectors(
         plt.subplot(1,2,1)
     first_key = next(iter(Dict))
     if x_range is None:
-        if len(Dict[first_key].shape) == 1:
+        if isinstance(Dict[first_key][0], Number):
             x_range = np.arange(len(Dict[first_key]))
-        elif len(Dict[first_key].shape) == 2:
+        else:
             x_range = np.arange(Dict[first_key].shape[1])
     for key in Dict:
-        if len(Dict[key].shape) == 1:
+        if isinstance(Dict[key][0], Number):
             plt.plot(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
-        elif len(Dict[key].shape) == 2:
+        else:
             plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
@@ -180,9 +181,9 @@ def plot_vectors(
     if is_logscale:
         plt.subplot(1,2,2)
         for key in Dict:
-            if len(Dict[key].shape) == 1:
+            if isinstance(Dict[key][0], Number):
                 plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
-            elif len(Dict[key].shape) == 2:
+            else:
                 plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
                 ax = plt.gca()
                 ax.set_yscale("log")
