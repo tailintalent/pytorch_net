@@ -3393,3 +3393,7 @@ def forward_Runge_Kutta(model, x, mode="RK4"):
     else:
         raise Exception("mode '{}' is not supported!".format(mode))
     return x
+
+
+def get_machine_name():
+    return os.uname()[1].split('.')[0]
