@@ -140,6 +140,7 @@ def plot_vectors(
     linestyle_dict=None,
     figsize=(15,5),
     is_logscale=True,
+    is_standard_error=False,
     **kwargs
 ):
     """Plot learning curve (all losses)."""
@@ -167,7 +168,10 @@ def plot_vectors(
         if isinstance(Dict[key][0], Number):
             plt.plot(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
         else:
-            plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
+            if is_standard_error:
+                plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0) / np.sqrt(to_np_array(Dict[key]).shape[0]), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
+            else:
+                plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
     if xlabel is not None:
         plt.xlabel(xlabel, fontsize=fontsize)
     if ylabel is not None:
@@ -184,7 +188,10 @@ def plot_vectors(
             if isinstance(Dict[key][0], Number):
                 plt.semilogy(x_range, to_np_array(Dict[key]), label=key, linestyle=get_setting(key, linestyle_dict), **kwargs)
             else:
-                plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
+                if is_standard_error:
+                    plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0) / np.sqrt(to_np_array(Dict[key]).shape[0]), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
+                else:
+                    plt.errorbar(x_range, to_np_array(Dict[key]).mean(0), to_np_array(Dict[key]).std(0), label=key, linestyle=get_setting(key, linestyle_dict), capsize=2, **kwargs)
                 ax = plt.gca()
                 ax.set_yscale("log")
         if xlabel is not None:
