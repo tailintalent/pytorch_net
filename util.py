@@ -3405,3 +3405,13 @@ def forward_Runge_Kutta(model, x, mode="RK4"):
 
 def get_machine_name():
     return os.uname()[1].split('.')[0]
+
+
+def is_diagnose(loc, filename, diagnose_filename="/experiments/diagnose.yml"):
+    """If the given loc and filename matches that of the diagose.yml, will return True and (later) call an pde.set_trace()."""
+    with open(get_root_dir() + diagnose_filename, "r") as f:
+        Dict = yaml.load(f, Loader=yaml.FullLoader)
+    if loc == Dict["loc"] and filename == Dict["dirname"] + Dict["filename"]:
+        return True
+    else:
+        return False
