@@ -6,7 +6,7 @@ import pdb
 from math import gcd
 from numbers import Number
 import numpy as np
-from copy import deepcopy
+from copy import deepcopy, copy
 from functools import reduce
 import itertools
 import json
@@ -70,7 +70,7 @@ def plot_matrices(
     matrix_list = matrix_list_new
     
     num_matrixs = len(matrix_list)
-    rows = np.ceil(num_matrixs / float(images_per_row))
+    rows = int(np.ceil(num_matrixs / float(images_per_row)))
     try:
         matrix_list_reshaped = np.reshape(np.array(matrix_list), (-1, shape[0],shape[1])) \
             if shape is not None else np.array(matrix_list)
@@ -89,7 +89,7 @@ def plot_matrices(
         if len(image.shape) == 1:
             image = np.expand_dims(image, 1)
         if highlight_bad_values:
-            cmap = matplotlib.cm.binary
+            cmap = copy(plt.cm.get_cmap("binary"))
             cmap.set_bad('red', alpha = 0.2)
             mask_key = []
             mask_key.append(np.isnan(image))
