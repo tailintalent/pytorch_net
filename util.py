@@ -3415,3 +3415,16 @@ def is_diagnose(loc, filename, diagnose_filename="/experiments/diagnose.yml"):
         return True
     else:
         return False
+
+
+def get_device(args):
+    """Initialize PyTorch device.
+
+    Args:
+        args.gpuid choose from an integer or True or False.
+    """
+    is_cuda = eval(args.gpuid)
+    if not isinstance(is_cuda, bool):
+        is_cuda = "cuda:{}".format(is_cuda)
+    device = torch.device(is_cuda if isinstance(is_cuda, str) else "cuda" if is_cuda else "cpu")
+    return device
