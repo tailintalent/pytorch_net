@@ -1495,6 +1495,13 @@ def to_cpu_recur(item, to_target=None):
         return item
 
 
+def to_cpu(state_dict):
+    state_dict_cpu = {}
+    for k, v in state_dict.items():
+        state_dict_cpu[k] = v.cpu()
+    return state_dict_cpu
+
+
 def serialize(item):
     if isinstance(item, dict):
         return {str(key): serialize(value) for key, value in item.items()}
@@ -3428,3 +3435,72 @@ def get_device(args):
         is_cuda = "cuda:{}".format(is_cuda)
     device = torch.device(is_cuda if isinstance(is_cuda, str) else "cuda" if is_cuda else "cpu")
     return device
+
+
+def get_elements(src, string_idx):
+    """Get elements from source.
+
+    Args:
+        string_idx: has the same convention as index-select with Python List. E.g.
+            '4'  -> src[4]
+            ':3' -> src[1, 2, 3]
+            '2:' -> src[2, 3, ... max_t]
+            '2:4' -> src[2, 3, 4]
+    """
+    if ":" not in string_idx:
+        idx = eval(string_idx)
+        return src[idx: idx+1]
+    else:
+        if string_idx.startswith(":"):
+            return src[:eval(string_idx[1:])]
+        elif string_idx.endswith(":"):
+            return src[eval(string_idx[:-1]):]
+        else:
+            string_idx_split = string_idx.split(":")
+            assert len(string_idx_split) == 2
+            return src[eval(string_idx_split[0]): eval(string_idx_split[1])]
+
+
+def build_optimizer(args, params):
+    """
+    Build optimizer and scheduler.
+
+    Required argparse:
+        parser.add_argument('--opt', type=str,
+                            help='Optimizer such as adam, sgd, rmsprop or adagrad.')
+        parser.add_argument('--lr', type=float,
+                            help='Learning rate.')
+        parser.add_argument('--lr_scheduler_type', type=str,
+                            help='type of the lr-scheduler. Choose from "rop", "cos", "cos-re" and "None".')
+        parser.add_argument('--lr_scheduler_T0', type=int, default=50,
+                            help='T0 for CosineAnnealingWarmRestarts (cos-re) scheduler')
+        parser.add_argument('--lr_scheduler_T_mult', type=int, default=1,
+                            help='Multiplication factor for increasing T_i after a restart, for CosineAnnealingWarmRestarts (cos-re) scheduler.')
+        parser.add_argument('--lr_scheduler_factor', type=float, default=0.1,
+                            help='Multiplication factor for ReduceOnPlateau lr-scheduler.')
+        parser.add_argument('--weight_decay', type=float,
+                            help='Weight decay.')
+    """
+    weight_decay = args.weight_decay
+    filter_fn = filter(lambda p: p.requires_grad, params)
+
+    if args.opt == 'adam':
+        optimizer = optim.Adam(filter_fn, lr=args.lr, weight_decay=weight_decay)
+    elif args.opt == 'sgd':
+        optimizer = optim.SGD(filter_fn, lr=args.lr, momentum=0.95, weight_decay=weight_decay)
+    elif args.opt == 'rmsprop':
+        optimizer = optim.RMSprop(filter_fn, lr=args.lr, weight_decay=weight_decay)
+    elif args.opt == 'adagrad':
+        optimizer = optim.Adagrad(filter_fn, lr=args.lr, weight_decay=weight_decay)
+
+    if args.lr_scheduler_type == "rop":
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=args.lr_scheduler_factor, verbose=True)
+    elif args.lr_scheduler_type == "cos":
+        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    elif args.lr_scheduler_type == "cos-re":
+        scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=args.lr_scheduler_T0, T_mult=args.lr_scheduler_T_mult)
+    elif args.lr_scheduler_type == "None":
+        scheduler = None
+    else:
+        raise
+    return optimizer, scheduler
