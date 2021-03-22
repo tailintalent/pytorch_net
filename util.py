@@ -3481,6 +3481,7 @@ def build_optimizer(args, params):
         parser.add_argument('--weight_decay', type=float,
                             help='Weight decay.')
     """
+    from torch.optim import lr_scheduler
     weight_decay = args.weight_decay
     filter_fn = filter(lambda p: p.requires_grad, params)
 
