@@ -2892,6 +2892,16 @@ def check_same_dict(Dict, value_list, key_list):
         return not_equal_list
 
 
+def check_same_model_dict(model_dict1, model_dict2):
+    """Check if two model_dict are the same."""
+    assert set(model_dict1.keys()) == set(model_dict2.keys()), "model_dict1 and model_dict2 has different keys!"
+    for key, item1 in model_dict1.items():
+        item2 = model_dict2[key]
+        if not isinstance(item1, dict):
+            assert item1 == item2, "key '{}' has different values of '{}' and '{}'.".format(key, item1, item2)
+    return True
+
+
 def print_banner(string, banner_size=100):
     """Pring the string sandwidched by two lines."""
     print("\n" + "=" * banner_size + "\n" + string + "\n" + "=" * banner_size + "\n")
