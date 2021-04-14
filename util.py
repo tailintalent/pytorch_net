@@ -637,6 +637,9 @@ class Early_Stopping(object):
                     else:
                         self.wait += 1
         return to_stop
+
+    def __repr__(self):
+        return "Early_Stopping(patience={}, epsilon={}, mode={}, wait={})".format(self.patience, self.epsilon, self.mode, self.wait)
     
     
 class Performance_Monitor(object):
