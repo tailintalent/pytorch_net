@@ -3217,6 +3217,7 @@ def get_pdict():
     from pstar import pdict
     class Pdict(pdict):
         def to(self, device):
+            self["device"] = device
             return to_device_recur(self, device)
 
         def copy(self):
