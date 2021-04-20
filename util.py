@@ -3514,7 +3514,7 @@ def build_optimizer(args, params):
     elif args.lr_scheduler_type == "cos":
         scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     elif args.lr_scheduler_type == "cos-re":
-        epochs_new = get_epochs_T_mul(epochs=args.epochs, T_0=args.lr_scheduler_T0, T_mul=args.lr_scheduler_T_mult)
+        epochs_new = get_epochs_T_mult(epochs=args.epochs, T_0=args.lr_scheduler_T0, T_mult=args.lr_scheduler_T_mult)
         scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=args.lr_scheduler_T0, T_mult=args.lr_scheduler_T_mult)
         args.epochs = epochs_new
         print("Reset epochs to {} to locate on the cumulative of geometric series.".format(args.epochs))
@@ -3525,12 +3525,12 @@ def build_optimizer(args, params):
     return optimizer, scheduler
 
 
-def get_epochs_T_mul(epochs, T_0, T_mul):
+def get_epochs_T_mult(epochs, T_0, T_mult):
     """Select the maximum number within [T_0, epochs] that is T_0*(1+T_mul+T_mul**2+ ...)."""
-    assert T_mul >= 1, "T_mul must be greater than or equal to 1!"
-    if T_mul == 1:
+    assert T_mult >= 1, "T_mult must be greater than or equal to 1!"
+    if T_mult == 1:
         return epochs // T_0 * T_0
-    T_exponent = int(np.floor(np.log(epochs//T_0 * (T_mul-1) + 1) / np.log(T_mul)))
-    T_factor = (T_mul ** T_exponent - 1) // (T_mul - 1)
+    T_exponent = int(np.floor(np.log(epochs//T_0 * (T_mult-1) + 1) / np.log(T_mult)))
+    T_factor = (T_mult ** T_exponent - 1) // (T_mult - 1)
     epochs = T_0 * T_factor
     return epochs

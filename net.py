@@ -27,7 +27,7 @@ from torch.distributions.utils import broadcast_all
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
-from pytorch_net.util import forward, get_epochs_T_mul, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
+from pytorch_net.util import forward, get_epochs_T_mult, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
 from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur, filter_kwargs
 
 
@@ -239,8 +239,8 @@ def train(
             scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
         elif scheduler_type == "coslr":
             T_0 = max(min(25, epochs//31), 1)
-            T_mul = kwargs["scheduler_T_mul"] if "scheduler_T_mul" in kwargs else 2
-            epochs = get_epochs_T_mul(epochs, T_0=T_0, T_mul=T_mul)
+            T_mult = kwargs["scheduler_T_mult"] if "scheduler_T_mult" in kwargs else 2
+            epochs = get_epochs_T_mul(epochs, T_0=T_0, T_mult=T_mult)
             scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult)
         else:
             raise
