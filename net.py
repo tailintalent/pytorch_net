@@ -17,7 +17,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
 from torch.distributions import constraints
 from torch.distributions.normal import Normal
 from torch.distributions.multivariate_normal import MultivariateNormal
@@ -27,7 +27,7 @@ from torch.distributions.utils import broadcast_all
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pytorch_net.modules import get_Layer, load_layer_dict, Simple_2_Symbolic
-from pytorch_net.util import forward, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
+from pytorch_net.util import forward, get_epochs_T_mul, Loss_Fun, get_activation, get_criterion, get_criteria_value, get_optimizer, get_full_struct_param, plot_matrices, get_model_DL, PrecisionFloorLoss, get_list_DL, init_weight
 from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, to_np_array, to_Variable, make_dir, formalize_value, RampupLR, Transform_Label, view_item, load_model, save_model, to_cpu_recur, filter_kwargs
 
 
@@ -235,6 +235,13 @@ def train(
         elif scheduler_type == "LambdaLR":
             scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 0.97 ** (epoch // 2))
             scheduler = LambdaLR(optimizer, lr_lambda=scheduler_lr_lambda)
+        elif scheduler_type == "cos":
+            scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
+        elif scheduler_type == "coslr":
+            T_0 = max(min(25, epochs//31), 1)
+            T_mul = kwargs["scheduler_T_mul"] if "scheduler_T_mul" in kwargs else 2
+            epochs = get_epochs_T_mul(epochs, T_0=T_0, T_mul=T_mul)
+            scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult)
         else:
             raise
     # Ramping or learning rate for the first lr_rampup_steps steps:
