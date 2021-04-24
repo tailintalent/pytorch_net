@@ -3452,28 +3452,64 @@ def get_device(args):
     return device
 
 
-def get_elements(src, string_idx):
-    """Get elements from source.
+def get_elements(src, string_idx, dim=0):
+    """Get slices of elements from tensor src.
 
     Args:
         string_idx: has the same convention as index-select with Python List. E.g.
             '4'  -> src[4]
             ':3' -> src[1, 2, 3]
             '2:' -> src[2, 3, ... max_t]
-            '2:4' -> src[2, 3, 4]
+            '2:4', dim=1 -> src[:, [2,3,4]]
+            '1:4+6:8', dim=1 -> src[:, [1,2,3,6,7]]
     """
-    if ":" not in string_idx:
+    if "+" in string_idx:
+        # If there is multiple slices concatenated by "+":
+        string_idx_split = string_idx.split("+")
+        List = []
+        for idx in string_idx_split:
+            List.append(get_elements(src, idx, dim=dim))
+        List = torch.cat(List, dim=dim)
+        return List
+
+    if string_idx == "":
+        return src
+    elif ":" not in string_idx:
         idx = eval(string_idx)
-        return src[idx: idx+1]
+        if dim == 0:
+            if idx < 0:
+                idx += len(src)
+            return src[idx:idx+1]
+        elif dim == 1:
+            if idx < 0:
+                idx += src.shape[1]
+            return src[:, idx:idx+1]
+        else:
+            raise
     else:
         if string_idx.startswith(":"):
-            return src[:eval(string_idx[1:])]
+            if dim == 0:
+                return src[:eval(string_idx[1:])]
+            elif dim == 1:
+                return src[:, :eval(string_idx[1:])]
+            else:
+                raise
         elif string_idx.endswith(":"):
-            return src[eval(string_idx[:-1]):]
+            if dim == 0:
+                return src[eval(string_idx[:-1]):]
+            elif dim == 1:
+                return src[:, eval(string_idx[:-1]):]
+            else:
+                raise
         else:
             string_idx_split = string_idx.split(":")
             assert len(string_idx_split) == 2
-            return src[eval(string_idx_split[0]): eval(string_idx_split[1])]
+            if dim == 0:
+                return src[eval(string_idx_split[0]): eval(string_idx_split[1])]
+            elif dim == 1:
+                return src[:, eval(string_idx_split[0]): eval(string_idx_split[1])]
+            else:
+                raise
 
 
 def build_optimizer(args, params):
