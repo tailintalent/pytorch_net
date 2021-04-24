@@ -3534,3 +3534,26 @@ def get_epochs_T_mult(epochs, T_0, T_mult):
     T_factor = (T_mult ** T_exponent - 1) // (T_mult - 1)
     epochs = T_0 * T_factor
     return epochs
+
+
+def get_string_slice(List):
+    """Given a list of integers, return a string representation of the slices.
+    E.g. List = [1,2,2,4,7,8,9,11]  => string = '1:3+4:5+7:10+11:12'
+    """
+    List = sorted(List)
+    string = ""
+    start_id = None
+    end_id = None
+    for ele in List:
+        if start_id is None:
+            start_id = ele
+            end_id = start_id + 1
+        elif ele == end_id:
+            end_id += 1
+        elif ele > end_id:
+            # there is a discontinuity
+            string += "+{}:{}".format(start_id, end_id)
+            start_id = ele
+            end_id = ele + 1
+    string += "+{}:{}".format(start_id, end_id)
+    return string[1:]
