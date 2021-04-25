@@ -3603,3 +3603,17 @@ def get_string_slice(List):
             end_id = ele + 1
     string += "+{}:{}".format(start_id, end_id)
     return string[1:]
+
+
+def get_softplus_offset(offset):
+    """Get offsetted softplus to reduce initial amplitude."""
+    def softplus_offset(x):
+        return F.softplus(x-offset, beta=1)
+    return softplus_offset
+
+
+def get_inverse_softplus_offset(offset):
+    """Get inverse offsetted softplus."""
+    def inverse_softplus_offset(x):
+        return torch.log(x.exp() - 1) + offset
+    return inverse_softplus_offset
