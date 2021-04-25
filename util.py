@@ -1088,19 +1088,29 @@ def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
     return X_new
 
 
-def fill_triangular(vec, dim, mode = "lower"):
+def fill_triangular(vec, dim, mode="lower"):
     """Fill an lower or upper triangular matrices with given vectors"""
+#     num_examples, size = vec.shape
+#     assert size == dim * (dim + 1) // 2
+#     matrix = torch.zeros(num_examples, dim, dim).to(vec.device)
+#     if mode == "lower":
+#         idx = (torch.tril(torch.ones(dim, dim)) == 1)[None]
+#     elif mode == "upper":
+#         idx = (torch.triu(torch.ones(dim, dim)) == 1)[None]
+#     else:
+#         raise Exception("mode {} not recognized!".format(mode))
+#     idx = idx.repeat(num_examples,1,1)
+#     matrix[idx] = vec.contiguous().view(-1)
     num_examples, size = vec.shape
     assert size == dim * (dim + 1) // 2
-    matrix = torch.zeros(num_examples, dim, dim).to(vec.device)
-    idx = (torch.tril(torch.ones(dim, dim)) == 1).unsqueeze(0)
-    idx = idx.repeat(num_examples,1,1)
     if mode == "lower":
-        matrix[idx] = vec.contiguous().view(-1)
+        rows, cols = torch.tril_indices(dim, dim)
     elif mode == "upper":
-        matrix[idx] = vec.contiguous().view(-1)
+        rows, cols = torch.triu_indices(dim, dim)
     else:
-        raise Exception("mode {0} not recognized!".format(mode))
+        raise Exception("mode {} not recognized!".format(mode))
+    matrix = torch.zeros(num_examples, dim, dim).type(vec.dtype).to(vec.device)
+    matrix[:, rows, cols] = vec
     return matrix
 
 
@@ -1145,10 +1155,10 @@ def get_loss_cumu(loss_dict, cumu_mode):
 def matrix_diag_transform(matrix, fun):
     """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
     num_examples = len(matrix)
-    idx = torch.eye(matrix.size(-1)).byte().unsqueeze(0)
+    idx = torch.eye(matrix.size(-1)).bool().unsqueeze(0)
     idx = idx.repeat(num_examples, 1, 1)
     new_matrix = matrix.clone()
-    new_matrix[idx] = fun(matrix.diagonal(dim1 = 1, dim2 = 2).contiguous().view(-1))
+    new_matrix[idx] = fun(matrix.diagonal(dim1=1, dim2=2).contiguous().view(-1))
     return new_matrix
 
 
