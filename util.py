@@ -23,6 +23,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
+from torch.utils.data import Dataset
 from torch.optim.lr_scheduler import _LRScheduler
 
 
@@ -3617,3 +3618,49 @@ def get_inverse_softplus_offset(offset):
     def inverse_softplus_offset(x):
         return torch.log(x.exp() - 1) + offset
     return inverse_softplus_offset
+
+
+class MineDataset(Dataset):
+    def __init__(
+        self,
+        data=None,
+        idx_list=None,
+        transform=None,
+    ):
+        """User defined dataset that can be used for PyTorch DataLoader"""
+        self.data = data
+        self.transform = transform
+        if idx_list is None:
+            self.idx_list = torch.arange(len(self.data))
+        else:
+            self.idx_list = idx_list
+
+    def __len__(self):
+        return len(self.idx_list)
+
+    def process_sample(self, sample):
+        return sample
+
+    def __getitem__(self, idx):
+        is_list = True
+        if isinstance(idx, torch.Tensor):
+            if len(idx.shape) == 0 or (len(idx.shape) == 1 and len(idx) == 1):
+                idx = idx.item()
+                is_list = False
+        elif isinstance(idx, list):
+            pass
+        elif isinstance(idx, Number):
+            is_list = False
+
+        if isinstance(idx, slice) or is_list:
+            Dict = self.__dict__.copy()
+            Dict["idx_list"] = self.idx_list[idx]
+            return self.__class__(**Dict)
+
+        sample = self.process_sample(self.data[self.idx_list[idx]])
+        if self.transform:
+            sample = self.transform(sample)
+        return sample
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"({len(self)})"
