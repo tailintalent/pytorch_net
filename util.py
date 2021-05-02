@@ -3442,8 +3442,14 @@ def get_machine_name():
 
 def is_diagnose(loc, filename, diagnose_filename="/experiments/diagnose.yml"):
     """If the given loc and filename matches that of the diagose.yml, will return True and (later) call an pde.set_trace()."""
-    with open(get_root_dir() + diagnose_filename, "r") as f:
-        Dict = yaml.load(f, Loader=yaml.FullLoader)
+    try:
+        with open(get_root_dir() + diagnose_filename, "r") as f:
+            Dict = yaml.load(f, Loader=yaml.FullLoader)
+    except:
+        return False
+    Dict.pop(None, None)
+    if not ("loc" in Dict and "dirname" in Dict and "filename" in Dict):
+        return False
     if loc == Dict["loc"] and filename == Dict["dirname"] + Dict["filename"]:
         return True
     else:
