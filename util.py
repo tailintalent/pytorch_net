@@ -3688,3 +3688,18 @@ def clip_grad(optimizer):
 
                 bound = 3 * torch.sqrt(exp_avg_sq / (1 - beta2 ** step)) + 0.1
                 p.grad.data.copy_(torch.max(torch.min(p.grad.data, bound), -bound))
+
+
+def gather_broadcast(tensor, dim, index):
+    """
+    Given tensor, gather the index along the dimension dim.
+        For example, if tensor has shape [3,4,5,8,9], dim=2, then index must have
+        the shape of [3,4], whose value is inside range(5), and returns a tensor_gather
+        of size [3,4,8,9].
+    """
+    dim_size = tensor.shape[dim]
+    assert len(index.shape) == dim and tensor.shape[:dim] == index.shape and index.max() < dim_size
+    assert dim >= 1, "dim must >= 1!"
+    index_onehot = torch.eye(dim_size, dim_size)[index].bool()
+    tensor_gathered = tensor[index_onehot].reshape(*index.shape, *tensor.shape[dim+1:])
+    return tensor_gathered
