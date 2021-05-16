@@ -3236,17 +3236,15 @@ def get_pdict():
     return Pdict
 
 
-def to_device_recur(src, device):
-    if isinstance(src, dict):
-        for key, item in src.items():
-            src[key] = to_device_recur(item, device)
-        return src
-    elif isinstance(src, list):
-        return [to_device_recur(item, device) for item in src]
-    elif isinstance(src, torch.Tensor):
-        return src.to(device)
+def to_device_recur(iterable, device):
+    if isinstance(iterable, list):
+        return [to_device_recur(item, device) for item in iterable]
+    elif isinstance(iterable, tuple):
+        return tuple(to_device_recur(item, device) for item in iterable)
+    elif isinstance(iterable, dict):
+        return {key: to_device_recur(item, device) for key, item in iterable.items()}
     else:
-        return src
+        return iterable.to(device)
 
 
 def get_boundary_locations(size, sector_size, stride):
