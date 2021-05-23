@@ -3243,8 +3243,10 @@ def to_device_recur(iterable, device):
         return tuple(to_device_recur(item, device) for item in iterable)
     elif isinstance(iterable, dict):
         return {key: to_device_recur(item, device) for key, item in iterable.items()}
-    else:
+    elif hasattr(iterable, "to"):
         return iterable.to(device)
+    else:
+        return iterable
 
 
 def get_boundary_locations(size, sector_size, stride):
