@@ -477,6 +477,29 @@ class MAELoss(_Loss):
         return loss
 
 
+class L2Loss(nn.Module):
+    """L2 loss, square root of MSE on each example."""
+    def __init__(self, reduction="mean", first_dim=1, keepdims=False, epsilon=1e-10):
+        super().__init__()
+        self.reduction = reduction
+        self.first_dim = first_dim
+        self.keepdims = keepdims
+        self.epsilon = epsilon
+
+    def forward(self, pred, y):
+        reduction_dims = tuple(range(self.first_dim,len(pred.shape)))
+        loss = ((pred - y).square().sum(reduction_dims) + self.epsilon).sqrt()
+        if self.reduction == "mean":
+            loss = loss.mean(dim=tuple(range(self.first_dim)), keepdims=self.keepdims)
+        elif self.reduction == "sum":
+            loss = loss.sum(dim=tuple(range(self.first_dim)), keepdim=self.keepdims)
+        elif self.reduction == "none":
+            pass
+        else:
+            raise
+        return loss
+
+
 class MultihotBinaryCrossEntropy(_Loss):
     """Multihot cross-entropy loss."""
     def __init__(self, size_average=None, reduce=None):
