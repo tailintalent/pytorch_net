@@ -3048,6 +3048,52 @@ def load_config(config_filename):
     return Dict
 
 
+def argparser_to_yaml(parser, filename=None, comment_column=40, is_sort_keys=False):
+    """Convert an argparser into yaml file with help as comments."""
+    import ruamel.yaml
+    from ruamel.yaml.compat import StringIO
+    from ruamel.yaml import YAML
+    class MyYAML(YAML):
+        def dump(self, data, stream=None, **kw):
+            inefficient = False
+            if stream is None:
+                inefficient = True
+                stream = StringIO()
+            YAML.dump(self, data, stream, **kw)
+            if inefficient:
+                return stream.getvalue()
+
+    data_dict = {}
+    help_dict = {}
+    for i, action in enumerate(parser._actions):
+        if action.__class__.__name__ == "_StoreAction":
+            key = action.option_strings[0].split("--")[1]
+            default = action.default
+            helptxt = action.help
+            data_dict[key] = default
+            help_dict[key] = helptxt
+
+    if is_sort_keys:
+        keys_sorted = sorted(data_dict.keys())
+        data_dict_sorted = {}
+        for key in keys_sorted:
+            data_dict_sorted[key] = data_dict[key]
+        data_dict = data_dict_sorted
+
+    yaml = MyYAML()
+    inp = yaml.dump(data_dict)
+    data = yaml.load(inp)
+    for key in data_dict:
+        if help_dict[key] is not None:
+            data.yaml_add_eol_comment(help_dict[key], key, column=comment_column)
+
+    if filename is None:
+        yaml.dump(data, sys.stdout)
+    else:
+        with open(filename, "w") as f:
+            yaml.dump(data, f)
+
+
 def check_injective(Dict, exclude=[""]):
     """Check if the value of a dictionary is injective, excluding certain values as given by 'exclude'."""
     List = []
