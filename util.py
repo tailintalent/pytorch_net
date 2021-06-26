@@ -3114,6 +3114,12 @@ def init_args(args_dict):
     return args
 
 
+def update_args(args, key, value):
+    args_update = deepcopy(args)
+    setattr(args, key, value)
+    return args_update
+
+
 def lcm(denominators):
     """Get least common multiplier"""
     return reduce(lambda a,b: a*b // gcd(a,b), denominators)
