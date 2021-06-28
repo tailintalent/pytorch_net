@@ -3116,7 +3116,7 @@ def init_args(args_dict):
 
 def update_args(args, key, value):
     args_update = deepcopy(args)
-    setattr(args, key, value)
+    setattr(args_update, key, value)
     return args_update
 
 
