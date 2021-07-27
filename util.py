@@ -3208,7 +3208,10 @@ class Batch(object):
 
     def collate(self):
         import re
-        from torch._six import container_abcs, string_classes, int_classes
+        if not torch.__version__.startswith("1.9.0"):
+            from torch._six import container_abcs, string_classes, int_classes
+        else:
+            from collections import abc as container_abcs
         from pstar import pdict, plist
         default_collate_err_msg_format = (
             "collate_fn: batch must contain tensors, numpy arrays, numbers, "
@@ -3265,9 +3268,11 @@ class Batch(object):
                     return torch.as_tensor(batch)
             elif isinstance(elem, float):
                 return torch.tensor(batch, dtype=torch.float64)
-            elif isinstance(elem, int_classes):
+            elif isinstance(elem, int):
+#             elif isinstance(elem, int_classes):
                 return torch.tensor(batch)
-            elif isinstance(elem, string_classes):
+            elif isinstance(elem, str):
+#             elif isinstance(elem, string_classes):
                 return batch
             elif isinstance(elem, container_abcs.Mapping):
                 Dict = {key: collate_fn([d[key] for d in batch]) for key in elem}
