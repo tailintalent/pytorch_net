@@ -1140,6 +1140,20 @@ def fill_triangular(vec, dim, mode="lower"):
     return matrix
 
 
+def get_triu_3D(size):
+    """Get the upper triangular tensor for a 3D tensor with given size."""
+    rows1 = []
+    rows2 = []
+    rows3 = []
+    for i in range(size):
+        rows_ele, cols_ele = torch.triu_indices(size-i, size-i)
+        rows2 += rows_ele
+        rows3 += cols_ele
+        rows1 += [torch.tensor(i)] * len(rows_ele)
+    rows1, rows2, rows3 = torch.stack(rows1), torch.stack(rows2), torch.stack(rows3)
+    return rows1, rows2, rows3
+
+
 def get_loss_cumu(loss_dict, cumu_mode):
     """Combine different losses to obtain a single scalar loss"""
     if cumu_mode == "original":
