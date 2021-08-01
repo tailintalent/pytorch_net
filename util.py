@@ -3216,16 +3216,77 @@ def get_poly_basis(x, order):
     return x_list
 
 
+class Dictionary(object):
+    """Custom dictionary that can avoid the collate_fn in pytorch's dataloader."""
+    def __init__(self, Dict=None):
+        if Dict is not None:
+            for k, v in Dict.items():
+                self.__dict__[k] = v
+
+    def __setitem__(self, key, item):
+        self.__dict__[key] = item
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    def __len__(self):
+        return len(self.__dict__)
+
+    def __delitem__(self, key):
+        del self.__dict__[key]
+
+    def clear(self):
+        return self.__dict__.clear()
+
+    def copy(self):
+        return self.__dict__.copy()
+
+    def has_key(self, k):
+        return k in self.__dict__
+
+    def update(self, *args, **kwargs):
+        return self.__dict__.update(*args, **kwargs)
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def values(self):
+        return self.__dict__.values()
+
+    def items(self):
+        return self.__dict__.items()
+
+    def pop(self, *args):
+        return self.__dict__.pop(*args)
+
+    def __cmp__(self, dict_):
+        return self.__cmp__(self.__dict__, dict_)
+
+    def __contains__(self, item):
+        return item in self.__dict__
+
+    def __iter__(self):
+        return iter(self.__dict__)
+
+    def __unicode__(self):
+        return unicode(repr(self.__dict__))
+
+
 class Batch(object):
-    def __init__(self, is_absorb_batch=False):
+    def __init__(self, is_absorb_batch=False, is_collate_tuple=False):
         self.is_absorb_batch = is_absorb_batch
+        self.is_collate_tuple = is_collate_tuple
 
     def collate(self):
         import re
-        if not torch.__version__.startswith("1.9.0"):
-            from torch._six import container_abcs, string_classes, int_classes
-        else:
+        if torch.__version__.startswith("1.9.0"):
+            from torch._six import string_classes
             from collections import abc as container_abcs
+        else:
+            from torch._six import container_abcs, string_classes, int_classes
         from pstar import pdict, plist
         default_collate_err_msg_format = (
             "collate_fn: batch must contain tensors, numpy arrays, numbers, "
@@ -3285,19 +3346,17 @@ class Batch(object):
             elif isinstance(elem, int):
 #             elif isinstance(elem, int_classes):
                 return torch.tensor(batch)
-            elif isinstance(elem, str):
-#             elif isinstance(elem, string_classes):
+            elif isinstance(elem, string_classes):
                 return batch
             elif isinstance(elem, container_abcs.Mapping):
                 Dict = {key: collate_fn([d[key] for d in batch]) for key in elem}
                 if isinstance(elem, pdict):
                     Dict = elem.__class__(**Dict)
                 return Dict
-            elif isinstance(elem, tuple):
-                if hasattr(elem, '_fields'):  # namedtuple:
-                    return []
-                else:
-                    return elem
+            elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple:
+                return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
+            elif isinstance(elem, tuple) and not self.is_collate_tuple:
+                return elem
             elif isinstance(elem, container_abcs.Sequence):
                 # check to make sure that the elements in batch have consistent size
                 it = iter(batch)
@@ -3306,7 +3365,8 @@ class Batch(object):
                     raise RuntimeError('each element in list of batch should be of equal size')
                 transposed = zip(*batch)
                 return [collate_fn(samples) for samples in transposed]
-
+            elif isinstance(elem, Dictionary):
+                return batch
             raise TypeError(default_collate_err_msg_format.format(elem_type))
         return collate_fn
 
