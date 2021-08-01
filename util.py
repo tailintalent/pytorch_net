@@ -3859,3 +3859,16 @@ def gather_broadcast(tensor, dim, index):
     index_onehot = torch.eye(dim_size, dim_size)[index].bool()
     tensor_gathered = tensor[index_onehot].reshape(*index.shape, *tensor.shape[dim+1:])
     return tensor_gathered
+
+
+def show_warning():
+    import warnings
+    def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
+        import traceback
+        import warnings
+        import sys
+        log = file if hasattr(file,'write') else sys.stderr
+        traceback.print_stack(file=log)
+        log.write(warnings.formatwarning(message, category, filename, lineno, line))
+    warnings.showwarning = warn_with_traceback
+    return warnings
