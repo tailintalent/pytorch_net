@@ -2955,8 +2955,10 @@ def check_same_model_dict(model_dict1, model_dict2):
     return True
 
 
-def print_banner(string, banner_size=100):
+def print_banner(string, banner_size=100, n_new_lines=0):
     """Pring the string sandwidched by two lines."""
+    for i in range(n_new_lines):
+        print()
     print("\n" + "=" * banner_size + "\n" + string + "\n" + "=" * banner_size + "\n")
 
 
@@ -3872,3 +3874,21 @@ def show_warning():
         log.write(warnings.formatwarning(message, category, filename, lineno, line))
     warnings.showwarning = warn_with_traceback
     return warnings
+
+
+def copy_with_model_dict(model, other_attr=None):
+    """Copy a model based on its model_dict."""
+    if other_attr is None:
+        other_attr = []
+    kwargs = model.model_dict
+    state_dict = kwargs.pop("state_dict")
+    assert kwargs.pop("type") == model.__class__.__name__
+    other_attr_dict = {}
+    for key in other_attr:
+        other_attr_dict[key] = kwargs.pop(key)
+    new_model = model.__class__(**kwargs)
+    for key, value in other_attr_dict.items():
+        setattr(new_model, key, value)
+    new_model.load_state_dict(state_dict)
+    assert new_model.model_dict.keys() == model.model_dict.keys()
+    return new_model
