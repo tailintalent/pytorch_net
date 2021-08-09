@@ -3888,6 +3888,8 @@ def copy_with_model_dict(model, other_attr=None):
         other_attr_dict[key] = kwargs.pop(key)
     new_model = model.__class__(**kwargs)
     for key, value in other_attr_dict.items():
+        if isinstance(value, np.ndarray):
+            value = torch.FloatTensor(value)
         setattr(new_model, key, value)
     new_model.load_state_dict(state_dict)
     assert new_model.model_dict.keys() == model.model_dict.keys()
