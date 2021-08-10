@@ -1192,6 +1192,87 @@ def get_loss_cumu(loss_dict, cumu_mode):
     return loss
 
 
+
+def loss_op_core(pred_core, y_core, reduction="mean", loss_type="mse", normalize_mode="None", **kwargs):
+    """Compute the loss. Here pred_core and y_core must both be tensors and have the same shape. 
+    Generically they have the shape of [n_nodes, pred_steps, dyn_dims].
+    For hybrid loss_type, e.g. "mse+huberlog#1e-3", will recursively call itself.
+    """
+    if "+" in loss_type:
+        loss_list = []
+        precision_floor = get_precision_floor(loss_type)
+        for loss_component in loss_type.split("+"):
+            if precision_floor is not None and not ("mselog" in loss_component or "huberlog" in loss_component or "l1log" in loss_component):
+                pred_core_new = torch.exp(pred_core) - precision_floor
+            else:
+                pred_core_new = pred_core
+            loss_ele = loss_op_core(
+                pred_core=pred_core_new,
+                y_core=y_core,
+                reduction=reduction,
+                loss_type=loss_component,
+                normalize_mode=normalize_mode,
+                **kwargs
+            )
+            loss_list.append(loss_ele)
+        loss = torch.stack(loss_list).sum()
+        return loss
+
+    if normalize_mode != "None":
+        assert normalize_mode in ["targetindi", "target"]
+        dims_to_reduce = list(np.arange(2, len(y_core.shape)))  # [2, ...]
+        if normalize_mode == "target":
+            dims_to_reduce.insert(0, 0)  # [0, 2, ...]
+
+    if loss_type.lower() == "mse":
+        if normalize_mode in ["target", "targetindi"]:
+            loss = F.mse_loss(pred_core, y_core, reduction='none')
+            loss = loss / reduce_tensor(y_core.square(), "mean", dims_to_reduce, keepdims=True)
+            loss = reduce_tensor(loss, reduction)
+        else:
+            loss = F.mse_loss(pred_core, y_core, reduction=reduction)
+    elif loss_type.lower() == "huber":
+        if normalize_mode in ["target", "targetindi"]:
+            loss = F.smooth_l1_loss(pred_core, y_core, reduction='none')
+            loss = loss / reduce_tensor(y_core.abs(), "mean", dims_to_reduce, keepdims=True)
+            loss = reduce_tensor(loss, reduction)
+        else:
+            loss = F.smooth_l1_loss(pred_core, y_core, reduction=reduction)
+    elif loss_type.lower() == "l1":
+        if normalize_mode in ["target", "targetindi"]:
+            loss = F.l1_loss(pred_core, y_core, reduction='none')
+            loss = loss / reduce_tensor(y_core.abs(), "mean", dims_to_reduce, keepdims=True)
+            loss = reduce_tensor(loss, reduction)
+        else:
+            loss = F.l1_loss(pred_core, y_core, reduction=reduction)
+    elif loss_type.lower() == "l2":
+        first_dim = kwargs["first_dim"] if "first_dim" in kwargs else 2
+        if normalize_mode in ["target", "targetindi"]:
+            loss = L2Loss(reduction='none', first_dim=first_dim)(pred_core, y_core)
+            y_L2 = L2Loss(reduction='none', first_dim=first_dim)(torch.zeros(y_core.shape), y_core)
+            if normalize_mode == "target":
+                y_L2 = y_L2.mean(0, keepdims=True)
+            loss = loss / y_L2
+            loss = reduce_tensor(loss, reduction)
+        else:
+            loss = L2Loss(reduction=reduction, first_dim=first_dim)(pred_core, y_core)
+    elif loss_type.lower() == "dl":
+        loss = DLLoss(pred_core, y_core, reduction=reduction, **kwargs)
+    # loss where the target is taking the log scale:
+    elif loss_type.lower().startswith("mselog"):
+        precision_floor = eval(loss_type.split("#")[1])
+        loss = F.mse_loss(pred_core, torch.log(y_core + precision_floor), reduction=reduction)
+    elif loss_type.lower().startswith("huberlog"):
+        precision_floor = eval(loss_type.split("#")[1])
+        loss = F.smooth_l1_loss(pred_core, torch.log(y_core + precision_floor), reduction=reduction)
+    elif loss_type.lower().startswith("l1log"):
+        precision_floor = eval(loss_type.split("#")[1])
+        loss = F.l1_loss(pred_core, torch.log(y_core + precision_floor), reduction=reduction)
+    else:
+        raise Exception("loss_type {} is not valid!".format(loss_type))
+    return loss
+
+
 def matrix_diag_transform(matrix, fun):
     """Return the matrices whose diagonal elements have been executed by the function 'fun'."""
     num_examples = len(matrix)
