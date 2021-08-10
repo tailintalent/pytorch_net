@@ -38,15 +38,15 @@ from pytorch_net.util import Early_Stopping, Performance_Monitor, record_data, t
 
 def train(
     model,
-    X = None,
-    y = None,
-    train_loader = None,
-    validation_data = None,
-    validation_loader = None,
-    criterion = nn.MSELoss(),
-    inspect_interval = 10,
-    isplot = False,
-    is_cuda = None,
+    X=None,
+    y=None,
+    train_loader=None,
+    validation_data=None,
+    validation_loader=None,
+    criterion=nn.MSELoss(),
+    inspect_interval=10,
+    isplot=False,
+    is_cuda=None,
     **kwargs
     ):
     """Training function for generic models. "model" can be a single model or a ordered list of models"""
@@ -1055,12 +1055,21 @@ def update_key_train(info_dict_train, inspect_items_train):
     return deepcopy(info_dict_train_new)
 
 
-# ## Simplifying functionality:
+# ## Simplification functionality:
 
 # In[ ]:
 
 
-def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None, validation_data=None, **kwargs):
+def simplify(
+    model,
+    X=None,
+    y=None,
+    mode="full",
+    isplot=False,
+    target_name=None,
+    validation_data=None,
+    **kwargs
+):
     """Simplify a neural network model in various ways. "model" can be a single model or a ordered list of models"""
     verbose = kwargs["verbose"] if "verbose" in kwargs else 1
     if validation_data is None:
@@ -1746,9 +1755,9 @@ def simplify(model, X=None, y=None, mode="full", isplot=False, target_name=None,
     return model, loss_dict
 
 
-# ## The following are different model architectures:
+# ## Model architectures:
 
-# ## MLP:
+# ### MLP:
 
 # In[3]:
 
@@ -2126,7 +2135,7 @@ class MLP(nn.Module):
         return expressions
 
 
-# ## Labelmix_MLP:
+# ### Labelmix_MLP:
 
 # In[ ]:
 
@@ -2216,7 +2225,7 @@ class Labelmix_MLP(nn.Module):
         return model_dict
 
 
-# ## Multi_MLP (MLPs in series):
+# ### Multi_MLP (MLPs in series):
 
 # In[ ]:
 
@@ -2328,7 +2337,7 @@ class Multi_MLP(nn.Module):
             getattr(self, "block_{0}".format(i)).set_trainable(is_trainable)
 
 
-# ## Branching_Net:
+# ### Branching_Net:
 
 # In[ ]:
 
@@ -2461,7 +2470,7 @@ class Fan_in_MLP(nn.Module):
         save_model(self.model_dict, filename, mode=mode)
 
 
-# ##  Mixture_Model:
+# ###  Mixture_Model:
 
 # In[ ]:
 
@@ -2505,7 +2514,7 @@ class Mixture_Model(nn.Module):
         return model_dict
 
 
-# ## Model_Ensemble:
+# ### Model_Ensemble:
 
 # In[ ]:
 
@@ -2942,7 +2951,7 @@ class Model_with_uncertainty(nn.Module):
         self.model_logstd.set_trainable(is_trainable)
 
 
-# ## RNN:
+# ### RNN:
 
 # In[ ]:
 
@@ -3099,7 +3108,7 @@ class LSTM(RNNCellBase):
         save_model(self.model_dict, filename, mode=mode)
 
 
-# ## Wide ResNet:
+# ### Wide ResNet:
 
 # In[ ]:
 
@@ -3238,7 +3247,7 @@ class Wide_ResNet(nn.Module):
         return {}
 
 
-# ## CNN:
+# ### CNN:
 
 # In[ ]:
 
@@ -3757,7 +3766,7 @@ class Flatten(nn.Module):
         return x.view(x.size(0), -1)
 
 
-# ## VAE:
+# ### VAE:
 
 # In[ ]:
 
