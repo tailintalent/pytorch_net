@@ -3979,15 +3979,17 @@ def copy_with_model_dict(model, other_attr=None):
 
 class TopKList(list):
     """A list that stores the top K dictionaries that has the lowest/highest {sort_key} values."""
-    def __init__(self, K, sort_key, mode="max"):
+    def __init__(self, K, sort_key, duplicate_key, mode="max"):
         """
         Args:
             K: top K elements will be saved in the list.
             sort_key: the key to use for the top-K ranking.
+            duplicate_key: the key to check, and if there are already elements that has the same value to the duplicate, do not append.
             mode: choose from "max" (the larger the better) and "min" (the smaller the better).
         """
         self.K = K
         self.sort_key = sort_key
+        self.duplicate_key = duplicate_key
         self.mode = mode
 
     def append(self, item):
@@ -4000,6 +4002,17 @@ class TopKList(list):
         assert isinstance(item, dict), "item must be a dictionary!"
         assert self.sort_key in item, "item must have sort_key of '{}'!".format(self.sort_key)
         is_update = False
+
+        # If there are already elements that has the same value to the duplicate, do not append:
+        is_duplicate = False
+        for element in self:
+            if element[self.duplicate_key] == item[self.duplicate_key]:
+                is_duplicate = True
+                break
+        if is_duplicate:
+            return is_update
+
+        # Append if still space or the value for self.sort_key is better than the worst:
         if len(self) < self.K:
             super().append(item)
             is_update = True
