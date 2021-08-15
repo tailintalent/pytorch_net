@@ -4052,4 +4052,4 @@ def pdump(file, filename):
 
 def pload(filename):
     """Load a filename saved as pickle."""
-    pickle.load(open(filename, "rb"))
+    return pickle.load(open(filename, "rb"))
