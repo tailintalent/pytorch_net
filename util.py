@@ -4043,3 +4043,13 @@ class TopKList(list):
     def is_available(self):
         """Return True if the number of elements is less than self.K."""
         return len(self) < self.K
+
+
+def pdump(file, filename):
+    """Dump a file via pickle."""
+    pickle.dump(file, open(filename, "wb"))
+
+
+def pload(filename):
+    """Load a filename saved as pickle."""
+    pickle.load(open(filename, "rb"))
