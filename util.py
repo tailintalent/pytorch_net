@@ -3975,3 +3975,58 @@ def copy_with_model_dict(model, other_attr=None):
     new_model.load_state_dict(state_dict)
     assert new_model.model_dict.keys() == model.model_dict.keys()
     return new_model
+
+
+class TopKList(list):
+    """A list that stores the top K dictionaries that has the lowest/highest {sort_key} values."""
+    def __init__(self, K, sort_key, mode="max"):
+        """
+        Args:
+            K: top K elements will be saved in the list.
+            sort_key: the key to use for the top-K ranking.
+            mode: choose from "max" (the larger the better) and "min" (the smaller the better).
+        """
+        self.K = K
+        self.sort_key = sort_key
+        self.mode = mode
+
+    def append(self, item):
+        """Insert an item into the list, if the length is less then self.K, simply insert.
+        Otherwise if it is better than the worst element in terms of sort_key, replace it.
+
+        Returns:
+            is_update: whether the TopKList is updated.
+        """
+        assert isinstance(item, dict), "item must be a dictionary!"
+        assert self.sort_key in item, "item must have sort_key of '{}'!".format(self.sort_key)
+        is_update = False
+        if len(self) < self.K:
+            super().append(item)
+            is_update = True
+        elif len(self) == self.K:
+            sort_value = np.array([to_np_array(ele[self.sort_key]) for ele in self])
+            if self.mode == "max":
+                argmin = sort_value.argmin()
+                if sort_value[argmin] < item[self.sort_key]:
+                    self.pop(argmin)
+                    super().append(item)
+                    is_update = True
+            elif self.mode == "min":
+                argmax = sort_value.argmax()
+                if sort_value[argmax] > item[self.sort_key]:
+                    self.pop(argmax)
+                    super().append(item)
+                    is_update = True
+            else:
+                raise Exception("mode must be either 'min' or 'max'.")
+        else:
+            raise Exception("Cannot exceed K={} items".format(self.K))
+        return is_update
+
+    def get_items(self, key):
+        """Obtain the item corresponding to the key for each element."""
+        return [item[key] for item in self]
+
+    def is_available(self):
+        """Return True if the number of elements is less than self.K."""
+        return len(self) < self.K
