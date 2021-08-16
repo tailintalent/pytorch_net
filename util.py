@@ -4053,3 +4053,28 @@ def pdump(file, filename):
 def pload(filename):
     """Load a filename saved as pickle."""
     return pickle.load(open(filename, "rb"))
+
+
+def cmd_to_args_dict(cmd, str_args=["gpuid"]):
+    """Transform a command into a dictionary for args.
+
+    Args:
+        cmd: e.g. python script.py --exp_id="exp1.0" --date_time="1-1" --gpuid="0"
+        str_args: args that should keep the str format.
+
+    Returns:
+        Dict: a dictionary where the keys are the args keys and the values are the values corresponding to the keys.
+    """
+    from numbers import Number
+    Dict = {}
+    for string_item in cmd.split(" "):
+        if string_item.startswith("--"):
+            key, value = string_item[2:].split("=")
+            try:
+                value_candidate = eval(value)
+                if (isinstance(value_candidate, Number) or isinstance(value_candidate, bool)) and key not in str_keys:
+                    value = value_candidate
+            except:
+                pass
+            Dict[key] = value
+    return Dict
