@@ -1155,7 +1155,22 @@ def get_triu_3D(size):
 
 
 def get_loss_cumu(loss_dict, cumu_mode):
-    """Combine different losses to obtain a single scalar loss"""
+    """Combine different losses to obtain a single scalar loss.
+
+    Args:
+        loss_dict: A dictionary or list of loss values, each of which is a torch scalar.
+        cumu_mode: a 2-tuple. Choose from:
+            ("generalized-mean"/"gm", {order}): generalized mean with order
+            "harmonic": harmonic mean
+            "geometric": geometric mean
+            "mean": arithmetic mean
+            "sum": summation
+            "min": minimum
+            "original": returns the original loss_dict.
+
+    Returns:
+        loss: the combined loss scalar computed according to cumu_mode.
+    """
     if cumu_mode == "original":
         return loss_dict
     if isinstance(loss_dict, dict):
@@ -1166,7 +1181,10 @@ def get_loss_cumu(loss_dict, cumu_mode):
         raise
     N = len(loss_list)
     epsilon = 1e-20  # to prevent NaN
-    if cumu_mode[0] == "generalized-mean":
+    if cumu_mode.startswith("gm"):
+        cumu_mode_str, num = cumu_mode.split("-")
+        cumu_mode = (cumu_mode_str, eval(num))
+    if isinstance(cumu_mode, tuple) and cumu_mode[0] in ["generalized-mean", "gm"]:
         if cumu_mode[1] == -1:
             cumu_mode = "harmonic"
         elif cumu_mode[1] == 0:
@@ -1184,7 +1202,7 @@ def get_loss_cumu(loss_dict, cumu_mode):
         loss = loss_list.sum()
     elif cumu_mode == "min":
         loss = loss_list.min()
-    elif cumu_mode[0] == "generalized-mean":
+    elif cumu_mode[0] in ["generalized-mean", "gm"]:
         order = cumu_mode[1]
         loss = (((loss_list + epsilon) ** order).mean()) ** (1 / float(order))
     else:
