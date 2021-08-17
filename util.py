@@ -16,6 +16,7 @@ import random
 from sklearn.cluster import SpectralClustering
 from sklearn.model_selection import train_test_split
 import scipy.linalg
+import time
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -4096,3 +4097,30 @@ def cmd_to_args_dict(cmd, str_args=["gpuid"]):
                 pass
             Dict[key] = value
     return Dict
+
+
+def try_call(fun, args=None, kwargs=None, time_interval=5, max_n_trials=10):
+    """Try executing some function fun with *args and **kwargs for {max_n_trials} number of times
+        each separate by time interval of {time_interval} seconds.
+    """
+    if args is None:
+        args = []
+    if not isinstance(args, list):
+        args = [args]
+    if kwargs is None:
+        kwargs = {}
+    for i in range(max_n_trials):
+        is_succeed = False
+        try:
+            output = fun(*args, **kwargs)
+            is_succeed = True
+        except Exception as e:
+            error = str(e)
+        if is_succeed:
+            break
+        else:
+            print("Fail to execute function {} for the {}th time, with error: {}".format(fun, i+1, error))
+        time.sleep(time_interval)
+    if not is_succeed:
+        raise Exception("Fail to execute function {} for the {}th time, same as the max_n_trials of {}. Check error!".format(fun, i+1, max_n_trials))
+    return output
