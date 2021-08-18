@@ -1178,6 +1178,8 @@ def get_loss_cumu(loss_dict, cumu_mode):
         loss_list = torch.stack([loss for loss in loss_dict.values()])
     elif isinstance(loss_dict, list):
         loss_list = torch.stack(loss_dict)
+    elif isinstance(loss_dict, torch.Tensor):
+        loss_list = loss_dict
     else:
         raise
     N = len(loss_list)
