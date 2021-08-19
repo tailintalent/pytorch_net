@@ -4101,7 +4101,7 @@ def cmd_to_args_dict(cmd, str_args=["gpuid"]):
     return Dict
 
 
-def try_call(fun, args=None, kwargs=None, time_interval=5, max_n_trials=10):
+def try_call(fun, args=None, kwargs=None, time_interval=5, max_n_trials=20):
     """Try executing some function fun with *args and **kwargs for {max_n_trials} number of times
         each separate by time interval of {time_interval} seconds.
     """
