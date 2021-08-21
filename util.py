@@ -245,7 +245,7 @@ def recursive_index(data, idx):
     return data_new
 
 
-def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_duplicate=False):
+def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_duplicate=False, recent_record=-1):
     """Record data to the dictionary data_record_dict. It records each key: value pair in the corresponding location of 
     key_list and data_list into the dictionary."""
     if not isinstance(data_list, list):
@@ -262,6 +262,9 @@ def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_dupl
             else: 
                 if (not ignore_duplicate) or (data not in data_record_dict[key]):
                     data_record_dict[key].append(data)
+            if recent_record != -1:
+                # Only keep the most recent records
+                data_record_dict[key] = data_record_dict[key][-recent_record:]
 
 
 def to_np_array(*arrays, **kwargs):
