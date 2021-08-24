@@ -4129,3 +4129,37 @@ def try_call(fun, args=None, kwargs=None, time_interval=5, max_n_trials=20):
     if not is_succeed:
         raise Exception("Fail to execute function {} for the {}th time, same as the max_n_trials of {}. Check error!".format(fun, i+1, max_n_trials))
     return output
+
+
+def get_instance_keys(class_instance):
+    """Get the instance keys of a class"""
+    return [key for key in vars(class_instance) if key[:1] != "_"]
+
+
+class Model_Wrapper(nn.Module):
+    """Wrapping a nn.Module inside the class."""
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def set_c(self, c_repr):
+        self.c_repr = c_repr
+        return self
+
+    def forward(self, *args, **kwargs):
+        return self.model.forward(*args, **kwargs)
+
+    def __getattribute__(self, item):
+        """Obtain the attributes. Prioritize the instance attributes in self.model."""
+        if item == "model":
+            return object.__getattribute__(self, "model")
+        elif item.startswith("_"):
+            return object.__getattribute__(self, item)
+        elif item in get_instance_keys(self.model):
+            return getattr(self.model, item)
+        else:
+            return object.__getattribute__(self, item)
+
+    @property
+    def model_dict(self):
+        return self.model.model_dict
