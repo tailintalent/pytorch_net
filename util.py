@@ -4163,3 +4163,12 @@ class Model_Wrapper(nn.Module):
     @property
     def model_dict(self):
         return self.model.model_dict
+
+
+def remove_elements(List, elements):
+    """Remove elements in the List if they exist in the List, and return the new list."""
+    NewList = deepcopy(List)
+    for element in elements:
+        if element in NewList:
+            NewList.remove(element)
+    return NewList
