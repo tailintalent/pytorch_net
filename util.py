@@ -1186,6 +1186,8 @@ def get_loss_cumu(loss_dict, cumu_mode):
     else:
         raise
     N = len(loss_list)
+    if N == 1:
+        return loss_list[0]
     epsilon = 1e-20  # to prevent NaN
     if cumu_mode.startswith("gm"):
         cumu_mode_str, num = cumu_mode.split("-")
