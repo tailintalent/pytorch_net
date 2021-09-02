@@ -4174,3 +4174,21 @@ def remove_elements(List, elements):
         if element in NewList:
             NewList.remove(element)
     return NewList
+
+
+def get_soft_IoU(mask1, mask2, reduction="none", epsilon=1e-6):
+    """Get soft IoU score for two masks."""
+    intersection = mask1 * mask2
+    union = (mask1 + mask2 - mask1 * mask2).clamp(epsilon)
+    if reduction == "none":
+        soft_IoU = (intersection / union)
+    elif reduction == "mean":
+        soft_IoU = (intersection / union).mean()
+    else:
+        raise
+    return soft_IoU
+
+
+def get_soft_Jaccard_distance(mask1, mask2, reduction="none"):
+    """Get soft Jaccard distance for two masks."""
+    return 1 - get_soft_IoU(mask1, mask2, reduction=reduction)
