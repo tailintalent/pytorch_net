@@ -4176,7 +4176,7 @@ def remove_elements(List, elements):
     return NewList
 
 
-def get_soft_IoU(mask1, mask2, reduction="none", epsilon=1e-6):
+def get_soft_IoU(mask1, mask2, reduction="none", epsilon=1e-3):
     """Get soft IoU score for two masks."""
     intersection = mask1 * mask2
     union = (mask1 + mask2 - mask1 * mask2).clamp(epsilon)
@@ -4189,6 +4189,6 @@ def get_soft_IoU(mask1, mask2, reduction="none", epsilon=1e-6):
     return soft_IoU
 
 
-def get_soft_Jaccard_distance(mask1, mask2, reduction="none"):
+def get_soft_Jaccard_distance(mask1, mask2, reduction="none", epsilon=1e-3):
     """Get soft Jaccard distance for two masks."""
-    return 1 - get_soft_IoU(mask1, mask2, reduction=reduction)
+    return 1 - get_soft_IoU(mask1, mask2, reduction=reduction, epsilon=epsilon)
