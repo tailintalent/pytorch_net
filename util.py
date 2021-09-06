@@ -267,6 +267,19 @@ def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_dupl
                 data_record_dict[key] = data_record_dict[key][-recent_record:]
 
 
+def transform_dict(Dict, mode="array"):
+    if mode == "array":
+        return {key: np.array(item) for key, item in Dict.items()}
+    elif mode == "torch":
+        return {key: torch.FloatTensor(item) for key, item in Dict.items()}
+    elif mode == "mean":
+        return {key: np.mean(item) for key, item in Dict.items()}
+    elif mode == "std":
+        return {key: np.std(item) for key, item in Dict.items()}
+    else:
+        raise
+
+
 def to_np_array(*arrays, **kwargs):
     array_list = []
     for array in arrays:
