@@ -4176,19 +4176,17 @@ def remove_elements(List, elements):
     return NewList
 
 
-def get_soft_IoU(mask1, mask2, reduction="none", epsilon=1e-3):
-    """Get soft IoU score for two masks."""
-    intersection = mask1 * mask2
-    union = (mask1 + mask2 - mask1 * mask2).clamp(epsilon)
-    if reduction == "none":
-        soft_IoU = (intersection / union)
-    elif reduction == "mean":
-        soft_IoU = (intersection / union).mean()
-    else:
-        raise
+def get_soft_IoU(mask1, mask2, dim, epsilon=1):
+    """Get soft IoU score for two masks.
+
+    Args:
+        mask1, mask2: two masks with the same shape and value between [0, 1]
+        dim: dimensions over which to aggregate.
+    """
+    soft_IoU = (mask1 * mask2).sum(dim) / (mask1 + mask2 - mask1 * mask2).sum(dim).clamp(epsilon)
     return soft_IoU
 
 
-def get_soft_Jaccard_distance(mask1, mask2, reduction="none", epsilon=1e-3):
+def get_soft_Jaccard_distance(mask1, mask2, dim, epsilon=1):
     """Get soft Jaccard distance for two masks."""
-    return 1 - get_soft_IoU(mask1, mask2, reduction=reduction, epsilon=epsilon)
+    return 1 - get_soft_IoU(mask1, mask2, dim=dim, epsilon=epsilon)
