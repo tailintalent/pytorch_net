@@ -283,6 +283,9 @@ def transform_dict(Dict, mode="array"):
 def to_np_array(*arrays, **kwargs):
     array_list = []
     for array in arrays:
+        if array is None:
+            array_list.append(array)
+            continue
         if isinstance(array, Variable):
             if array.is_cuda:
                 array = array.cpu()
