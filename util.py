@@ -4163,3 +4163,18 @@ class Model_Wrapper(nn.Module):
     @property
     def model_dict(self):
         return self.model.model_dict
+
+
+def fill_matrix_with_triu(array, size):
+    """array: [B, size*(size+1)/2]
+
+    tensor: a symmetric matrix of [B, size, size]
+    """
+    assert len(array.shape) == 2
+    rows, cols = torch.triu_indices(size, size)
+    device = array.device
+    assert len(rows) == array.shape[-1]
+    tensor_triu = torch.zeros(array.shape[0], size, size).type(array.dtype).to(device)
+    tensor_triu[:,rows,cols] = array
+    tensor = tensor_triu + torch.triu(tensor_triu, diagonal=1).transpose(1,2)
+    return tensor
