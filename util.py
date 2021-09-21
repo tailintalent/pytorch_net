@@ -267,9 +267,25 @@ def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_dupl
                 data_record_dict[key] = data_record_dict[key][-recent_record:]
 
 
+def transform_dict(Dict, mode="array"):
+    if mode == "array":
+        return {key: np.array(item) for key, item in Dict.items()}
+    elif mode == "torch":
+        return {key: torch.FloatTensor(item) for key, item in Dict.items()}
+    elif mode == "mean":
+        return {key: np.mean(item) for key, item in Dict.items()}
+    elif mode == "std":
+        return {key: np.std(item) for key, item in Dict.items()}
+    else:
+        raise
+
+
 def to_np_array(*arrays, **kwargs):
     array_list = []
     for array in arrays:
+        if array is None:
+            array_list.append(array)
+            continue
         if isinstance(array, Variable):
             if array.is_cuda:
                 array = array.cpu()
@@ -1186,6 +1202,8 @@ def get_loss_cumu(loss_dict, cumu_mode):
     else:
         raise
     N = len(loss_list)
+    if N == 1:
+        return loss_list[0]
     epsilon = 1e-20  # to prevent NaN
     if cumu_mode.startswith("gm"):
         cumu_mode_str, num = cumu_mode.split("-")
@@ -4178,3 +4196,28 @@ def fill_matrix_with_triu(array, size):
     tensor_triu[:,rows,cols] = array
     tensor = tensor_triu + torch.triu(tensor_triu, diagonal=1).transpose(1,2)
     return tensor
+
+
+def remove_elements(List, elements):
+    """Remove elements in the List if they exist in the List, and return the new list."""
+    NewList = deepcopy(List)
+    for element in elements:
+        if element in NewList:
+            NewList.remove(element)
+    return NewList
+
+
+def get_soft_IoU(mask1, mask2, dim, epsilon=1):
+    """Get soft IoU score for two masks.
+
+    Args:
+        mask1, mask2: two masks with the same shape and value between [0, 1]
+        dim: dimensions over which to aggregate.
+    """
+    soft_IoU = (mask1 * mask2).sum(dim) / (mask1 + mask2 - mask1 * mask2).sum(dim).clamp(epsilon)
+    return soft_IoU
+
+
+def get_soft_Jaccard_distance(mask1, mask2, dim, epsilon=1):
+    """Get soft Jaccard distance for two masks."""
+    return 1 - get_soft_IoU(mask1, mask2, dim=dim, epsilon=epsilon)
