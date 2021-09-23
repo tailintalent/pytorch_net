@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import torchvision
 
 # Gaussian blur kernel
-
 def get_gaussian_kernel(device="cpu"):
     kernel = np.array([
         [1, 4, 6, 4, 1],
@@ -17,17 +16,17 @@ def get_gaussian_kernel(device="cpu"):
     gaussian_k = torch.as_tensor(kernel.reshape(1, 1, 5, 5)).to(device)
     return gaussian_k
 
-def pyramid_down(image, device="cpu"):
+def pyramid_down(image, n_channels=3, device="cpu"):
     gaussian_k = get_gaussian_kernel(device=device)        
     # channel-wise conv(important)
-    multiband = [F.conv2d(image[:, i:i + 1,:,:], gaussian_k, padding=2, stride=2) for i in range(3)]
+    multiband = [F.conv2d(image[:, i:i + 1,:,:], gaussian_k, padding=2, stride=2) for i in range(n_channels)]
     down_image = torch.cat(multiband, dim=1)
     return down_image
 
-def pyramid_up(image, device="cpu"):
+def pyramid_up(image, n_channels=3, device="cpu"):
     gaussian_k = get_gaussian_kernel(device=device)
     upsample = F.interpolate(image, scale_factor=2)
-    multiband = [F.conv2d(upsample[:, i:i + 1,:,:], gaussian_k, padding=2) for i in range(3)]
+    multiband = [F.conv2d(upsample[:, i:i + 1,:,:], gaussian_k, padding=2) for i in range(n_channels)]
     up_image = torch.cat(multiband, dim=1)
     return up_image
 
@@ -36,7 +35,7 @@ def gaussian_pyramid(original, n_pyramids, device="cpu"):
     # pyramid down
     pyramids = [original]
     for i in range(n_pyramids):
-        x = pyramid_down(x, device=device)
+        x = pyramid_down(x, n_channels=x.shape[1], device=device)
         pyramids.append(x)
     return pyramids
 
@@ -47,7 +46,7 @@ def laplacian_pyramid(original, n_pyramids, device="cpu"):
     # pyramid up - diff
     laplacian = []
     for i in range(len(pyramids) - 1):
-        diff = pyramids[i] - pyramid_up(pyramids[i + 1], device=device)
+        diff = pyramids[i] - pyramid_up(pyramids[i + 1], n_channels=original.shape[1], device=device)
         laplacian.append(diff)
     # Add last gaussian pyramid
     laplacian.append(pyramids[len(pyramids) - 1])        
@@ -71,7 +70,7 @@ def minibatch_laplacian_pyramid(image, n_pyramids, batch_size, device="cpu"):
     return result
 
 def extract_patches(pyramid_layer, slice_indices,
-                    slice_size=7, unfold_batch_size=128, device="cpu"):
+                    slice_size=7, unfold_batch_size=128, n_channels=3, device="cpu"):
     assert pyramid_layer.ndim == 4
     n = pyramid_layer.size(0) // unfold_batch_size + np.sign(pyramid_layer.size(0) % unfold_batch_size)
     # random slice 7x7
@@ -93,7 +92,7 @@ def extract_patches(pyramid_layer, slice_indices,
     std, mean = torch.std_mean(x, dim=(0, 1, 3, 4), keepdim=True)
     x = (x - mean) / (std + 1e-8)
     # reshape to 2rank
-    x = x.reshape(-1, 3 * slice_size * slice_size)
+    x = x.reshape(-1, n_channels * slice_size * slice_size)
     return x
         
 def swd(image1, image2, 
@@ -108,45 +107,44 @@ def swd(image1, image2,
 
     if n_pyramids is None:
         n_pyramids = int(np.rint(np.log2(image1.size(2) // 16)))
-    with torch.no_grad():
-        # minibatch laplacian pyramid for cuda memory reasons
-        pyramid1 = minibatch_laplacian_pyramid(image1, n_pyramids, pyramid_batchsize, device=device)
-        pyramid2 = minibatch_laplacian_pyramid(image2, n_pyramids, pyramid_batchsize, device=device)
-        result = []
 
-        for i_pyramid in range(n_pyramids + 1):
-            # indices
-            n = (pyramid1[i_pyramid].size(2) - 6) * (pyramid1[i_pyramid].size(3) - 6)
-            indices = torch.randperm(n)[:n_descriptors]
+    # minibatch laplacian pyramid for cuda memory reasons
+    pyramid1 = minibatch_laplacian_pyramid(image1, n_pyramids, pyramid_batchsize, device=device)
+    pyramid2 = minibatch_laplacian_pyramid(image2, n_pyramids, pyramid_batchsize, device=device)
+    result = []
 
-            # extract patches on CPU
-            # patch : 2rank (n_image*n_descriptors, slice_size**2*ch)
-            p1 = extract_patches(pyramid1[i_pyramid], indices,
-                            slice_size=slice_size, device="cpu")
-            p2 = extract_patches(pyramid2[i_pyramid], indices,
-                            slice_size=slice_size, device="cpu")
+    for i_pyramid in range(n_pyramids + 1):
+        # indices
+        n = (pyramid1[i_pyramid].size(2) - 6) * (pyramid1[i_pyramid].size(3) - 6)
+        indices = torch.randperm(n)[:n_descriptors]
 
-            p1, p2 = p1.to(device), p2.to(device)
+        # extract patches on CPU
+        # patch : 2rank (n_image*n_descriptors, slice_size**2*ch)
+        p1 = extract_patches(pyramid1[i_pyramid], indices,
+                        slice_size=slice_size, n_channels=image1.shape[1], device="cpu")
+        p2 = extract_patches(pyramid2[i_pyramid], indices,
+                        slice_size=slice_size, n_channels=image2.shape[1], device="cpu")
+        p1, p2 = p1.to(device), p2.to(device)
 
-            distances = []
-            for j in range(n_repeat_projection):
-                # random
-                rand = torch.randn(p1.size(1), proj_per_repeat).to(device)  # (slice_size**2*ch)
-                rand = rand / torch.std(rand, dim=0, keepdim=True)  # noramlize
-                # projection
-                proj1 = torch.matmul(p1, rand)
-                proj2 = torch.matmul(p2, rand)
-                proj1, _ = torch.sort(proj1, dim=0)
-                proj2, _ = torch.sort(proj2, dim=0)
-                d = torch.abs(proj1 - proj2)
-                distances.append(torch.mean(d))
+        distances = []
+        for j in range(n_repeat_projection):
+            # random
+            rand = torch.randn(p1.size(1), proj_per_repeat).to(device)  # (slice_size**2*ch)
+            rand = rand / torch.std(rand, dim=0, keepdim=True)  # noramlize
+            # projection
+            proj1 = torch.matmul(p1, rand)
+            proj2 = torch.matmul(p2, rand)
+            proj1, _ = torch.sort(proj1, dim=0)
+            proj2, _ = torch.sort(proj2, dim=0)
+            d = torch.abs(proj1 - proj2)
+            distances.append(torch.mean(d))
 
-            # swd
-            result.append(torch.mean(torch.stack(distances)))
-        
-        # average over resolution
-        result = torch.stack(result) * 1e3
-        if return_by_resolution:
-            return result.cpu()
-        else:
-            return torch.mean(result).cpu()
+        # swd
+        result.append(torch.mean(torch.stack(distances)))
+
+    # average over resolution
+    result = torch.stack(result) * 1e3
+    if return_by_resolution:
+        return result
+    else:
+        return torch.mean(result)
