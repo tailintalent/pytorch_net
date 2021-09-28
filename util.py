@@ -3407,7 +3407,7 @@ class Batch(object):
 
     def collate(self):
         import re
-        if torch.__version__.startswith("1.9.0"):
+        if torch.__version__.startswith("1.9"):
             from torch._six import string_classes
             from collections import abc as container_abcs
         else:
