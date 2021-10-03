@@ -4223,3 +4223,13 @@ def get_soft_IoU(mask1, mask2, dim, epsilon=1):
 def get_soft_Jaccard_distance(mask1, mask2, dim, epsilon=1):
     """Get soft Jaccard distance for two masks."""
     return 1 - get_soft_IoU(mask1, mask2, dim=dim, epsilon=epsilon)
+
+
+def get_triu_ids(array, is_triu=True):
+    if isinstance(array, Number):
+        array = np.arange(array)
+    rows_matrix, col_matrix = np.meshgrid(array, array)
+    matrix_cat = np.stack([rows_matrix, col_matrix], -1)
+    rr, cc = np.triu_indices(len(matrix_cat), k=1)
+    rows, cols = matrix_cat[cc, rr].T
+    return rows, cols
