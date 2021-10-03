@@ -55,6 +55,7 @@ def plot_matrices(
     highlight_bad_values = True,
     plt = None,
     pdf = None,
+    verbose = False,
     ):
     """Plot the images for each matrix in the matrix_list."""
     import matplotlib
@@ -129,7 +130,8 @@ def plot_matrices(
         plt.show()
 
     if scale_limit is not None:
-        print("scale_limit: ({0:.6f}, {1:.6f})".format(scale_limit[0], scale_limit[1]))
+        if verbose:
+            print("scale_limit: ({0:.6f}, {1:.6f})".format(scale_limit[0], scale_limit[1]))
     print()
 
 
