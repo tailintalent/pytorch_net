@@ -278,6 +278,10 @@ def transform_dict(Dict, mode="array"):
         return {key: np.mean(item) for key, item in Dict.items()}
     elif mode == "std":
         return {key: np.std(item) for key, item in Dict.items()}
+    elif mode == "sum":
+        return {key: np.sum(item) for key, item in Dict.items()}
+    elif mode == "prod":
+        return {key: np.prod(item) for key, item in Dict.items()}
     else:
         raise
 
@@ -4274,4 +4278,8 @@ def get_graph_edit_distance(g1, g2):
         return node_dict1["type"] == node_dict2["type"]
     def edge_match(edge_dict1, edge_dict2):
         return edge_dict1["type"] == edge_dict2["type"]
+    if not isinstance(g1, nx.Graph):
+        g1 = get_nx_graph(g1)
+    if not isinstance(g2, nx.Graph):
+        g2 = get_nx_graph(g2)
     return nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
