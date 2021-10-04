@@ -4233,3 +4233,45 @@ def get_triu_ids(array, is_triu=True):
     rr, cc = np.triu_indices(len(matrix_cat), k=1)
     rows, cols = matrix_cat[cc, rr].T
     return rows, cols
+
+
+def get_nx_graph(graph, isplot=False):
+    import networkx as nx
+    g = nx.DiGraph()
+    graph_dict = dict([ele[:2] for ele in graph])
+    for item in graph:
+        if isinstance(item[0], Number):
+            g.add_node("{}:{}".format(item[0], item[1]), type=item[1], E=item[2] if len(item) > 2 else None)
+        elif isinstance(item[0], tuple):
+            src, dst = item[0]
+            g.add_edge(
+                "{}:{}".format(src, graph_dict[src]),
+                "{}:{}".format(dst, graph_dict[dst]),
+                type=item[1],
+                E=item[2] if len(item) > 2 else None,
+            )
+    if isplot:
+        draw_nx_graph(g)
+    return g
+
+
+def draw_nx_graph(g):
+    import networkx as nx
+    pos = nx.spring_layout(g)
+    nx.draw(g, pos=pos, with_labels=True, edge_color="#E115DA")
+    nx.draw_networkx_edge_labels(
+        g,
+        pos,
+        edge_labels={(edge_src, edge_dst): item["type"] for edge_src, edge_dst, item in g.edges(data=True)},
+        font_color='red',
+    )
+
+
+def get_graph_edit_distance(g1, g2):
+    import networkx as nx
+    """Get the edit distance of two graphs considering their node and edge types."""
+    def node_match(node_dict1, node_dict2):
+        return node_dict1["type"] == node_dict2["type"]
+    def edge_match(edge_dict1, edge_dict2):
+        return edge_dict1["type"] == edge_dict2["type"]
+    return nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
