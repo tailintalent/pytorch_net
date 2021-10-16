@@ -4283,3 +4283,12 @@ def get_graph_edit_distance(g1, g2):
     if not isinstance(g2, nx.Graph):
         g2 = get_nx_graph(g2)
     return nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
+
+
+def get_time(is_bracket=True):
+    """Get the string of the current local time."""
+    from time import localtime, strftime
+    string = strftime("%Y-%m-%d %H:%M:%S", localtime())
+    if is_bracket:
+        string = "[{}] ".format(string)
+    return string
