@@ -3427,6 +3427,16 @@ class Attr_Dict(dict):
     def copy(self):
         return Attr_Dict(dict.copy(self))
 
+class My_Tuple(tuple):
+    def to(self, device):
+        self[0].to(device)
+    
+    def __getattribute__(self, key):
+        if hasattr(My_Tuple, key):
+            return object.__getattribute__(self, key)
+        else: 
+            return self[0].__getattribute__(key)
+
 class Batch(object):
     def __init__(self, is_absorb_batch=False, is_collate_tuple=False):
         self.is_absorb_batch = is_absorb_batch
@@ -3516,7 +3526,10 @@ class Batch(object):
                 if not all(len(elem) == elem_size for elem in it):
                     raise RuntimeError('each element in list of batch should be of equal size')
                 transposed = zip(*batch)
-                return [collate_fn(samples) for samples in transposed]
+                ret_val =  [collate_fn(samples) for samples in transposed]
+                if isinstance(elem, My_Tuple):
+                    ret_val = elem.__class__(ret_val)
+                return ret_val
             elif isinstance(elem, Dictionary):
                 return batch
             raise TypeError(default_collate_err_msg_format.format(elem_type))
