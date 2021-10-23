@@ -3399,6 +3399,27 @@ class Dictionary(object):
     def __unicode__(self):
         return unicode(repr(self.__dict__))
 
+class Attr_Dict(dict):
+    def __init__(self, *a, **kw):
+        dict.__init__(self, *a, **kw)
+        self.__dict__ = self
+
+    def update(self, *a, **kw):
+        dict.update(self, *a, **kw)
+        return self
+
+    def __getattribute__(self, key):
+        if key in self:
+            return self[key]
+        else:
+            return object.__getattribute__(self, key)
+
+    def to(self, device):
+        self["device"] = device
+        return to_device_recur(self, device)
+
+    def copy(self):
+        return Attr_Dict(dict.copy(self))
 
 class Batch(object):
     def __init__(self, is_absorb_batch=False, is_collate_tuple=False):
@@ -3475,7 +3496,7 @@ class Batch(object):
                 return batch
             elif isinstance(elem, container_abcs.Mapping):
                 Dict = {key: collate_fn([d[key] for d in batch]) for key in elem}
-                if isinstance(elem, pdict):
+                if isinstance(elem, pdict) or isinstance(elem, Attr_Dict):
                     Dict = elem.__class__(**Dict)
                 return Dict
             elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple:
