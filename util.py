@@ -55,6 +55,7 @@ def plot_matrices(
     highlight_bad_values = True,
     plt = None,
     pdf = None,
+    verbose = False,
     ):
     """Plot the images for each matrix in the matrix_list."""
     import matplotlib
@@ -129,7 +130,8 @@ def plot_matrices(
         plt.show()
 
     if scale_limit is not None:
-        print("scale_limit: ({0:.6f}, {1:.6f})".format(scale_limit[0], scale_limit[1]))
+        if verbose:
+            print("scale_limit: ({0:.6f}, {1:.6f})".format(scale_limit[0], scale_limit[1]))
     print()
 
 
@@ -276,6 +278,10 @@ def transform_dict(Dict, mode="array"):
         return {key: np.mean(item) for key, item in Dict.items()}
     elif mode == "std":
         return {key: np.std(item) for key, item in Dict.items()}
+    elif mode == "sum":
+        return {key: np.sum(item) for key, item in Dict.items()}
+    elif mode == "prod":
+        return {key: np.prod(item) for key, item in Dict.items()}
     else:
         raise
 
@@ -4242,3 +4248,68 @@ def get_soft_IoU(mask1, mask2, dim, epsilon=1):
 def get_soft_Jaccard_distance(mask1, mask2, dim, epsilon=1):
     """Get soft Jaccard distance for two masks."""
     return 1 - get_soft_IoU(mask1, mask2, dim=dim, epsilon=epsilon)
+
+
+def get_triu_ids(array, is_triu=True):
+    if isinstance(array, Number):
+        array = np.arange(array)
+    rows_matrix, col_matrix = np.meshgrid(array, array)
+    matrix_cat = np.stack([rows_matrix, col_matrix], -1)
+    rr, cc = np.triu_indices(len(matrix_cat), k=1)
+    rows, cols = matrix_cat[cc, rr].T
+    return rows, cols
+
+
+def get_nx_graph(graph, isplot=False):
+    import networkx as nx
+    g = nx.DiGraph()
+    graph_dict = dict([ele[:2] for ele in graph])
+    for item in graph:
+        if isinstance(item[0], Number):
+            g.add_node("{}:{}".format(item[0], item[1]), type=item[1], E=item[2] if len(item) > 2 else None)
+        elif isinstance(item[0], tuple):
+            src, dst = item[0]
+            g.add_edge(
+                "{}:{}".format(src, graph_dict[src]),
+                "{}:{}".format(dst, graph_dict[dst]),
+                type=item[1],
+                E=item[2] if len(item) > 2 else None,
+            )
+    if isplot:
+        draw_nx_graph(g)
+    return g
+
+
+def draw_nx_graph(g):
+    import networkx as nx
+    pos = nx.spring_layout(g)
+    nx.draw(g, pos=pos, with_labels=True, edge_color="#E115DA")
+    nx.draw_networkx_edge_labels(
+        g,
+        pos,
+        edge_labels={(edge_src, edge_dst): item["type"] for edge_src, edge_dst, item in g.edges(data=True)},
+        font_color='red',
+    )
+
+
+def get_graph_edit_distance(g1, g2):
+    import networkx as nx
+    """Get the edit distance of two graphs considering their node and edge types."""
+    def node_match(node_dict1, node_dict2):
+        return node_dict1["type"] == node_dict2["type"]
+    def edge_match(edge_dict1, edge_dict2):
+        return edge_dict1["type"] == edge_dict2["type"]
+    if not isinstance(g1, nx.Graph):
+        g1 = get_nx_graph(g1)
+    if not isinstance(g2, nx.Graph):
+        g2 = get_nx_graph(g2)
+    return nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
+
+
+def get_time(is_bracket=True):
+    """Get the string of the current local time."""
+    from time import localtime, strftime
+    string = strftime("%Y-%m-%d %H:%M:%S", localtime())
+    if is_bracket:
+        string = "[{}] ".format(string)
+    return string
