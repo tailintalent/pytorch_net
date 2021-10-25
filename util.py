@@ -1584,7 +1584,7 @@ def Zip(*data, **kwargs):
     """
     import collections
     function = kwargs["function"] if "function" in kwargs else None
-    if len(data) == 1:
+    if len(data) == 1 and function is None:
         return data[0]
     data = [list(element) for element in zip(*data)]
     for i, element in enumerate(data):
