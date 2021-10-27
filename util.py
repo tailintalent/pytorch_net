@@ -1584,7 +1584,7 @@ def Zip(*data, **kwargs):
     """
     import collections
     function = kwargs["function"] if "function" in kwargs else None
-    if len(data) == 1:
+    if len(data) == 1 and function is None:
         return data[0]
     data = [list(element) for element in zip(*data)]
     for i, element in enumerate(data):
@@ -3563,16 +3563,21 @@ def get_pdict():
     return Pdict
 
 
-def to_device_recur(iterable, device):
+def to_device_recur(iterable, device, is_detach=False):
     if isinstance(iterable, list):
-        return [to_device_recur(item, device) for item in iterable]
+        return [to_device_recur(item, device, is_detach=is_detach) for item in iterable]
     elif isinstance(iterable, tuple):
-        return tuple(to_device_recur(item, device) for item in iterable)
+        return tuple(to_device_recur(item, device, is_detach=is_detach) for item in iterable)
     elif isinstance(iterable, dict):
-        return {key: to_device_recur(item, device) for key, item in iterable.items()}
+        return {key: to_device_recur(item, device, is_detach=is_detach) for key, item in iterable.items()}
     elif hasattr(iterable, "to"):
-        return iterable.to(device)
+        iterable = iterable.to(device)
+        if is_detach:
+            iterable = iterable.detach()
+        return iterable
     else:
+        if hasattr(iterable, "detach"):
+            iterable = iterable.detach()
         return iterable
 
 
