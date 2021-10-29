@@ -3440,7 +3440,6 @@ class Attr_Dict(dict):
 
     def to(self, device):
         self["device"] = device
-        return to_device_recur(self, device)
 
     def copy(self):
         return Attr_Dict(dict.copy(self))
@@ -3535,6 +3534,13 @@ class Batch(object):
                 return Dict
             elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple:
                 return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
+            elif isinstance(elem, My_Tuple):
+                it = iter(batch)
+                elem_size = len(next(it))
+                if not all(len(elem) == elem_size for elem in it):
+                    raise RuntimeError('each element in list of batch should be of equal size')
+                transposed = zip(*batch)
+                return elem.__class__([collate_fn(samples) for samples in transposed])
             elif isinstance(elem, tuple) and not self.is_collate_tuple:
                 return elem
             elif isinstance(elem, container_abcs.Sequence):
@@ -3544,12 +3550,12 @@ class Batch(object):
                 if not all(len(elem) == elem_size for elem in it):
                     raise RuntimeError('each element in list of batch should be of equal size')
                 transposed = zip(*batch)
-                ret_val =  [collate_fn(samples) for samples in transposed]
-                if isinstance(elem, My_Tuple):
-                    ret_val = elem.__class__(ret_val)
-                return ret_val
+                return  [collate_fn(samples) for samples in transposed]
             elif isinstance(elem, Dictionary):
                 return batch
+            elif elem.__class__.__name__ == 'DGLHeteroGraph':
+                import dgl
+                return dgl.batch(batch)
             raise TypeError(default_collate_err_msg_format.format(elem_type))
         return collate_fn
 
