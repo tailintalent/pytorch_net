@@ -1240,6 +1240,24 @@ def get_loss_cumu(loss_dict, cumu_mode):
     return loss
 
 
+def reduce_tensor(tensor, reduction, dims_to_reduce=None, keepdims=False):
+    """Reduce tensor using 'mean' or 'sum'."""
+    if reduction == "mean":
+        if dims_to_reduce is None:
+            tensor = tensor.mean()
+        else:
+            tensor = tensor.mean(dims_to_reduce, keepdims=keepdims)
+    elif reduction == "sum":
+        if dims_to_reduce is None:
+            tensor = tensor.sum()
+        else:
+            tensor = tensor.sum(dims_to_reduce, keepdims=keepdims)
+    elif reduction == "none":
+        pass
+    else:
+        raise
+    return tensor
+
 
 def loss_op_core(pred_core, y_core, reduction="mean", loss_type="mse", normalize_mode="None", **kwargs):
     """Compute the loss. Here pred_core and y_core must both be tensors and have the same shape. 
