@@ -16,6 +16,7 @@ import random
 from sklearn.cluster import SpectralClustering
 from sklearn.model_selection import train_test_split
 import scipy.linalg
+from termcolor import colored
 import time
 import torch
 import torch.nn as nn
@@ -3107,6 +3108,31 @@ def print_banner(string, banner_size=100, n_new_lines=0):
     for i in range(n_new_lines):
         print()
     print("\n" + "=" * banner_size + "\n" + string + "\n" + "=" * banner_size + "\n")
+
+
+class Printer(object):
+    def __init__(self, is_datetime=True):
+        self.is_datetime = is_datetime
+
+    def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None):
+        string = ""
+        if is_datetime is None:
+            is_datetime = self.is_datetime
+        if is_datetime:
+            string += get_time()
+        string += "    " * tabs
+        string += "{}".format(item)
+        if banner_size > 0:
+            print("=" * banner_size)
+        print(string, end=end)
+        if banner_size > 0:
+            print("=" * banner_size)
+
+    def warning(self, item):
+        print(colored(item, 'yellow'))
+
+    def error(self, item):
+        raise Exception("{}".format(item))
 
 
 def switch_dict_keys(Dict, key1, key2):
