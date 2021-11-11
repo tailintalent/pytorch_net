@@ -4381,3 +4381,60 @@ def get_time(is_bracket=True):
     if is_bracket:
         string = "[{}] ".format(string)
     return string
+
+
+def filter_df(df, filter_dict):
+    """Filter a pandas DataFrame according to a dictionary.
+
+    Args:
+        filter_dict, e.g. 
+        filter_dict = {
+            "dataset": "c-Line",
+            "lr": 0.0001,
+        }
+    """
+    mask = None
+    for key, item in filter_dict.items():
+        if mask is None:
+            mask = df[key] == item
+        else:
+            mask = mask & (df[key] == item)
+    return df[mask]
+
+
+def enumerate_binary_array(dim, filter_fn=None):
+    """Enumerate all binary arrays that satisfies the condition of filter_fn.
+
+    Args:
+        filter_fn: a list of functions which the binary array must satisfy (return True).
+    """
+    List = []
+    for i in range(2 ** dim):
+        string = np.binary_repr(i, width=dim)
+        item = np.array([int(ele) for ele in string])
+        if filter_fn is not None:
+            if not isinstance(filter_fn, list):
+                filter_fn = [filter_fn]
+            is_skip = False
+            for func in filter_fn:
+                if not func(item):
+                    is_skip = True
+                    break
+            if is_skip:
+                continue
+        List.append(item)
+    return np.array(List)
+
+
+def check_continuous(array):
+    """Check if the array is continuous, where 0 is deemed as a breaking point."""
+    if not isinstance(array, np.ndarray):
+        array = np.array([int(ele) for ele in array])
+    num_locs = np.where(array)[0]
+    is_continuous = False
+    if len(num_locs) == 1:
+        is_continuous = True
+    elif len(num_locs) > 1:
+        if num_locs[-1] - num_locs[0] == len(num_locs) - 1:
+            is_continuous = True
+    return is_continuous
