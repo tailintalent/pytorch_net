@@ -16,6 +16,7 @@ import random
 from sklearn.cluster import SpectralClustering
 from sklearn.model_selection import train_test_split
 import scipy.linalg
+import sys
 from termcolor import colored
 import time
 import torch
@@ -3127,9 +3128,17 @@ class Printer(object):
         print(string, end=end)
         if banner_size > 0:
             print("=" * banner_size)
+        try:
+            sys.stdout.flush()
+        except:
+            pass
 
     def warning(self, item):
         print(colored(item, 'yellow'))
+        try:
+            sys.stdout.flush()
+        except:
+            pass
 
     def error(self, item):
         raise Exception("{}".format(item))
