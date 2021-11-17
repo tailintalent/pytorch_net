@@ -4193,12 +4193,15 @@ class TopKList(list):
 
 def pdump(file, filename):
     """Dump a file via pickle."""
-    pickle.dump(file, open(filename, "wb"))
+    with open(filename, "wb") as f:
+        pickle.dump(file, f)
 
 
 def pload(filename):
     """Load a filename saved as pickle."""
-    return pickle.load(open(filename, "rb"))
+    with open(filename, "rb") as f:
+        file = pickle.load(f)
+    return file
 
 
 def cmd_to_args_dict(cmd, str_args=["gpuid"]):
