@@ -3115,14 +3115,14 @@ class Printer(object):
     def __init__(self, is_datetime=True):
         self.is_datetime = is_datetime
 
-    def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None):
+    def print(self, *args, tabs=0, is_datetime=None, banner_size=0, end=None):
         string = ""
         if is_datetime is None:
             is_datetime = self.is_datetime
         if is_datetime:
             string += get_time()
         string += "    " * tabs
-        string += "{}".format(item)
+        string += " ".join([str(item) for item in args])
         if banner_size > 0:
             print("=" * banner_size)
         print(string, end=end)
