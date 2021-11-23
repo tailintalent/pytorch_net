@@ -8,6 +8,7 @@ from numbers import Number
 import numpy as np
 from copy import deepcopy, copy
 from functools import reduce
+from IPython.display import Image, display
 import itertools
 import json
 import operator
@@ -1472,7 +1473,7 @@ def view_item(dict_list, key):
         return [element[key[0]][key[1]] for element in dict_list]
 
         
-def filter_filename(dirname, include = [], exclude = [], array_id = None):
+def filter_filename(dirname, include=[], exclude=[], array_id=None):
     """Filter filename in a directory"""
     def get_array_id(filename):
         array_id = filename.split("_")[-2]
@@ -1505,6 +1506,15 @@ def filter_filename(dirname, include = [], exclude = [], array_id = None):
         if is_in:
             filename_collect.append(filename)
     return filename_collect
+
+
+def display_image(dirname, include=[], exclude=[]):
+    from IPython.display import Image, display
+    filenames = sorted(filter_filename(dirname, include=include, exclude=exclude))
+    for filename in filenames:
+        print("{}:".format(filename))
+        display(Image(filename=dirname + filename))
+        print()
 
 
 def sort_filename(filename_list):
