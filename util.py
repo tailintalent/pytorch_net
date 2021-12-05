@@ -1508,7 +1508,7 @@ def filter_filename(dirname, include=[], exclude=[], array_id=None):
     return filename_collect
 
 
-def display_image(dirname, include=[], exclude=[]):
+def display_image(dirname, include=[], exclude=[], width=800, height=None):
     from IPython.display import Image, display
     filenames = sorted(filter_filename(dirname, include=include, exclude=exclude))
     for filename in filenames:
