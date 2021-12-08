@@ -4467,28 +4467,46 @@ def groupby_add_keys(df, by, add_keys, other_keys=None, mode="mean"):
     Returns:
         df_group: the desired DataFrame.
     """
-    if mode == "mean":
-        df_group = df.groupby(by=by).mean()
-    elif mode == "median":
-        df_group = df.groupby(by=by).median()
-    elif mode == "max":
-        df_group = df.groupby(by=by).max()
-    elif mode == "min":
-        df_group = df.groupby(by=by).min()
-    elif mode == "var":
-        df_group = df.groupby(by=by).var()
-    elif mode == "std":
-        df_group = df.groupby(by=by).std()
-    elif mode == "count":
-        df_group = df.groupby(by=by).count()
+    import pandas as pd
+    def groupby_df(df, by, mode):
+        if mode == "mean":
+            df_group = df.groupby(by=by).mean()
+        elif mode == "median":
+            df_group = df.groupby(by=by).median()
+        elif mode == "max":
+            df_group = df.groupby(by=by).max()
+        elif mode == "min":
+            df_group = df.groupby(by=by).min()
+        elif mode == "var":
+            df_group = df.groupby(by=by).var()
+        elif mode == "std":
+            df_group = df.groupby(by=by).std()
+        elif mode == "count":
+            df_group = df.groupby(by=by).count()
+        else:
+            raise
+        return df_group
+    df = deepcopy(df)
+    if isinstance(mode, str):
+        df_group = groupby_df(df, by=by, mode=mode)
     else:
-        raise
+        assert isinstance(mode, dict)
+        df_list = []
+        for mode_ele, keys in mode.items():
+            if mode_ele != "count":
+                df_list.append(groupby_df(df[by + keys], by=by, mode=mode_ele))
+            else:
+                df["count"] = 1
+                df_list.append(groupby_df(df[by + ["count"]], by=by, mode=mode_ele))
+        df_group = pd.concat(df_list, axis=1)
     if other_keys is None:
         other_keys = list(df_group.keys())
     if not isinstance(add_keys, list):
         add_keys = [add_keys]
     if not isinstance(other_keys, list):
         other_keys = [other_keys]
+    if isinstance(mode, dict) and "count" in mode and "count" not in other_keys:
+        other_keys.append("count")
     df_group[add_keys] = None
     for i in range(len(df_group)):
         for k, key in enumerate(reversed(add_keys)):
