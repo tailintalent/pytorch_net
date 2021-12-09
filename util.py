@@ -4382,9 +4382,25 @@ def draw_nx_graph(g):
     )
 
 
-def get_graph_edit_distance(g1, g2):
+def get_graph_edit_distance(g1, g2, to_undirected=False):
+    """Get the edit distance of two graphs considering their node and edge types.
+
+    Args:
+        g1, g2: has the format of 
+        [
+            [(0, 'Line', ...),
+             (2, 'Line', ...),
+             (3, 'Line', ...),
+             ((0, 2), 'VerticalEdge', ...),
+             ((0, 3), 'Parallel', ...),
+             ((2, 3), 'VerticalEdge', ...),
+        ]
+        to_undirected: if True, will first transform the nx graph into an undirected graph.
+
+    Returns:
+        edit_distance: the edit distance between the two graphs.
+    """
     import networkx as nx
-    """Get the edit distance of two graphs considering their node and edge types."""
     def node_match(node_dict1, node_dict2):
         return node_dict1["type"] == node_dict2["type"]
     def edge_match(edge_dict1, edge_dict2):
@@ -4393,7 +4409,11 @@ def get_graph_edit_distance(g1, g2):
         g1 = get_nx_graph(g1)
     if not isinstance(g2, nx.Graph):
         g2 = get_nx_graph(g2)
-    return nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
+    if to_undirected:
+        g1 = g1.to_undirected(reciprocal=False)
+        g2 = g2.to_undirected(reciprocal=False)
+    edit_distance = nx.graph_edit_distance(g1, g2, node_match=node_match, edge_match=edge_match)
+    return edit_distance
 
 
 def get_time(is_bracket=True):
