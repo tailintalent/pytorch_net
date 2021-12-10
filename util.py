@@ -4405,10 +4405,17 @@ def get_graph_edit_distance(g1, g2, to_undirected=False):
         return node_dict1["type"] == node_dict2["type"]
     def edge_match(edge_dict1, edge_dict2):
         return edge_dict1["type"] == edge_dict2["type"]
+    def standardize_graph(graph):
+        new_graph = []
+        for ele in graph:
+            if isinstance(ele[0], list):
+                ele = (tuple(ele[0]), ele[1])
+            new_graph.append(ele)
+        return new_graph
     if not isinstance(g1, nx.Graph):
-        g1 = get_nx_graph(g1)
+        g1 = get_nx_graph(standardize_graph(g1))
     if not isinstance(g2, nx.Graph):
-        g2 = get_nx_graph(g2)
+        g2 = get_nx_graph(standardize_graph(g2))
     if to_undirected:
         g1 = g1.to_undirected(reciprocal=False)
         g2 = g2.to_undirected(reciprocal=False)
