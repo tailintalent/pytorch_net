@@ -275,6 +275,8 @@ def record_data(data_record_dict, data_list, key_list, nolist=False, ignore_dupl
 def transform_dict(Dict, mode="array"):
     if mode == "array":
         return {key: np.array(item) for key, item in Dict.items()}
+    if mode == "concatenate":
+        return {key: np.concetenate(item) for key, item in Dict.items()}
     elif mode == "torch":
         return {key: torch.FloatTensor(item) for key, item in Dict.items()}
     elif mode == "mean":
@@ -3501,6 +3503,11 @@ class My_Tuple(tuple):
 
 class Batch(object):
     def __init__(self, is_absorb_batch=False, is_collate_tuple=False):
+        """
+        
+        Args:
+            is_collate_tuple: if True, will collate inside the tuple.
+        """
         self.is_absorb_batch = is_absorb_batch
         self.is_collate_tuple = is_collate_tuple
 
@@ -3587,7 +3594,7 @@ class Batch(object):
                 transposed = zip(*batch)
                 return elem.__class__([collate_fn(samples) for samples in transposed])
             elif isinstance(elem, tuple) and not self.is_collate_tuple:
-                return elem
+                return batch
             elif isinstance(elem, container_abcs.Sequence):
                 # check to make sure that the elements in batch have consistent size
                 it = iter(batch)
@@ -3596,7 +3603,7 @@ class Batch(object):
                     raise RuntimeError('each element in list of batch should be of equal size')
                 transposed = zip(*batch)
                 return  [collate_fn(samples) for samples in transposed]
-            elif isinstance(elem, Dictionary):
+            elif elem.__class__.__name__ == 'Dictionary':
                 return batch
             elif elem.__class__.__name__ == 'DGLHeteroGraph':
                 import dgl
