@@ -276,7 +276,7 @@ def transform_dict(Dict, mode="array"):
     if mode == "array":
         return {key: np.array(item) for key, item in Dict.items()}
     if mode == "concatenate":
-        return {key: np.concetenate(item) for key, item in Dict.items()}
+        return {key: np.concatenate(item) for key, item in Dict.items()}
     elif mode == "torch":
         return {key: torch.FloatTensor(item) for key, item in Dict.items()}
     elif mode == "mean":
