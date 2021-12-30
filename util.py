@@ -3491,6 +3491,89 @@ class Attr_Dict(dict):
     def copy(self):
         return Attr_Dict(dict.copy(self))
 
+
+class Cache_Dict(dict):
+    def __init__(self, *args, cache_num_limit=-1, cache_fraction_limit=-1):
+        """
+        A dictionary that limits the number of keys and the total cache percentage used by all programs. It will pop the oldest keys when any limit is exceeded.
+
+        Args:
+            cache_num_limit: Number of keys. Default -1 means no limit.
+            cache_fraction_limit: limit of total cache fraction used by all programs. Default -1 means no limit.
+        """
+        super().__init__(*args)
+        self._cache_num_limit = cache_num_limit
+        self._cache_fraction_limit = cache_fraction_limit
+
+    def __setitem__(self, key, item):
+        is_pop = False
+        if self._cache_num_limit != -1 and len(self) >= self._cache_num_limit:
+            is_pop = True
+        if not is_pop:
+            if self._cache_fraction_limit != -1:
+                import psutil
+                if psutil.virtual_memory()[2] / 100 > self._cache_fraction_limit:
+                    is_pop = True
+        if len(self) > 0 and is_pop:
+            import gc
+            first_key = next(iter(self))
+            self.pop(first_key)
+            gc.collect()
+        self.__dict__[key] = item
+
+    @property
+    def core_dict(self):
+        return {key: item for key, item in self.__dict__.items() if not isinstance(key, str) or not key.startswith("_")}
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __repr__(self):
+        return repr(self.core_dict)
+
+    def __len__(self):
+        return len(self.core_dict)
+
+    def __delitem__(self, key):
+        del self.__dict__[key]
+
+    def clear(self):
+        return self.__dict__.clear()
+
+    def copy(self):
+        return self.__dict__.copy()
+
+    def has_key(self, k):
+        return k in self.core_dict
+
+    def update(self, *args, **kwargs):
+        return self.__dict__.update(*args, **kwargs)
+
+    def keys(self):
+        return self.core_dict.keys()
+
+    def values(self):
+        return self.core_dict.values()
+
+    def items(self):
+        return self.core_dict.items()
+
+    def pop(self, *args):
+        return self.__dict__.pop(*args)
+
+    def __cmp__(self, dict_):
+        return self.__cmp__(self.__dict__, dict_)
+
+    def __contains__(self, item):
+        return item in self.core_dict
+
+    def __iter__(self):
+        return iter(self.core_dict)
+
+    def __unicode__(self):
+        return unicode(repr(self.core_dict))
+
+
 class My_Tuple(tuple):
     def to(self, device):
         self[0].to(device)
