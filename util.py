@@ -27,8 +27,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 from torch.optim.lr_scheduler import _LRScheduler
+from typing import Iterator, Iterable, Optional, Sequence, List, TypeVar, Generic, Sized, Union
 
 
 PrecisionFloorLoss = 2 ** (-32)
@@ -3124,17 +3125,35 @@ def print_banner(string, banner_size=100, n_new_lines=0):
 
 
 class Printer(object):
-    def __init__(self, is_datetime=True):
+    def __init__(self, is_datetime=True, store_length=100):
+        """
+        Args:
+            is_datetime: if True, will print the local date time, e.g. [2021-12-30 13:07:08], as prefix.
+            store_length: number of past time to store, for computing average time.
+        """
         self.is_datetime = is_datetime
+        self.store_length = store_length
+        self.limit_list = []
 
-    def print(self, *args, tabs=0, is_datetime=None, banner_size=0, end=None):
+    def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None, avg_window=-1):
         string = ""
         if is_datetime is None:
             is_datetime = self.is_datetime
         if is_datetime:
-            string += get_time()
+            str_time, time_second = get_time(return_numerical_time=True)
+            string += str_time
+            self.limit_list.append(time_second)
+            if len(self.limit_list) > self.store_length:
+                self.limit_list.pop(0)
+
         string += "    " * tabs
-        string += " ".join([str(item) for item in args])
+        string += "{}".format(item)
+        if avg_window != -1 and len(self.limit_list) >= 2:
+            string += "    {:.1f}s from last print, {}-step avg: {:.1f}s".format(
+                self.limit_list[-1] - self.limit_list[-2], avg_window,
+                (self.limit_list[-1] - self.limit_list[-min(avg_window+1,len(self.limit_list))]) / avg_window,
+            )
+
         if banner_size > 0:
             print("=" * banner_size)
         print(string, end=end)
@@ -3572,6 +3591,69 @@ class Cache_Dict(dict):
 
     def __unicode__(self):
         return unicode(repr(self.core_dict))
+
+
+class MineSampler(Sampler[int]):
+    r"""Samples elements randomly. If without replacement, then sample from a shuffled dataset.
+    If with replacement, then user can specify :attr:`num_samples` to draw.
+    Args:
+        data_source (Dataset): dataset to sample from
+        chunk_size (int): Each chunk contains chunk_size of blocks randomly sampled, so that it will finish the chunk of blocks before going on to next chunk. Default -1 will ignore the chunks.
+        min_block_size (int): minimum block size to keep. Inside the block the order is also randomly permuted.
+
+        For example, for a dataset with size = 45, chunk_size = 5 and min_block_size of 2, it will
+            each time take a chunk of 5 blocks, e.g. ([0,1], [11,10], [33,32], [14,15], [40,41]), permute it randomly
+            for yielding, then go on to the next chunk of blocks.
+        If min_block_size == 1, then it is fully random and has the same effect as chunk_size == -1.
+    """
+    data_source: Sized
+    replacement: bool
+
+    def __init__(
+        self,
+        data_source: Sized,
+        chunk_size: int = -1,
+        min_block_size: int = 1,
+    ) -> None:
+        self.data_source = data_source
+        self.chunk_size = chunk_size
+        self.min_block_size = min_block_size
+
+    @property
+    def num_samples(self) -> int:
+        # dataset size might change at runtime
+        return len(self.data_source)
+
+    def __iter__(self) -> Iterator[int]:
+        n = len(self.data_source)
+        seed = int(torch.empty((), dtype=torch.int64).random_().item())
+        generator = torch.Generator()
+        generator.manual_seed(seed)
+
+        if self.chunk_size == -1:
+            yield from torch.randperm(n, generator=generator).tolist()
+        else:
+            """
+            1. Build a list of blocks
+            2. Permute the list of blocks
+            3. Partition into chunks
+            4. Permute fully inside chunk
+            """
+            n_ceil = int(np.ceil(n / self.min_block_size) * self.min_block_size)
+            idx_blocks = np.arange(n_ceil).reshape(-1, self.min_block_size)
+            block_perm = torch.randperm(len(idx_blocks), generator=generator)
+            idx_blocks = idx_blocks[block_perm]
+            n_chunks = int(np.ceil(len(idx_blocks) / self.chunk_size))
+            all_list = []
+            for i in range(n_chunks):
+                idx_chunk = idx_blocks[i*self.chunk_size: (i+1)*self.chunk_size].reshape(-1)
+                chunk_perm = torch.randperm(len(idx_chunk), generator=generator).numpy()
+                idx_chunk_permute = idx_chunk[chunk_perm]
+                all_list.append(idx_chunk_permute[idx_chunk_permute < n])
+            yield from np.concatenate(all_list).tolist()
+
+    def __len__(self) -> int:
+        return self.num_samples
 
 
 class My_Tuple(tuple):
@@ -4513,13 +4595,16 @@ def get_graph_edit_distance(g1, g2, to_undirected=False):
     return edit_distance
 
 
-def get_time(is_bracket=True):
+def get_time(is_bracket=True, return_numerical_time=False):
     """Get the string of the current local time."""
-    from time import localtime, strftime
+    from time import localtime, strftime, time
     string = strftime("%Y-%m-%d %H:%M:%S", localtime())
     if is_bracket:
         string = "[{}] ".format(string)
-    return string
+    if return_numerical_time:
+        return string, time()
+    else:
+        return string
 
 
 def filter_df(df, filter_dict):
