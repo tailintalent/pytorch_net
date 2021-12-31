@@ -4,6 +4,7 @@ from collections import Counter, OrderedDict, Iterable
 import contextlib
 import os
 import pdb
+import math
 from math import gcd
 from numbers import Number
 import numpy as np
@@ -30,6 +31,7 @@ from torch.nn.modules.loss import _Loss
 from torch.autograd import Function
 from torch.utils.data import Dataset, Sampler
 from torch.optim.lr_scheduler import _LRScheduler
+import torch.distributed as dist
 from typing import Iterator, Iterable, Optional, Sequence, List, TypeVar, Generic, Sized, Union
 
 
@@ -45,6 +47,7 @@ COLOR_LIST = ["b", "r", "g", "y", "c", "m", "skyblue", "indigo", "goldenrod", "s
                   "orange", "olive", "tan", "firebrick", "maroon", "darkslategray", "crimson", "dodgerblue", "aquamarine"]
 LINESTYLE_LIST = ["-", "--", ":", "-."]
 MARKER_LIST = ["o", "+", "x", "v", ".", "D"]
+T_co = TypeVar('T_co', covariant=True)
 
 
 def plot_matrices(
@@ -3655,6 +3658,156 @@ class MineSampler(Sampler[int]):
 
     def __len__(self) -> int:
         return self.num_samples
+
+
+class MineDistributedSampler(Sampler[T_co]):
+    r"""Sampler that restricts data loading to a subset of the dataset.
+
+    It is especially useful in conjunction with
+    :class:`torch.nn.parallel.DistributedDataParallel`. In such a case, each
+    process can pass a :class:`~torch.utils.data.DistributedSampler` instance as a
+    :class:`~torch.utils.data.DataLoader` sampler, and load a subset of the
+    original dataset that is exclusive to it.
+
+    .. note::
+        Dataset is assumed to be of constant size.
+
+    Args:
+        dataset: Dataset used for sampling.
+        num_replicas (int, optional): Number of processes participating in
+            distributed training. By default, :attr:`world_size` is retrieved from the
+            current distributed group.
+        rank (int, optional): Rank of the current process within :attr:`num_replicas`.
+            By default, :attr:`rank` is retrieved from the current distributed
+            group.
+        shuffle (bool, optional): If ``True`` (default), sampler will shuffle the
+            indices.
+        seed (int, optional): random seed used to shuffle the sampler if
+            :attr:`shuffle=True`. This number should be identical across all
+            processes in the distributed group. Default: ``0``.
+        drop_last (bool, optional): if ``True``, then the sampler will drop the
+            tail of the data to make it evenly divisible across the number of
+            replicas. If ``False``, the sampler will add extra indices to make
+            the data evenly divisible across the replicas. Default: ``False``.
+
+    .. warning::
+        In distributed mode, calling the :meth:`set_epoch` method at
+        the beginning of each epoch **before** creating the :class:`DataLoader` iterator
+        is necessary to make shuffling work properly across multiple epochs. Otherwise,
+        the same ordering will be always used.
+
+    Example::
+
+        >>> sampler = DistributedSampler(dataset) if is_distributed else None
+        >>> loader = DataLoader(dataset, shuffle=(sampler is None),
+        ...                     sampler=sampler)
+        >>> for epoch in range(start_epoch, n_epochs):
+        ...     if is_distributed:
+        ...         sampler.set_epoch(epoch)
+        ...     train(loader)
+    """
+
+    def __init__(
+        self,
+        dataset: Sized,
+        num_replicas: Optional[int] = None,
+        rank: Optional[int] = None,
+        seed: int = 0,
+        drop_last: bool = False,
+        chunk_size: int = -1,
+        min_block_size: int = 1,
+    ) -> None:
+        if num_replicas is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            num_replicas = dist.get_world_size()
+        if rank is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            rank = dist.get_rank()
+        if rank >= num_replicas or rank < 0:
+            raise ValueError(
+                "Invalid rank {}, rank should be in the interval"
+                " [0, {}]".format(rank, num_replicas - 1))
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.epoch = 0
+        self.drop_last = drop_last
+        self.chunk_size = chunk_size
+        self.min_block_size = min_block_size
+        # If the dataset length is evenly divisible by # of replicas, then there
+        # is no need to drop any data, since the dataset will be split equally.
+        if self.drop_last and len(self.dataset) % self.num_replicas != 0:
+            # Split to nearest available length that is evenly divisible.
+            # This is to ensure each rank receives the same amount of data when
+            # using this Sampler.
+            self.num_samples = math.ceil(
+                (len(self.dataset) - self.num_replicas) / self.num_replicas
+            )
+        else:
+            self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)
+        self.total_size = self.num_samples * self.num_replicas
+        self.seed = seed
+
+    def __iter__(self) -> Iterator[T_co]:
+        generator = torch.Generator()
+        generator.manual_seed(self.seed + self.epoch)
+
+        if self.chunk_size == -1:
+            indices = torch.randperm(len(self.dataset), generator=generator).tolist()
+        else:
+            """
+            1. Build a list of blocks
+            2. Permute the list of blocks
+            3. Partition into chunks
+            4. Permute fully inside chunk
+            """
+            n = len(self.dataset)
+            n_ceil = int(np.ceil(n / self.min_block_size) * self.min_block_size)
+            idx_blocks = np.arange(n_ceil).reshape(-1, self.min_block_size)
+            block_perm = torch.randperm(len(idx_blocks), generator=generator)
+            idx_blocks = idx_blocks[block_perm]
+            n_chunks = int(np.ceil(len(idx_blocks) / self.chunk_size))
+            all_list = []
+            for i in range(n_chunks):
+                idx_chunk = idx_blocks[i*self.chunk_size: (i+1)*self.chunk_size].reshape(-1)
+                chunk_perm = torch.randperm(len(idx_chunk), generator=generator).numpy()
+                idx_chunk_permute = idx_chunk[chunk_perm]
+                all_list.append(idx_chunk_permute[idx_chunk_permute < n])
+            indices = np.concatenate(all_list).tolist()
+
+        if not self.drop_last:
+            # add extra samples to make it evenly divisible
+            padding_size = self.total_size - len(indices)
+            if padding_size <= len(indices):
+                indices += indices[:padding_size]
+            else:
+                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
+        else:
+            # remove tail of data to make it evenly divisible.
+            indices = indices[:self.total_size]
+        assert len(indices) == self.total_size
+
+        # subsample
+        indices = indices[self.rank:self.total_size:self.num_replicas]
+        assert len(indices) == self.num_samples
+
+        return iter(indices)
+
+    def __len__(self) -> int:
+        return self.num_samples
+
+    def set_epoch(self, epoch: int) -> None:
+        r"""
+        Sets the epoch for this sampler. When :attr:`shuffle=True`, this ensures all replicas
+        use a different random ordering for each epoch. Otherwise, the next iteration of this
+        sampler will yield the same ordering.
+
+        Args:
+            epoch (int): Epoch number.
+        """
+        self.epoch = epoch
 
 
 class My_Tuple(tuple):
