@@ -3139,12 +3139,14 @@ class Printer(object):
         self.store_length = store_length
         self.limit_list = []
 
-    def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None, avg_window=-1):
+    def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None, avg_window=-1, precision="second", is_silent=False):
+        if is_silent:
+            return
         string = ""
         if is_datetime is None:
             is_datetime = self.is_datetime
         if is_datetime:
-            str_time, time_second = get_time(return_numerical_time=True)
+            str_time, time_second = get_time(return_numerical_time=True, precision=precision)
             string += str_time
             self.limit_list.append(time_second)
             if len(self.limit_list) > self.store_length:
@@ -3153,7 +3155,7 @@ class Printer(object):
         string += "    " * tabs
         string += "{}".format(item)
         if avg_window != -1 and len(self.limit_list) >= 2:
-            string += "    {:.1f}s from last print, {}-step avg: {:.1f}s".format(
+            string += "   \t{:.3f}s from last print, {}-step avg: {:.3f}s".format(
                 self.limit_list[-1] - self.limit_list[-2], avg_window,
                 (self.limit_list[-1] - self.limit_list[-min(avg_window+1,len(self.limit_list))]) / avg_window,
             )
@@ -4749,10 +4751,13 @@ def get_graph_edit_distance(g1, g2, to_undirected=False):
     return edit_distance
 
 
-def get_time(is_bracket=True, return_numerical_time=False):
+def get_time(is_bracket=True, return_numerical_time=False, precision="second"):
     """Get the string of the current local time."""
     from time import localtime, strftime, time
-    string = strftime("%Y-%m-%d %H:%M:%S", localtime())
+    if precision == "second":
+        string = strftime("%Y-%m-%d %H:%M:%S", localtime())
+    elif precision == "millisecond":
+        string = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
     if is_bracket:
         string = "[{}] ".format(string)
     if return_numerical_time:
