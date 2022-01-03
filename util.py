@@ -182,6 +182,7 @@ def plot_2_axis(
     figsize=(7,5),
     fontsize=14,
 ):
+    import matplotlib.pylab as plt
     fig, ax1 = plt.subplots(figsize=figsize)
 
     color = 'tab:blue'
@@ -391,7 +392,8 @@ def to_np_array(*arrays, **kwargs):
             array = array.tolist()
         array_list.append(array)
     if len(array_list) == 1:
-        array_list = array_list[0]
+        if not ("keep_list" in kwargs and kwargs["keep_list"]):
+            array_list = array_list[0]
     return array_list
 
 
