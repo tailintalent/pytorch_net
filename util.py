@@ -143,6 +143,73 @@ def plot_matrices(
     print()
 
 
+def plot_simple(
+    x=None,
+    y=None,
+    title=None,
+    xlabel=None,
+    ylabel=None,
+    ylim=None,
+    figsize=(7,5),
+):
+    plt.figure(figsize=figsize)
+    if x is None:
+        plt.plot(y)
+    else:
+        plt.plot(x, y)
+    if title is not None:
+        plt.title(title, fontsize=fontsize)
+    if xlabel is not None:
+        plt.xlabel(xlabel, fontsize=fontsize)
+    if ylabel is not None:
+        plt.ylabel(ylabel, fontsize=fontsize)
+    plt.tick_params(labelsize=fontsize)
+    if ylim is not None:
+        plt.ylim(ylim)
+    plt.show()
+
+
+def plot_2_axis(
+    x,
+    y1,
+    y2,
+    xlabel=None,
+    ylabel1=None,
+    ylabel2=None,
+    ylim1=None,
+    ylim2=None,
+    title=None,
+    figsize=(7,5),
+    fontsize=14,
+):
+    fig, ax1 = plt.subplots(figsize=figsize)
+
+    color = 'tab:blue'
+    if xlabel is not None:
+        ax1.set_xlabel(xlabel, fontsize=fontsize)
+    if ylabel1 is not None:
+        ax1.set_ylabel(ylabel1, color=color, fontsize=fontsize)
+    ax1.plot(x, y1, color=color)
+    ax1.tick_params(axis='y', labelcolor=color, labelsize=fontsize-1)
+    if ylim1 is not None:
+        ax1.set_ylim(ylim1)
+
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+    color = 'tab:red'
+    if ylabel2 is not None:
+        ax2.set_ylabel(ylabel2, color=color, fontsize=fontsize)  # we already handled the x-label with ax1
+    ax2.plot(x, y2, color=color)
+    ax2.tick_params(axis='y', labelcolor=color, labelsize=fontsize-1)
+    if ylim2 is not None:
+        ax2.set_ylim(ylim2)
+
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    if title is not None:
+        plt.title(title, fontsize=fontsize)
+    plt.show()
+
+
 def plot_vectors(
     Dict,
     x_range=None,
@@ -5077,3 +5144,21 @@ class Interp1d_torch(torch.autograd.Function):
                 result[index] = gradients[pos]
                 pos += 1
         return (*result,)
+
+
+def extend_dims(tensor, n_dims, loc="right"):
+    """Extends the dimensions by appending 1 at the right or left of the shape.
+
+    E.g. if tensor has shape of (4, 6), then 
+        extend_dims(tensor, 4, "right") has shape of (4,6,1,1);
+        extend_dims(tensor, 4, "left")  has shape of (1,1,4,6).
+    """
+    if loc == "right":
+        while len(tensor.shape) < n_dims:
+            tensor = tensor[..., None]
+    elif loc == "left":
+        while len(tensor.shape) < n_dims:
+            tensor = tensor[None]
+    else:
+        raise
+    return tensor
