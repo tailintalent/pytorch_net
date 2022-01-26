@@ -4732,7 +4732,10 @@ def get_soft_IoU(mask1, mask2, dim, epsilon=1):
         mask1, mask2: two masks with the same shape and value between [0, 1]
         dim: dimensions over which to aggregate.
     """
-    soft_IoU = (mask1 * mask2).sum(dim) / (mask1 + mask2 - mask1 * mask2).sum(dim).clamp(epsilon)
+    if isinstance(mask1, np.ndarray):
+        soft_IoU = (mask1 * mask2).sum(dim) / (mask1 + mask2 - mask1 * mask2).sum(dim).clip(epsilon, None)
+    else:
+        soft_IoU = (mask1 * mask2).sum(dim) / (mask1 + mask2 - mask1 * mask2).sum(dim).clamp(epsilon)
     return soft_IoU
 
 
