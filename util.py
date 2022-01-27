@@ -132,7 +132,7 @@ def plot_matrices(
     
     if filename is not None:
         plt.tight_layout()
-        plt.savefig(filename)
+        plt.savefig(filename, bbox_inches="tight", dpi=400)
     if pdf is not None:
         pdf.savefig()  # saves the current figure into a pdf page
         plt.close()
