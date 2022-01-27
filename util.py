@@ -64,6 +64,7 @@ def plot_matrices(
     plt = None,
     pdf = None,
     verbose = False,
+    no_xlabel = False,
     ):
     """Plot the images for each matrix in the matrix_list."""
     import matplotlib
@@ -118,13 +119,14 @@ def plot_matrices(
             ax.matshow(image, cmap = cmap, vmin = scale_limit[0], vmax = scale_limit[1])
         if len(subtitles) > 0:
             ax.set_title(subtitles[i])
-        try:
-            xlabel = "({0:.4f},{1:.4f})\nshape: ({2}, {3})".format(np.min(image), np.max(image), image.shape[0], image.shape[1])
-            if x_axis_list is not None:
-                xlabel += "\n{}".format(x_axis_list[i])
-            plt.xlabel(xlabel)
-        except:
-            pass
+        if not no_xlabel:
+            try:
+                xlabel = "({0:.4f},{1:.4f})\nshape: ({2}, {3})".format(np.min(image), np.max(image), image.shape[0], image.shape[1])
+                if x_axis_list is not None:
+                    xlabel += "\n{}".format(x_axis_list[i])
+                plt.xlabel(xlabel)
+            except:
+                pass
         plt.xticks(np.array([]))
         plt.yticks(np.array([]))
     
