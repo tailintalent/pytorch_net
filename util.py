@@ -35,6 +35,7 @@ import torch.distributed as dist
 from typing import Iterator, Iterable, Optional, Sequence, List, TypeVar, Generic, Sized, Union
 
 
+
 PrecisionFloorLoss = 2 ** (-32)
 CLASS_TYPES = ["MLP", "Multi_MLP", "Branching_Net", "Fan_in_MLP", "Model_Ensemble", "Model_with_uncertainty",
                "RNNCellBase", "LSTM", "Wide_ResNet", "Conv_Net", "Conv_Model", "Conv_Autoencoder", "VAE", "Net_reparam", "Mixture_Gaussian", "Triangular_dist"]
