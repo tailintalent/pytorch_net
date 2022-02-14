@@ -4211,7 +4211,7 @@ class Mixture_Gaussian_reparam(nn.Module):
             if reparam_mode == "diag":
                 self.scale_list = nn.Parameter(torch.log(torch.exp((torch.rand(1, Z_size, n_components) * 0.2 + 0.9) * scale_scale) - 1))
             elif reparam_mode == "diagg":
-                self.scale_list = torch.ones(1, Z_size, n_components)
+                self.scale_list = torch.ones(1, Z_size, n_components).to(self.device)
             else:
                 raise
             self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
