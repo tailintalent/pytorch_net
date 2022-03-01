@@ -12,6 +12,7 @@ import pickle
 from numbers import Number
 from collections import OrderedDict
 import itertools
+import pdb
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -4208,7 +4209,12 @@ class Mixture_Gaussian_reparam(nn.Module):
             self.n_components = n_components
             self.Z_size = Z_size
             self.mean_list = nn.Parameter((torch.rand(1, Z_size, n_components) - 0.5) * mean_scale)
-            self.scale_list = nn.Parameter(torch.log(torch.exp((torch.rand(1, Z_size, n_components) * 0.2 + 0.9) * scale_scale) - 1))
+            if reparam_mode == "diag":
+                self.scale_list = nn.Parameter(torch.log(torch.exp((torch.rand(1, Z_size, n_components) * 0.2 + 0.9) * scale_scale) - 1))
+            elif reparam_mode == "diagg":
+                self.register_buffer('scale_list', torch.ones(1, Z_size, n_components))
+            else:
+                raise
             self.weight_logits = nn.Parameter(torch.zeros(1, n_components))
             if mean_list is not None:
                 self.mean_list.data = to_Variable(mean_list)
@@ -4221,7 +4227,7 @@ class Mixture_Gaussian_reparam(nn.Module):
     def log_prob(self, input):
         """Obtain the log_prob of the input."""
         input = input.unsqueeze(-1)  # [S, B, Z, 1]
-        if self.reparam_mode == "diag":
+        if self.reparam_mode in ["diag", "diagg"]:
             if self.is_reparam:
                 # logits: [S, B, Z, k]
                 logits = - (input - self.mean_list) ** 2 / 2 / self.scale_list ** 2 - torch.log(self.scale_list * np.sqrt(2 * np.pi))
