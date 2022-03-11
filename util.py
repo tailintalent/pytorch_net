@@ -5216,3 +5216,9 @@ def diff_recursive(d1, d2, level='root'):
             result = result.all()
         if result == False:
             print('{:<20} {} != {}'.format(level, d1, d2))
+
+
+def requires_grad(parameters, flag=True):
+    """Make the parameters of a module or list require gradient or not require gradient"""
+    for p in parameters:
+        p.requires_grad = flag
