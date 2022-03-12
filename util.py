@@ -4790,14 +4790,98 @@ def get_nx_graph(graph, isplot=False):
 
 def draw_nx_graph(g):
     import networkx as nx
+    import matplotlib.pylab as plt
     pos = nx.spring_layout(g)
     nx.draw(g, pos=pos, with_labels=True, edge_color="#E115DA")
     nx.draw_networkx_edge_labels(
         g,
         pos,
-        edge_labels={(edge_src, edge_dst): item["type"] for edge_src, edge_dst, item in g.edges(data=True)},
+        edge_labels={(edge_src, edge_dst): item["type"] for edge_src, edge_dst, item in g.edges(data=True)} if "type" in list(g.edges(data=True))[0][2] else None,
         font_color='red',
     )
+    plt.show()
+
+
+def to_nx_graph(item, to_undirected=False):
+    """Recursively transform an item or iterable into nx Graph."""
+    if isinstance(item, MineList):
+        g = get_nx_graph(item)
+        if to_undirected:
+            g = g.to_undirected(reciprocal=False)
+        return g
+    elif isinstance(item, list):
+        return [to_nx_graph(ele, to_undirected=to_undirected) for ele in item]
+    elif isinstance(item, dict):
+        return {key: to_nx_graph(value, to_undirected=to_undirected) for key, value in item.items()}
+    elif isinstance(item, tuple):
+        return tuple(to_nx_graph(ele, to_undirected=to_undirected) for ele in item)
+    else:
+        raise
+
+
+def func_recursive(item, func, atomic_class=None, *args, **kwargs):
+    """Recursively apply a function to an item (iterable)"""
+    if atomic_class is not None and isinstance(item, atomic_class):
+        return func(item)
+    elif isinstance(item, list):
+        return [func_recursive(ele, func=func, atomic_class=atomic_class, *args, **kwargs) for ele in item]
+    elif isinstance(item, dict):
+        return {key: func_recursive(value, func=func, atomic_class=atomic_class, *args, **kwargs) for key, value in item.items()}
+    elif isinstance(item, tuple):
+        return tuple(func_recursive(ele, func=func, atomic_class=atomic_class, *args, **kwargs) for ele in item)
+    else:
+        raise
+
+
+def nx_to_graph(g):
+    """Transform nx graph into graph list format."""
+    from networkx import DiGraph
+    graph = MineList()
+    for node in g.nodes:
+        node, node_type = node.split(":")
+        graph.append((int(node), node_type))
+    for node1, node2, edge_info in g.edges(data=True):
+        graph.append(((int(node1.split(":")[0]), int(node2.split(":")[0])), edge_info["type"]))
+        if not isinstance(g, DiGraph):
+            graph.append(((int(node2.split(":")[0]), int(node1.split(":")[0])), edge_info["type"]))
+    return graph
+
+
+def to_line_graph(graph):
+    """
+    Transform a graph into line_graph.
+    
+    Example:
+        graph: 
+            [(0, 'line'),
+             (1, 'line'),
+             (2, 'line'),
+             ((0, 1), 're1'),
+             ((1, 2), 're2'),
+            ]
+        line_graph: 
+            [('0,1', 're1'),
+             ('1,2', 're2'),
+             (('0,1', '1,2'), '1:line'),
+             (('1,2', '0,1'), '1:line'),
+            ]
+    """
+    edges = [item for item in graph if not isinstance(item[0], Number)]
+    line_graph = MineList([])
+    for edge in edges:
+        edge_node = f"{edge[0][0]},{edge[0][1]}"
+        line_graph.append((edge_node, edge[1]))
+    for edge1 in edges:
+        for edge2 in edges:
+            if edge1 != edge2:
+                edge1_nodes = set(edge1[0])
+                edge2_nodes = set(edge2[0])
+                common_nodes = list(edge1_nodes.intersection(edge2_nodes))
+                if len(common_nodes) > 0:
+                    assert len(common_nodes) == 1
+                    common_node = common_nodes[0]
+                    line_graph.append(((f"{edge1[0][0]},{edge1[0][1]}", f"{edge2[0][0]},{edge2[0][1]}"), f"{common_node}:{dict(graph)[common_node]}"))
+    return line_graph
 
 
 def get_graph_edit_distance(g1, g2, to_undirected=False):
@@ -5222,3 +5306,7 @@ def requires_grad(parameters, flag=True):
     """Make the parameters of a module or list require gradient or not require gradient"""
     for p in parameters:
         p.requires_grad = flag
+        
+
+class MineList(list):
+    pass
