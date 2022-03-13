@@ -5327,3 +5327,20 @@ def get_norm(tensor, norm_type, dim=-1, epsilon=0):
     else:
         raise
     return norm
+
+
+def tsne_torch(embeddings, num_components, verbose=True):
+    """
+    Perform tsne embedding.
+
+    Args:
+        num_components: dimensions of the mapped space.
+    """
+    from tsne_torch import TorchTSNE as TSNE
+    shape = embeddings.shape
+    embeddings = embeddings.view(-1, shape[-1])
+    embeddings = TSNE(n_components=num_components, perplexity=30, n_iter=1000, verbose=verbose).fit_transform(embeddings)
+
+    new_shape = list(shape[:-1]) + [num_components]
+    embeddings = embeddings.reshape(new_shape)
+    return embeddings
