@@ -5310,3 +5310,20 @@ def requires_grad(parameters, flag=True):
 
 class MineList(list):
     pass
+
+
+def get_norm(tensor, norm_type, dim=-1, epsilon=0):
+    """Get the norm for a batch of vectors, on the "dim" dimension.
+
+    Args:
+        norm_type: choose from "l2", "l1", "max" (L_infinity).
+    """
+    if norm_type == "l2":
+        norm = (tensor.square().sum(dim) + epsilon).sqrt()
+    elif norm_type == "l1":
+        norm = tensor.abs().sum(dim)
+    elif norm_type == "max":
+        norm = tensor.max(dim)[0]
+    else:
+        raise
+    return norm
