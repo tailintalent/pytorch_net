@@ -5344,3 +5344,9 @@ def tsne_torch(embeddings, num_components, verbose=True):
     new_shape = list(shape[:-1]) + [num_components]
     embeddings = embeddings.reshape(new_shape)
     return embeddings
+
+
+def leaky_clamp(x, min, max, slope=0.01):
+    """Between min and max, use the value x. Outside, use slope. Also the full function is continuous."""
+    negative_slope = 2*slope - 1
+    return ((nn.LeakyReLU(negative_slope=negative_slope)(x-min)+min) + (max-nn.LeakyReLU(negative_slope=negative_slope)(max-x))) / 2
