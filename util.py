@@ -1304,7 +1304,7 @@ def get_loss_cumu(loss_dict, cumu_mode):
     if N == 1:
         return loss_list[0]
     epsilon = 1e-20  # to prevent NaN
-    if cumu_mode.startswith("gm"):
+    if isinstance(cumu_mode, str) and cumu_mode.startswith("gm"):
         cumu_mode_str, num = cumu_mode.split("-")
         cumu_mode = (cumu_mode_str, eval(num))
     if isinstance(cumu_mode, tuple) and cumu_mode[0] in ["generalized-mean", "gm"]:
