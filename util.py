@@ -5312,7 +5312,7 @@ class MineList(list):
     pass
 
 
-def get_norm(tensor, norm_type, dim=-1, epsilon=0):
+def get_norm(tensor, norm_type, dim=-1, epsilon=1e-10):
     """Get the norm for a batch of vectors, on the "dim" dimension.
 
     Args:
