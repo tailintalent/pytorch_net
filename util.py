@@ -70,7 +70,8 @@ def plot_matrices(
     """Plot the images for each matrix in the matrix_list."""
     import matplotlib
     from matplotlib import pyplot as plt
-    fig = plt.figure(figsize = figsize)
+    n_rows = len(matrix_list) // images_per_row
+    fig = plt.figure(figsize=(20, n_rows*8) if figsize is None else figsize)
     fig.set_canvas(plt.gcf().canvas)
     if title is not None:
         fig.suptitle(title, fontsize = 18, horizontalalignment = 'left', x=0.1)
