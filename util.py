@@ -56,7 +56,7 @@ def plot_matrices(
     shape = None, 
     images_per_row = 10, 
     scale_limit = None,
-    figsize = (20, 8), 
+    figsize = None,
     x_axis_list = None,
     filename = None,
     title = None,
@@ -66,12 +66,16 @@ def plot_matrices(
     pdf = None,
     verbose = False,
     no_xlabel = False,
+    cmap = None,
+    is_balanced = False,
     ):
-    """Plot the images for each matrix in the matrix_list."""
+    """Plot the images for each matrix in the matrix_list.
+    Adapted from https://github.com/tailintalent/pytorch_net/blob/c1cfda5e90fef9503c887f5061cb7b1262133ac0/util.py#L54
+    """
     import matplotlib
     from matplotlib import pyplot as plt
     n_rows = len(matrix_list) // images_per_row
-    fig = plt.figure(figsize=(20, n_rows*8) if figsize is None else figsize)
+    fig = plt.figure(figsize=(20, n_rows*7) if figsize is None else figsize)
     fig.set_canvas(plt.gcf().canvas)
     if title is not None:
         fig.suptitle(title, fontsize = 18, horizontalalignment = 'left', x=0.1)
@@ -99,13 +103,15 @@ def plot_matrices(
             scale_min = min(scale_min, np.min(matrix))
             scale_max = max(scale_max, np.max(matrix))
         scale_limit = (scale_min, scale_max)
+        if is_balanced:
+            scale_min, scale_max = -max(abs(scale_min), abs(scale_max)), max(abs(scale_min), abs(scale_max))
     for i in range(len(matrix_list)):
         ax = fig.add_subplot(rows, images_per_row, i + 1)
         image = matrix_list_reshaped[i].astype(float)
         if len(image.shape) == 1:
             image = np.expand_dims(image, 1)
         if highlight_bad_values:
-            cmap = copy(plt.cm.get_cmap("binary"))
+            cmap = copy(plt.cm.get_cmap("binary" if cmap is None else cmap))
             cmap.set_bad('red', alpha = 0.2)
             mask_key = []
             mask_key.append(np.isnan(image))
@@ -113,11 +119,14 @@ def plot_matrices(
             mask_key = np.any(np.array(mask_key), axis = 0)
             image = np.ma.array(image, mask = mask_key)
         else:
-            cmap = matplotlib.cm.binary
+            cmap = matplotlib.cm.binary if cmap is None else cmap
         if scale_limit is None:
             ax.matshow(image, cmap = cmap)
         else:
             assert len(scale_limit) == 2, "scale_limit should be a 2-tuple!"
+            if is_balanced:
+                scale_min, scale_max = scale_limit
+                scale_limit = -max(abs(scale_min), abs(scale_max)), max(abs(scale_min), abs(scale_max)) 
             ax.matshow(image, cmap = cmap, vmin = scale_limit[0], vmax = scale_limit[1])
         if len(subtitles) > 0:
             ax.set_title(subtitles[i])
@@ -131,6 +140,11 @@ def plot_matrices(
                 pass
         plt.xticks(np.array([]))
         plt.yticks(np.array([]))
+    # if cmap is not None:
+    #     cax = plt.axes([0.85, 0.1, 0.075, 0.8])
+    #     plt.colorbar(cax=cax)
+        # cbar_ax = fig.add_axes([0.92, 0.3, 0.01, 0.4])
+        # plt.colorbar(cax=cbar_ax)
     
     if filename is not None:
         plt.tight_layout()
