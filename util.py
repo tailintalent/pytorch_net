@@ -74,7 +74,7 @@ def plot_matrices(
     """
     import matplotlib
     from matplotlib import pyplot as plt
-    n_rows = len(matrix_list) // images_per_row
+    n_rows = max(len(matrix_list) // images_per_row, 1)
     fig = plt.figure(figsize=(20, n_rows*7) if figsize is None else figsize)
     fig.set_canvas(plt.gcf().canvas)
     if title is not None:
@@ -145,7 +145,7 @@ def plot_matrices(
     #     plt.colorbar(cax=cax)
         # cbar_ax = fig.add_axes([0.92, 0.3, 0.01, 0.4])
         # plt.colorbar(cax=cbar_ax)
-    
+
     if filename is not None:
         plt.tight_layout()
         plt.savefig(filename, bbox_inches="tight", dpi=400)
