@@ -4788,7 +4788,7 @@ def get_nx_graph(graph, isplot=False):
     g = nx.DiGraph()
     graph_dict = dict([ele[:2] for ele in graph])
     for item in graph:
-        if isinstance(item[0], Number):
+        if isinstance(item[0], Number) or isinstance(item[0], str):
             g.add_node("{}:{}".format(item[0], item[1]), type=item[1], E=item[2] if len(item) > 2 else None)
         elif isinstance(item[0], tuple):
             src, dst = item[0]
@@ -4895,8 +4895,44 @@ def to_line_graph(graph):
                 if len(common_nodes) > 0:
                     assert len(common_nodes) == 1
                     common_node = common_nodes[0]
-                    line_graph.append(((f"{edge1[0][0]},{edge1[0][1]}", f"{edge2[0][0]},{edge2[0][1]}"), f"{common_node}:{dict(graph)[common_node]}"))
+                    line_graph.append(((f"{edge1[0][0]},{edge1[0][1]}", f"{edge2[0][0]},{edge2[0][1]}"), dict(graph)[common_node]))
     return line_graph
+
+
+def filter_sub_linegraph(alpha_item, task_linegraph_item):
+    """
+    Args:
+        alpha_item: e.g. [True, True, False]
+        task_linegraph_item: e.g. 
+            [('0,1', 're1'),
+             ('1,2', 're2'),
+             ('0,2', 're3'),
+             (('0,1', '1,2'), 'line'),
+             (('0,1', '0,2'), 'line'),
+             (('1,2', '0,1'), 'line'),
+             (('1,2', '0,2'), 'line'),
+             (('0,2', '0,1'), 'line'),
+             (('0,2', '1,2'), 'line'),
+            ]
+
+    Returns:
+        linegraph:
+            [('0,1', 're1'),
+             ('1,2', 're2'),
+             (('0,1', '1,2'), 'line'),
+             (('1,2', '0,1'), 'line'),
+            ]
+    """
+    assert len(alpha_item.shape) == 1
+    linegraph = []
+    nodes_all = [ele[0] for ele in task_linegraph_item if not isinstance(ele[0], tuple)]
+    nodes_chosen = [ele for i, ele in enumerate(nodes_all) if alpha_item[i] == True]
+    linegraph = [ele for ele in task_linegraph_item if not isinstance(ele[0], tuple) and ele[0] in nodes_chosen]
+    for item in task_linegraph_item:
+        if isinstance(item[0], tuple):
+            if item[0][0] in nodes_chosen and item[0][1] in nodes_chosen:
+                linegraph.append(item)
+    return linegraph
 
 
 def get_graph_edit_distance(g1, g2, to_undirected=False):
@@ -5365,3 +5401,13 @@ def leaky_clamp(x, min, max, slope=0.01):
     """Between min and max, use the value x. Outside, use slope. Also the full function is continuous."""
     negative_slope = 2*slope - 1
     return ((nn.LeakyReLU(negative_slope=negative_slope)(x-min)+min) + (max-nn.LeakyReLU(negative_slope=negative_slope)(max-x))) / 2
+
+
+def first_key(Dict):
+    """Get the first key of a dictionary."""
+    return next(iter(Dict))
+
+
+def first_item(Dict):
+    """Get the first item of a dictionary."""
+    return Dict[first_key(Dict)]
