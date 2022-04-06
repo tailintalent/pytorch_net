@@ -730,6 +730,9 @@ def get_optimizer(optim_type, lr, parameters, **kwargs):
     elif optim_type == "sgd":
         nesterov = kwargs["nesterov"] if "nesterov" in kwargs else False
         optimizer = optim.SGD(parameters, lr=lr, momentum=momentum, nesterov=nesterov)
+    elif optim_type == "adabound":
+        import adabound
+        optimizer = adabound.AdaBound(parameters, lr=lr, final_lr=0.1 if "final_lr" not in kwargs else kwargs["final_lr"])
     elif optim_type == "RMSprop":
         optimizer = optim.RMSprop(parameters, lr=lr, momentum=momentum)
     elif optim_type == "LBFGS":
@@ -1313,6 +1316,8 @@ def get_loss_cumu(loss_dict, cumu_mode):
         loss_list = torch.stack(loss_dict)
     elif isinstance(loss_dict, torch.Tensor):
         loss_list = loss_dict
+        if len(loss_list.shape) == 0:
+            return loss_list
     else:
         raise
     N = len(loss_list)
@@ -1329,6 +1334,10 @@ def get_loss_cumu(loss_dict, cumu_mode):
             cumu_mode = "geometric"
         elif cumu_mode[1] == 1:
             cumu_mode = "mean"
+        elif cumu_mode[1] == "min":
+            cumu_mode = "min"
+        elif cumu_mode[1] == "max":
+            cumu_mode = "max"
     
     if cumu_mode == "harmonic":
         loss = N / (1 / (loss_list + epsilon)).sum()
@@ -4877,8 +4886,8 @@ def to_line_graph(graph):
         line_graph: 
             [('0,1', 're1'),
              ('1,2', 're2'),
-             (('0,1', '1,2'), '1:line'),
-             (('1,2', '0,1'), '1:line'),
+             (('0,1', '1,2'), 'line'),
+             (('1,2', '0,1'), 'line'),
             ]
     """
     edges = [item for item in graph if not isinstance(item[0], Number)]
