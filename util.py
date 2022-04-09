@@ -3929,6 +3929,21 @@ class My_Tuple(tuple):
         else: 
             return self[0].__getattribute__(key)
 
+
+class MineDataParallel(nn.parallel.DataParallel):
+    def __getattribute__(self, key):
+        module_attrs = [
+            'training',
+        ]
+        if key in module_attrs:
+            return object.__getattribute__(self.module, key)
+        else:
+            if hasattr(MineDataParallel, key):
+                return object.__getattribute__(self, key)
+            else:
+                return super().__getattribute__(key)
+
+
 class Batch(object):
     def __init__(self, is_absorb_batch=False, is_collate_tuple=False):
         """
