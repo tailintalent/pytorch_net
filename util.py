@@ -4923,6 +4923,143 @@ def to_line_graph(graph):
     return line_graph
 
 
+def get_all_graphs(graph):
+    """
+    Args:
+        graph, e.g. 
+            [(0, ('green', 'cube', 'small')),
+             (1, ('red', 'cube', 'small')),
+             (2, ('green', 'cube', 'small')),
+             ((0, 1), ('SameShape', 'SameSize')),
+             ((0, 2), ('SameColor', 'SameShape', 'SameSize')),
+             ((1, 2), ('SameShape', 'SameSize'))]
+    
+    Returns: 
+        graphs_all, e.g.:
+            [[(0, ('green', 'cube', 'small')),
+              (1, ('red', 'cube', 'small')),
+              (2, ('green', 'cube', 'small')),
+              ((0, 1), 'SameShape'),
+              ((0, 2), 'SameColor'),
+              ((1, 2), 'SameShape')],
+             [(0, ('green', 'cube', 'small')),
+              (1, ('red', 'cube', 'small')),
+              (2, ('green', 'cube', 'small')),
+              ((0, 1), 'SameShape'),
+              ((0, 2), 'SameColor'),
+              ((1, 2), 'SameSize')],
+              
+             ...
+             
+             [(0, ('green', 'cube', 'small')),
+              (1, ('red', 'cube', 'small')),
+              (2, ('green', 'cube', 'small')),
+              ((0, 1), 'SameSize'),
+              ((0, 2), 'SameSize'),
+              ((1, 2), 'SameSize')]]
+    """
+    nodes = [ele for ele in graph if not (isinstance(ele[0], tuple) or isinstance(ele[0], list))]
+    edges = [ele for ele in graph if isinstance(ele[0], tuple) or isinstance(ele[0], list)]
+    edges_dict = dict(edges)
+    id_dict = {key: list(range(len(item))) for key, item in edges_dict.items()}
+    id_values = list(id_dict.values())
+    id_keys = list(id_dict)
+    all_combinations = list(itertools.product(*id_values))
+    graphs_all = []
+    for combination in all_combinations:
+        edges_entity = []
+        for i, item in enumerate(combination):
+            key = id_keys[i]
+            value = edges_dict[key][item]
+            edges_entity.append((key, value))
+        graphs_all.append(nodes + edges_entity)
+    return graphs_all
+
+
+def get_matching_mapping(graph, subgraph_cand):
+    """
+    Args:
+        graph, e.g.:
+            [(0, ('Green', 'Cube', 'Small')),
+             (1, ('Blue', 'Cube', 'Small')),
+             (2, ('Red', 'Cube', 'Small')),
+             ((0, 1), 'SameShape'),
+             ((0, 2), 'SameColor'),
+             ((1, 2), 'SameShape')]
+        subgraph_cand, e.g.
+            [(0, 'Red'),
+             (1, ""),
+             (2, ""),
+             ((0, 1), 'SameColor'),
+             ((1, 2), 'SameShape')]
+
+    Returns:
+        node_reverse_mappings_final, e.g. {1: 0, 0: 2, 2: 1} (from subgraph to graph)
+    """
+    def get_common_diff_nodes(edge):
+        line1 = eval(edge[0].split(":")[0])
+        line2 = eval(edge[1].split(":")[0])
+        common_node = list(set(line1).intersection(set(line2)))[0]
+        diff1 = list(set(line1).difference({common_node}))[0]
+        diff2 = list(set(line2).difference({common_node}))[0]
+        return common_node, (diff1, diff2)
+    from networkx.algorithms import isomorphism
+    graph_linegraph = get_nx_graph(to_line_graph(graph))
+    subgraph_linegraph = get_nx_graph(to_line_graph(subgraph_cand))
+    DiGM = isomorphism.DiGraphMatcher(graph_linegraph, subgraph_linegraph)
+    valid_linegraph_mappings = []
+    for match in DiGM.subgraph_isomorphisms_iter():
+        """
+        edge_match: {graph_node: subgraph_cand_node}, e.g.
+                    {'0,1:SameShape': '0,1:SameColor', '0,2:SameColor': '1,2:SameShape'}
+        """
+        is_valid = True
+        for graph_node, subgraph_node in match.items():
+            if subgraph_node.split(":")[1] != graph_node.split(":")[1]:
+                is_valid = False
+                break
+        reverse_match = {value: key for key, value in match.items()}
+
+        if is_valid:
+            for edge in subgraph_linegraph.edges:
+                """
+                edge, e.g. ('0,1:SameColor', '1,2:SameShape')
+                """
+                subgraph_edge_type = subgraph_linegraph.edges[edge]["type"]
+                graph_edge_type = graph_linegraph.edges[(reverse_match[edge[0]], reverse_match[edge[1]])]["type"]
+                if subgraph_edge_type != "" and subgraph_edge_type not in graph_edge_type:
+                    is_valid = False
+                    break
+        if is_valid:
+            valid_linegraph_mappings.append(match)
+    node_reverse_mappings = []
+    if len(valid_linegraph_mappings) > 0:
+        for valid_linegraph_mapping in valid_linegraph_mappings:
+            node_reverse_mapping = []
+            reverse_match = {value: key for key, value in valid_linegraph_mapping.items()}
+            for edge in subgraph_linegraph.edges:
+                subgraph_common_node, subgraph_diff = get_common_diff_nodes(edge)
+                graph_common_node, graph_diff = get_common_diff_nodes((reverse_match[edge[0]], reverse_match[edge[1]]))
+                node_reverse_mapping.append((subgraph_common_node, graph_common_node))
+                node_reverse_mapping.append((subgraph_diff[0], graph_diff[0]))
+                node_reverse_mapping.append((subgraph_diff[1], graph_diff[1]))
+            node_reverse_mapping = dict(remove_duplicates(node_reverse_mapping))
+            node_reverse_mappings.append(node_reverse_mapping)
+
+    graph_dict = dict(graph)
+    subgraph_dict = dict(subgraph_cand)
+    node_reverse_mappings_final = []
+    for node_reverse_mapping in node_reverse_mappings:
+        is_valid = True
+        for subgraph_node, graph_node in node_reverse_mapping.items():
+            if subgraph_dict[subgraph_node] != "" and subgraph_dict[subgraph_node] not in graph_dict[graph_node]:
+                is_valid = False
+                break
+        if is_valid:
+            node_reverse_mappings_final.append(node_reverse_mapping)
+    return node_reverse_mappings_final
+
+
 def filter_sub_linegraph(alpha_item, task_linegraph_item):
     """
     Args:
@@ -5435,3 +5572,8 @@ def first_key(Dict):
 def first_item(Dict):
     """Get the first item of a dictionary."""
     return Dict[first_key(Dict)]
+
+
+def get_cap(string):
+    """Get the string where the first letter is capitalized."""
+    return string[0].upper() + string[1:]
