@@ -5365,3 +5365,118 @@ def leaky_clamp(x, min, max, slope=0.01):
     """Between min and max, use the value x. Outside, use slope. Also the full function is continuous."""
     negative_slope = 2*slope - 1
     return ((nn.LeakyReLU(negative_slope=negative_slope)(x-min)+min) + (max-nn.LeakyReLU(negative_slope=negative_slope)(max-x))) / 2
+
+
+class MLP(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        n_neurons,
+        n_layers,
+        act_name="rational",
+        output_size=None,
+        last_layer_linear=True,
+        is_res=False,
+        normalization_type="None",
+    ):
+        super(MLP, self).__init__()
+        self.input_size = input_size
+        self.n_neurons = n_neurons
+        if not isinstance(n_neurons, Number):
+            assert n_layers == len(n_neurons), "If n_neurons is not a number, then its length must be equal to n_layers={}".format(n_layers)
+        self.n_layers = n_layers
+        self.act_name = act_name
+        self.output_size = output_size
+        self.last_layer_linear = last_layer_linear
+        self.is_res = is_res
+        self.normalization_type = normalization_type
+        self.normalization_n_groups = 2
+        if act_name != "siren":
+            last_out_neurons = self.input_size
+            for i in range(1, self.n_layers + 1):
+                out_neurons = self.n_neurons if isinstance(self.n_neurons, Number) else self.n_neurons[i-1]
+                if i == self.n_layers and self.output_size is not None:
+                    out_neurons = self.output_size
+                setattr(self, "layer_{}".format(i), nn.Linear(
+                    last_out_neurons,
+                    out_neurons,
+                ))
+                last_out_neurons = out_neurons
+                torch.nn.init.xavier_normal_(getattr(self, "layer_{}".format(i)).weight)
+                torch.nn.init.constant_(getattr(self, "layer_{}".format(i)).bias, 0)
+                if ((not self.last_layer_linear) or i != self.n_layers) and self.act_name != "linear":
+                    if self.normalization_type != "None":
+                        setattr(self, "normalization_{}".format(i), get_normalization(self.normalization_type, last_out_neurons, n_groups=self.normalization_n_groups))
+                    setattr(self, "activation_{}".format(i), get_activation(act_name))
+        else:
+            from siren_pytorch import SirenNet, Sine
+            self.model = SirenNet(
+                dim_in=input_size,               # input dimension, ex. 2d coor
+                dim_hidden=n_neurons,            # hidden dimension
+                dim_out=output_size,             # output dimension, ex. rgb value
+                num_layers=n_layers,             # number of layers
+                final_activation=nn.Identity() if self.last_layer_linear else Sine(),  # activation of final layer (nn.Identity() for direct output). If last_layer_linear is False, then last activation is Siren
+                w0_initial=30.                   # different signals may require different omega_0 in the first layer - this is a hyperparameter
+            )
+
+    def forward(self, x):
+        if self.act_name != "siren":
+            u = x
+            for i in range(1, self.n_layers + 1):
+                u = getattr(self, "layer_{}".format(i))(u)
+                if ((not self.last_layer_linear) or i != self.n_layers) and self.act_name != "linear":
+                    if self.normalization_type != "None":
+                        u = getattr(self, "normalization_{}".format(i))(u)
+                    u = getattr(self, "activation_{}".format(i))(u)
+            if self.is_res:
+                x = x + u
+            else:
+                x = u
+            return x
+        else:
+            return self.model(x)
+
+
+def get_normalization(normalization_type, n_channels, n_groups=2):
+    """Get normalization layer."""
+    if normalization_type == "bn1d":
+        layer = nn.BatchNorm1d(n_channels)
+    elif normalization_type == "bn2d":
+        layer = nn.BatchNorm2d(n_channels)
+    elif normalization_type == "gn":
+        layer = nn.GroupNorm(num_groups=n_groups, num_channels=n_channels)
+    elif normalization_type == "None":
+        layer = nn.Identity()
+    else:
+        raise Exception("normalization_type '{}' is not valid!".format(normalization_type))
+    return layer
+
+
+class Rational(torch.nn.Module):
+    """Rational Activation function.
+    Implementation provided by Mario Casado (https://github.com/Lezcano)
+    It follows:
+    `f(x) = P(x) / Q(x),
+    where the coefficients of P and Q are initialized to the best rational 
+    approximation of degree (3,2) to the ReLU function
+    # Reference
+        - [Rational neural networks](https://arxiv.org/abs/2004.01902)
+    """
+    def __init__(self):
+        super().__init__()
+        self.coeffs = torch.nn.Parameter(torch.Tensor(4, 2))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.coeffs.data = torch.Tensor([[1.1915, 0.0],
+                                         [1.5957, 2.383],
+                                         [0.5, 0.0],
+                                         [0.0218, 1.0]])
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.coeffs.data[0,1].zero_()
+        exp = torch.tensor([3., 2., 1., 0.], device=input.device, dtype=input.dtype)
+        X = torch.pow(input.unsqueeze(-1), exp)
+        PQ = X @ self.coeffs
+        output = torch.div(PQ[..., 0], PQ[..., 1])
+        return output
