@@ -4434,6 +4434,11 @@ def get_epochs_T_mult(epochs, T_0, T_mult):
     return epochs
 
 
+def get_cosine_decay(value_start, value_end, n_iter):
+    array = value_end + (1 + torch.cos(torch.arange(n_iter+1)/n_iter * torch.pi)) * (value_start - value_end) / 2
+    return array
+
+
 def get_string_slice(List):
     """Given a list of integers, return a string representation of the slices.
     E.g. List = [1,2,2,4,7,8,9,11]  => string = '1:3+4:5+7:10+11:12'
@@ -5594,25 +5599,63 @@ class MLP(nn.Module):
                 out_neurons = self.n_neurons if isinstance(self.n_neurons, Number) else self.n_neurons[i-1]
                 if i == self.n_layers and self.output_size is not None:
                     out_neurons = self.output_size
-                setattr(self, "layer_{}".format(i), nn.Linear(
-                    last_out_neurons,
-                    out_neurons,
-                ))
-                last_out_neurons = out_neurons
-                torch.nn.init.xavier_normal_(getattr(self, "layer_{}".format(i)).weight)
-                torch.nn.init.constant_(getattr(self, "layer_{}".format(i)).bias, 0)
-                if ((not self.last_layer_linear) or i != self.n_layers) and self.act_name != "linear":
-                    if self.normalization_type != "None":
-                        setattr(self, "normalization_{}".format(i), get_normalization(self.normalization_type, last_out_neurons, n_groups=self.normalization_n_groups))
-                    setattr(self, "activation_{}".format(i), get_activation(act_name))
+                
+                if i == self.n_layers and self.last_layer_linear == "siren":
+                    # Last layer is Siren:
+                    from siren_pytorch import Siren
+                    setattr(self, "layer_{}".format(i), Siren(
+                        last_out_neurons,
+                        out_neurons,
+                    ))
+                else:
+                    setattr(self, "layer_{}".format(i), nn.Linear(
+                        last_out_neurons,
+                        out_neurons,
+                    ))
+                    last_out_neurons = out_neurons
+                    torch.nn.init.xavier_normal_(getattr(self, "layer_{}".format(i)).weight)
+                    torch.nn.init.constant_(getattr(self, "layer_{}".format(i)).bias, 0)
+
+                # Normalization and activation:
+                if i != self.n_layers:
+                    # Intermediate layers:
+                    if self.act_name != "linear":
+                        if self.normalization_type != "None":
+                            setattr(self, "normalization_{}".format(i), get_normalization(self.normalization_type, last_out_neurons, n_groups=self.normalization_n_groups))
+                        setattr(self, "activation_{}".format(i), get_activation(act_name))
+                else:
+                    # Last layer:
+                    if self.last_layer_linear in [False, "False"]:
+                        if self.act_name != "linear":
+                            if self.normalization_type != "None":
+                                setattr(self, "normalization_{}".format(i), get_normalization(self.normalization_type, last_out_neurons, n_groups=self.normalization_n_groups))
+                            setattr(self, "activation_{}".format(i), get_activation(act_name))
+                    elif self.last_layer_linear in [True, "True", "siren"]:
+                        pass
+                    else:
+                        if self.normalization_type != "None":
+                            setattr(self, "normalization_{}".format(i), get_normalization(self.normalization_type, last_out_neurons, n_groups=self.normalization_n_groups))
+                        setattr(self, "activation_{}".format(i), get_activation(self.last_layer_linear))
+
         else:
             from siren_pytorch import SirenNet, Sine
+            if self.last_layer_linear in [False, "False"]:
+                if self.act_name == "siren":
+                    last_layer = Sine()
+                else:
+                    last_layer = get_activation(act_name)
+            elif self.last_layer_linear in [True, "True"]:
+                last_layer = nn.Identity()
+            elif self.last_layer_linear == "siren":
+                last_layer = Sine()
+            else:
+                last_layer = get_activation(self.last_layer_linear)
             self.model = SirenNet(
                 dim_in=input_size,               # input dimension, ex. 2d coor
                 dim_hidden=n_neurons,            # hidden dimension
                 dim_out=output_size,             # output dimension, ex. rgb value
                 num_layers=n_layers,             # number of layers
-                final_activation=nn.Identity() if self.last_layer_linear else Sine(),  # activation of final layer (nn.Identity() for direct output). If last_layer_linear is False, then last activation is Siren
+                final_activation=last_layer,     # activation of final layer (nn.Identity() for direct output). If last_layer_linear is False, then last activation is Siren
                 w0_initial=30.                   # different signals may require different omega_0 in the first layer - this is a hyperparameter
             )
 
@@ -5621,10 +5664,23 @@ class MLP(nn.Module):
             u = x
             for i in range(1, self.n_layers + 1):
                 u = getattr(self, "layer_{}".format(i))(u)
-                if ((not self.last_layer_linear) or i != self.n_layers) and self.act_name != "linear":
-                    if self.normalization_type != "None":
-                        u = getattr(self, "normalization_{}".format(i))(u)
-                    u = getattr(self, "activation_{}".format(i))(u)
+                if i != self.n_layers:
+                    # Intermediate layers:
+                    if self.act_name != "linear":
+                        if self.normalization_type != "None":
+                            u = getattr(self, "normalization_{}".format(i))(u)
+                        u = getattr(self, "activation_{}".format(i))(u)
+                else:
+                    # Last layer:
+                    if self.last_layer_linear in [True, "True", "siren"]:
+                        pass
+                    else:
+                        if self.last_layer_linear in [False, "False"] and self.act_name == "linear":
+                            pass
+                        else:
+                            if self.normalization_type != "None":
+                                u = getattr(self, "normalization_{}".format(i))(u)
+                            u = getattr(self, "activation_{}".format(i))(u)
             if self.is_res:
                 x = x + u
             else:
