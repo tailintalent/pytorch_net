@@ -4439,6 +4439,20 @@ def get_cosine_decay(value_start, value_end, n_iter):
     return array
 
 
+def get_decay_list(start_value, end_value, steps, mode="linear"):
+    if mode == "linear":
+        beta_list = np.linspace(start_value, end_value, steps)
+    elif mode == "exp":
+        beta_list = (np.logspace(1, 0, steps) - 1) / 9 * (start_value - end_value) + end_value
+    elif mode == "square":
+        beta_list = np.linspace(1, 0, steps) ** 2 * (start_value - end_value) + end_value
+    elif mode == "cos":
+        beta_list = get_cosine_decay(start_value, end_value, steps)
+    else:
+        raise
+    return beta_list
+
+
 def get_string_slice(List):
     """Given a list of integers, return a string representation of the slices.
     E.g. List = [1,2,2,4,7,8,9,11]  => string = '1:3+4:5+7:10+11:12'
