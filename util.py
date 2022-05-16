@@ -1158,6 +1158,14 @@ def expand_tensor(tensor, dim, times):
     return tensor.unsqueeze(dim + 1).repeat(repeat_times).view(*size)
 
 
+def get_repeat_interleave(input_size, output_size, dim):
+    assert output_size % input_size == 0
+    repeats = output_size // input_size
+    def repeat_interleave(tensor):
+        return tensor.repeat_interleave(repeats, dim=dim)
+    return repeat_interleave
+
+
 def sample(dist, n=None):
     """Sample n instances from distribution dist"""
     if n is None:
