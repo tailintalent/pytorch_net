@@ -13,6 +13,7 @@ See [tutorial.ipynb](https://github.com/tailintalent/pytorch_net/blob/master/Tut
 
 
 ## Some projects using this library:
+- [LE-PDE](https://github.com/snap-stanford/le_pde)
 - [AI Physicist](https://github.com/tailintalent/AI_physicist)
 - [GIB](https://github.com/snap-stanford/GIB)
 - [Causal learning](https://github.com/tailintalent/causal)
