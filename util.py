@@ -576,6 +576,18 @@ def get_activation(activation):
             norm = torch.logsumexp(x, axis=-1, keepdim=True)
             return -(x - norm)
         f = natlogsoftmax
+    elif act_name == "silu":
+        f = F.silu
+    elif act_name == "selu":
+        f = F.selu
+    elif act_name == "prelu":
+        f = F.prelu
+    elif act_name == "rrelu":
+        f = F.rrelu
+    elif act_name == "mish":
+        f = F.mish
+    elif act_name == "celu":
+        f = F.celu
     else:
         raise Exception("activation {0} not recognized!".format(activation))
     return f
