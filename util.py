@@ -5783,3 +5783,11 @@ def first_item(Dict):
 def get_cap(string):
     """Get the string where the first letter is capitalized."""
     return string[0].upper() + string[1:]
+
+
+def clear_dir(dirname):
+    import os
+    import glob
+    files = glob.glob(dirname)
+    for f in files:
+        os.remove(f)
