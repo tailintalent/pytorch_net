@@ -5791,3 +5791,27 @@ def clear_dir(dirname):
     files = glob.glob(dirname)
     for f in files:
         os.remove(f)
+
+
+def scatter_add_grid_(grid, indices, src):
+    """
+    Scatter add to a 2D grid, in place.
+
+    Args:
+        grid: [H, W, (...)]
+        indices: [B, 2] where each row is an index on H, W
+        src:  [B, (...)]
+
+    Returns:
+        grid: [H, W, (...)] where the corresponding indices have added the src, also allowing 
+            duplication of indices. Inplace operation
+    """
+    height, width = grid.shape[:2]
+    grid_flatten = grid.view(-1, *grid.shape[2:])
+    indices_flatten = indices[:,0] * width + indices[:,1]
+    for _ in range(len(grid_flatten.shape) - len(indices_flatten.shape)):
+        indices_flatten = indices_flatten[...,None]
+    indices_flatten = indices_flatten.expand_as(src)
+    grid_flatten.scatter_add_(0, index=indices_flatten, src=src)
+    grid = grid_flatten.view(height, width, *grid.shape[2:])
+    return grid
