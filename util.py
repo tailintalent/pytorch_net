@@ -3640,6 +3640,8 @@ class Attr_Dict(dict):
 
     def to(self, device):
         self["device"] = device
+        Dict = to_device_recur(self, device)
+        return Dict
 
     def copy(self):
         return Attr_Dict(dict.copy(self))
@@ -4079,7 +4081,7 @@ class Batch(object):
 def ddeepcopy(item):
     """Deepcopy with certain custom classes."""
     from pstar import pdict
-    if isinstance(item, pdict):
+    if isinstance(item, pdict) or isinstance(item, Attr_Dict):
         return item.copy()
     else:
         return deepcopy(item)
@@ -4103,7 +4105,20 @@ def to_device_recur(iterable, device, is_detach=False):
     elif isinstance(iterable, tuple):
         return tuple(to_device_recur(item, device, is_detach=is_detach) for item in iterable)
     elif isinstance(iterable, dict):
-        return {key: to_device_recur(item, device, is_detach=is_detach) for key, item in iterable.items()}
+        Dict = {key: to_device_recur(item, device, is_detach=is_detach) for key, item in iterable.items()}
+        if iterable.__class__.__name__ == "Pdict":
+            from pstar import pdict
+            class Pdict(pdict):
+                def to(self, device):
+                    self["device"] = device
+                    return to_device_recur(self, device)
+
+                def copy(self):
+                    return Pdict(dict.copy(self))
+            Dict = Pdict(Dict)
+        elif iterable.__class__.__name__ == "Attr_Dict":
+            Dict = Attr_Dict(Dict)
+        return Dict
     elif hasattr(iterable, "to"):
         iterable = iterable.to(device)
         if is_detach:
