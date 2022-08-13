@@ -4022,9 +4022,10 @@ class Batch(object):
                     numel = sum([x.numel() for x in batch])
                     storage = elem.storage()._new_shared(numel)
                     out = elem.new(storage)
-                tensor = torch.stack(batch, 0, out=out)
                 if self.is_absorb_batch:
-                    tensor = tensor.view(-1, *tensor.shape[2:])
+                    tensor = torch.cat(batch, 0, out=out)
+                else:
+                    tensor = torch.stack(batch, 0, out=out)
                 return tensor
             elif elem is None:
                 return None
