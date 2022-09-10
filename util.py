@@ -3952,6 +3952,8 @@ class My_Tuple(tuple):
         else: 
             return self[0].__getattribute__(key)
 
+class My_Freeze_Tuple(tuple):
+    pass
 
 class MineDataParallel(nn.parallel.DataParallel):
     def __getattribute__(self, key):
@@ -4051,6 +4053,8 @@ class Batch(object):
                 if isinstance(elem, pdict) or isinstance(elem, Attr_Dict):
                     Dict = elem.__class__(**Dict)
                 return Dict
+            elif isinstance(elem, My_Freeze_Tuple):
+                return batch
             elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple:
                 return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
             elif isinstance(elem, My_Tuple):
