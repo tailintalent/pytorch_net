@@ -1273,7 +1273,19 @@ def permute_dim(X, dim, idx, group_sizes, mode = "permute"):
 
 
 def fill_triangular(vec, dim, mode="lower"):
-    """Fill an lower or upper triangular matrices with given vectors"""
+    """Fill an lower or upper triangular matrices with given vectors.
+
+    Specifically, it transform the examples in the vector form [n_examples, size]
+        into the lower-triangular matrix with shape [n_examples, dim, dim]
+    
+    Args:
+        vec: [n_examples, size], where the size
+        dim: the dimension of the lower triangular matrix.
+            the size == dim * (dim + 1) // 2 must be satisfied.
+
+    Returns:
+        matrix: with shape [n_examples, dim, dim]
+    """
 #     num_examples, size = vec.shape
 #     assert size == dim * (dim + 1) // 2
 #     matrix = torch.zeros(num_examples, dim, dim).to(vec.device)
@@ -3953,6 +3965,8 @@ class My_Tuple(tuple):
         else: 
             return self[0].__getattribute__(key)
 
+class My_Freeze_Tuple(tuple):
+    pass
 
 class MineDataParallel(nn.parallel.DataParallel):
     def __getattribute__(self, key):
@@ -4052,6 +4066,8 @@ class Batch(object):
                 if isinstance(elem, pdict) or isinstance(elem, Attr_Dict):
                     Dict = elem.__class__(**Dict)
                 return Dict
+            elif isinstance(elem, My_Freeze_Tuple):
+                return batch
             elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple:
                 return elem_type(*(collate_fn(samples) for samples in zip(*batch)))
             elif isinstance(elem, My_Tuple):
