@@ -3959,6 +3959,7 @@ class MineDistributedSampler(Sampler[T_co]):
 class My_Tuple(tuple):
     def to(self, device):
         self[0].to(device)
+        return self
     
     def __getattribute__(self, key):
         if hasattr(My_Tuple, key):
