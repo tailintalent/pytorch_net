@@ -3269,7 +3269,7 @@ def print_banner(string, banner_size=100, n_new_lines=0):
 
 
 class Printer(object):
-    def __init__(self, is_datetime=True, store_length=100):
+    def __init__(self, is_datetime=True, store_length=100, n_digits=3):
         """
         Args:
             is_datetime: if True, will print the local date time, e.g. [2021-12-30 13:07:08], as prefix.
@@ -3277,6 +3277,7 @@ class Printer(object):
         """
         self.is_datetime = is_datetime
         self.store_length = store_length
+        self.n_digits = n_digits
         self.limit_list = []
 
     def print(self, item, tabs=0, is_datetime=None, banner_size=0, end=None, avg_window=-1, precision="second", is_silent=False):
@@ -3295,9 +3296,10 @@ class Printer(object):
         string += "    " * tabs
         string += "{}".format(item)
         if avg_window != -1 and len(self.limit_list) >= 2:
-            string += "   \t{:.3f}s from last print, {}-step avg: {:.3f}s".format(
+            string += "   \t{0:.{3}f}s from last print, {1}-step avg: {2:.{3}f}s".format(
                 self.limit_list[-1] - self.limit_list[-2], avg_window,
                 (self.limit_list[-1] - self.limit_list[-min(avg_window+1,len(self.limit_list))]) / avg_window,
+                self.n_digits,
             )
 
         if banner_size > 0:
