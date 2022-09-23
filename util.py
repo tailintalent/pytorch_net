@@ -3275,7 +3275,10 @@ class Printer(object):
         Args:
             is_datetime: if True, will print the local date time, e.g. [2021-12-30 13:07:08], as prefix.
             store_length: number of past time to store, for computing average time.
+        Returns:
+            None
         """
+        
         self.is_datetime = is_datetime
         self.store_length = store_length
         self.n_digits = n_digits
