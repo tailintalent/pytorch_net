@@ -3664,6 +3664,9 @@ class Attr_Dict(dict):
     def copy(self):
         return Attr_Dict(dict.copy(self))
 
+    def clone(self):
+        return self.copy()
+
 
 class Cache_Dict(dict):
     def __init__(self, *args, cache_num_limit=-1, cache_fraction_limit=-1):
