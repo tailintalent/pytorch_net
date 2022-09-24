@@ -3661,11 +3661,35 @@ class Attr_Dict(dict):
         Dict = to_device_recur(self, device)
         return Dict
 
-    def copy(self):
-        return Attr_Dict(dict.copy(self))
+    def copy(self, detach=True):
+        return copy_data(self, detach=detach)
 
-    def clone(self):
-        return self.copy()
+    def clone(self, detach=True):
+        return self.copy(detach=detach)
+
+
+def copy_data(data, detach=True):
+    """Copy Data instance, and detach from source Data."""
+    if isinstance(data, dict):
+        dct = {key: copy_data(value, detach=detach) for key, value in data.items()}
+        if data.__class__.__name__ == "Attr_Dict":
+            dct = Attr_Dict(dct)
+        return dct
+    elif isinstance(data, list):
+        return [copy_data(ele, detach=detach) for ele in data]
+    elif isinstance(data, torch.Tensor):
+        if detach:
+            return data.detach().clone()
+        else:
+            return data.clone()
+    elif isinstance(data, tuple):
+        return tuple(copy_data(ele, detach=detach) for ele in data)
+    elif data.__class__.__name__ in ['HeteroGraph', 'Data']:
+        dct = Attr_Dict({key: copy_data(value, detach=detach) for key, value in vars(data).items()})
+        assert len(dct) > 0, "Did not clone anything. Check that your PyG version is below 1.8, preferablly 1.7.1. Follow the the ./design/multiscale/README.md to install the correct version of PyG."
+        return dct
+    else:
+        return deepcopy(data)
 
 
 class Cache_Dict(dict):
