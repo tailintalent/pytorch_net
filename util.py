@@ -3690,7 +3690,7 @@ def to_type(data, dtype):
     elif data is None:
         return data
     elif isinstance(data, np.ndarray):
-        if dtype == torch.float64
+        if dtype == torch.float64:
             return data.astype(np.float64)
         elif dtype == torch.float32:
             return data.astype(np.float32)
