@@ -3670,6 +3670,9 @@ class Attr_Dict(dict):
     def type(self, dtype):
         return to_type(self, dtype)
 
+    def detach(self):
+        return detach_data(self)
+
 
 def to_type(data, dtype):
     if isinstance(data, dict):
@@ -3698,6 +3701,27 @@ def to_type(data, dtype):
             raise
     else:
         return data.type(dtype)
+
+
+def detach_data(data):
+    """Copy Data instance, and detach from source Data."""
+    if isinstance(data, dict):
+        dct = {key: detach_data(value) for key, value in data.items()}
+        if data.__class__.__name__ == "Attr_Dict":
+            dct = Attr_Dict(dct)
+        return dct
+    elif isinstance(data, list):
+        return [detach_data(ele) for ele in data]
+    elif isinstance(data, torch.Tensor):
+        return data.detach()
+    elif isinstance(data, tuple):
+        return tuple(detach_data(ele) for ele in data)
+    elif data.__class__.__name__ in ['HeteroGraph', 'Data']:
+        dct = Attr_Dict({key: detach_data(value) for key, value in vars(data).items()})
+        assert len(dct) > 0, "Did not clone anything. Check that your PyG version is below 1.8, preferablly 1.7.1. Follow the the ./design/multiscale/README.md to install the correct version of PyG."
+        return dct
+    else:
+        return data
 
 def copy_data(data, detach=True):
     """Copy Data instance, and detach from source Data."""
