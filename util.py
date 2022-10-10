@@ -73,6 +73,10 @@ def plot_matrices(
     ):
     """Plot the images for each matrix in the matrix_list.
     Adapted from https://github.com/tailintalent/pytorch_net/blob/c1cfda5e90fef9503c887f5061cb7b1262133ac0/util.py#L54
+    
+    Args:
+        is_balanced: if True, the scale_min and scale_max will have the same absolute value but opposite sign.
+        cmap: choose from None, "PiYG", "jet", etc.
     """
     import matplotlib
     from matplotlib import pyplot as plt
