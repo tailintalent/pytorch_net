@@ -1315,6 +1315,34 @@ def fill_triangular(vec, dim, mode="lower"):
     return matrix
 
 
+def get_tril_block(size, block_size, diagonal=0):
+    """Get indices of a lower-triangular block matrix."""
+    n = int(np.ceil(size / block_size))
+    mesh1, mesh2 = torch.meshgrid(torch.arange(1,1+size), torch.arange(1,1+size), indexing="ij")
+    mesh1 = torch.tensor(mesh1.numpy())
+    mesh2 = torch.tensor(mesh2.numpy())
+    for k in range(n):
+        mesh1[k*block_size:(k+1)*block_size, (k+1+diagonal)*block_size:] = 0
+        mesh2[k*block_size:(k+1)*block_size, (k+1+diagonal)*block_size:] = 0
+    rows = mesh1.view(-1)[torch.where(mesh1.view(-1))[0]] - 1
+    cols = mesh2.view(-1)[torch.where(mesh2.view(-1))[0]] - 1
+    return rows, cols
+
+
+def get_triu_block(size, block_size, diagonal=0):
+    """Get indices of a upper-triangular block matrix."""
+    n = int(np.ceil(size / block_size))
+    mesh1, mesh2 = torch.meshgrid(torch.arange(1,1+size), torch.arange(1,1+size), indexing="ij")
+    mesh1 = torch.tensor(mesh1.numpy())
+    mesh2 = torch.tensor(mesh2.numpy())
+    for k in range(n):
+        mesh1[k*block_size:(k+1)*block_size, :(k+diagonal)*block_size] = 0
+        mesh2[k*block_size:(k+1)*block_size, :(k+diagonal)*block_size] = 0
+    rows = mesh1.view(-1)[torch.where(mesh1.view(-1))[0]] - 1
+    cols = mesh2.view(-1)[torch.where(mesh2.view(-1))[0]] - 1
+    return rows, cols
+
+
 def get_triu_3D(size):
     """Get the upper triangular tensor for a 3D tensor with given size."""
     rows1 = []
@@ -2312,6 +2340,17 @@ def get_model_DL(model):
     if not(isinstance(model, list) or isinstance(model, tuple)):
         model = [model]
     return np.sum([model_ele.DL for model_ele in model])
+
+
+def zero_grad_hook_multi(rows, cols):
+    """
+    Args:
+        rows, cols: the joint rows and cols that we want to freeze the parameters.
+    """
+    def hook_function(grad):
+        grad[rows,cols] = 0
+        return grad
+    return hook_function
 
 
 def zero_grad_hook(idx):
