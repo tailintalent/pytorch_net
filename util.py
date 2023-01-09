@@ -81,7 +81,7 @@ def plot_matrices(
     import matplotlib
     from matplotlib import pyplot as plt
     n_rows = max(len(matrix_list) // images_per_row, 1)
-    fig = plt.figure(figsize=(20, n_rows*7) if figsize is None else figsize)
+    fig = plt.figure(figsize=(24, n_rows*5) if figsize is None else figsize)
     fig.set_canvas(plt.gcf().canvas)
     if title is not None:
         fig.suptitle(title, fontsize = 18, horizontalalignment = 'left', x=0.1)
@@ -5979,3 +5979,56 @@ def scatter_add_grid_(grid, indices, src):
     grid_flatten.scatter_add_(0, index=indices_flatten, src=src)
     grid = grid_flatten.view(height, width, *grid.shape[2:])
     return grid
+
+
+def filter_dictionary(d, key_func, value_func, return_type="value", return_mode="gen"):
+    """
+    Return a generator for dict or list whose key and/or value satisfy key_func/value_func.
+    
+    Args:
+        return_mode: choose from "dict" and "gen"
+    
+    Examples:
+        def even(x):
+            return x % 2 == 0
+
+        def greater_than_10(x):
+            return x > 10
+
+        d = {1: 11, 2: 12, 3: 13, 4: 4, 5: 15}
+
+        print(dict(filter_dictionary(d, even, greater_than_10, return_type="full"))
+        >>> {2: 12}
+
+        print(list(filter_dictionary(d, even, greater_than_10, return_type="value"))
+        >>> [12]
+    """
+    if return_mode == "gen":
+        for key, value in d.items():
+            if (key_func is None is None or key_func(key)) and (value_func is None or value_func(value)):
+                if return_type == "value":
+                    yield value
+                elif return_type == "key":
+                    yield key
+                elif return_type == "full":
+                    yield key, value
+                else:
+                    raise
+    elif return_mode == "dict":
+        if return_type in ["key", "value"]:
+            output = []
+        else:
+            output = {}
+        for key, value in d.items():
+            if (key_func is None is None or key_func(key)) and (value_func is None or value_func(value)):
+                if return_type == "value":
+                    output.append(value)
+                elif return_type == "key":
+                    output.append(key)
+                elif return_type == "full":
+                    output[key] = value
+                else:
+                    raise
+        return output
+    else:
+        raise
