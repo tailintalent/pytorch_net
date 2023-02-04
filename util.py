@@ -5979,3 +5979,85 @@ def scatter_add_grid_(grid, indices, src):
     grid_flatten.scatter_add_(0, index=indices_flatten, src=src)
     grid = grid_flatten.view(height, width, *grid.shape[2:])
     return grid
+
+
+class ZeroOutIfConstant(nn.Module):
+    """
+    This class is a wrapper, where if the input is a constant within the kernel_size region, will return 0.
+    f(x) = g(x) - g(kernel_mean(x))
+    """
+    def __init__(
+        self,
+        module_list,
+        kernel_size,
+        pos_dims,
+        padding_mode,
+        is_channel_mean=True,
+    ):
+        super().__init__()
+        if not isinstance(module_list, list):
+            module_list = [module_list]
+        self.module_list = nn.ModuleList(module_list)
+        self.pos_dims = pos_dims
+        self.kernel_size = kernel_size
+        self.padding_mode = padding_mode
+        self.is_channel_mean = is_channel_mean
+    
+    def forward(self, input):
+        out = input
+        for module in self.module_list:
+            out = module(out)
+        input_mean = kernel_mean(
+            input,
+            pos_dims=self.pos_dims,
+            kernel_size=self.kernel_size,
+            padding_mode=self.padding_mode,
+            is_channel_mean=self.is_channel_mean,
+        )
+        return out - module(input_mean)
+
+
+def kernel_mean(input, pos_dims, kernel_size, padding_mode, is_channel_mean=True):
+    """
+    Perform average using the patch with kernel_size.
+
+    Args:
+        input: [B, C, ...]
+        pos_dims: choose from 1, 2, and 3.
+        padding_mode: choose from 'valid', 'zeros', 'reflect', 'replicate' or 'circular'
+        is_channel_mean: if True, will also take average along the channel C dimension.
+
+    Returns:
+        out: [B, C, ...] where it takes average on the kernel sized region
+    """
+    in_channels = input.shape[1]
+    device = input.device
+    if padding_mode == "zeros":
+        padding_mode = "constant"
+    if pos_dims == 1:
+        if is_channel_mean:
+            weight = torch.ones(in_channels, in_channels, kernel_size, device=device) / (in_channels * kernel_size)
+        else:
+            weight = (torch.eye(in_channels, device=device)[...,None]/kernel_size).expand(in_channels, in_channels, kernel_size)
+        if padding_mode != "valid":
+            input = F.pad(input, pad=(kernel_size//2,kernel_size//2), mode=padding_mode)
+        out = F.conv1d(input, weight=weight, padding="valid")
+    elif pos_dims == 2:
+        if is_channel_mean:
+            weight = torch.ones(in_channels, in_channels, kernel_size, kernel_size, device=device) / (in_channels * kernel_size ** 2)
+        else:
+            weight = (torch.eye(in_channels, device=device)[...,None,None]/kernel_size**2).expand(in_channels, in_channels, kernel_size, kernel_size)
+        if padding_mode != "valid":
+            input = F.pad(input, pad=(kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2), mode=padding_mode)
+        out = F.conv2d(input, weight=weight, padding="valid")
+    elif pos_dims == 3:
+        if is_channel_mean:
+            weight = torch.ones(in_channels, in_channels, kernel_size, kernel_size, kernel_size, device=device) / (in_channels * kernel_size ** 3)
+        else:
+            weight = (torch.eye(in_channels, device=device)[...,None,None,None]/kernel_size**3).expand(in_channels, in_channels, kernel_size, kernel_size, kernel_size)
+        if padding_mode != "valid":
+            input = F.pad(input, pad=(kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2), mode=padding_mode)
+        out = F.conv3d(input, weight=weight, padding="valid")
+    else:
+        raise
+    return out
