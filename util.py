@@ -5981,7 +5981,6 @@ def scatter_add_grid_(grid, indices, src):
     return grid
 
 
-<<<<<<< HEAD
 class ZeroOutIfConstant(nn.Module):
     """
     This class is a wrapper, where if the input is a constant within the kernel_size region, will return 0.
