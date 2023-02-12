@@ -5981,10 +5981,16 @@ def scatter_add_grid_(grid, indices, src):
     return grid
 
 
-class ZeroOutIfConstant(nn.Module):
+class ZeroOutIfCondition(nn.Module):
     """
-    This class is a wrapper, where if the input is a constant within the kernel_size region, will return 0.
-    f(x) = g(x) - g(kernel_mean(x))
+    This class is a wrapper, where if the input satisfies certain condition within the kernel_size region, will return 0.
+    f(x) = g(x) - g(kernel_condition(x))
+    
+    channel_mean_mode:
+        "all-mean": consider all channels simultaneously, and obtain the mean
+        "all-zero": consider all channels simultaneously, and obtain the zero
+        "indi-mean": consider individual channels separately, and obtain the mean
+        "m-z-n-z": means that there are 4 channels, and their format are "mean", "zero", "none", "zero"
     """
     def __init__(
         self,
@@ -5992,7 +5998,7 @@ class ZeroOutIfConstant(nn.Module):
         kernel_size,
         pos_dims,
         padding_mode,
-        is_channel_mean=True,
+        channel_mean_mode,
     ):
         super().__init__()
         if not isinstance(module_list, list):
@@ -6001,23 +6007,36 @@ class ZeroOutIfConstant(nn.Module):
         self.pos_dims = pos_dims
         self.kernel_size = kernel_size
         self.padding_mode = padding_mode
-        self.is_channel_mean = is_channel_mean
+        self.channel_mean_mode = channel_mean_mode
     
     def forward(self, input):
         out = input
         for module in self.module_list:
             out = module(out)
-        input_mean = kernel_mean(
+        input_mean = kernel_condition(
             input,
             pos_dims=self.pos_dims,
             kernel_size=self.kernel_size,
             padding_mode=self.padding_mode,
-            is_channel_mean=self.is_channel_mean,
+            channel_mean_mode=self.channel_mean_mode,
         )
         return out - module(input_mean)
 
 
-def kernel_mean(input, pos_dims, kernel_size, padding_mode, is_channel_mean=True):
+def unsqueeze_multi(input, dim, num_dims=1):
+    """
+    Add num_dims dimensions at location "dim" to the input tensor.
+
+    Args:
+        num_dims: number of dimensions to add to location "dim".
+    """
+    if num_dims == 1:
+        return input.unsqueeze(dim)
+    else:
+        return unsqueeze_multi(input.unsqueeze(dim), dim=dim, num_dims=num_dims-1)
+
+
+def kernel_condition(input, pos_dims, kernel_size, padding_mode, channel_mean_mode="all-mean"):
     """
     Perform average using the patch with kernel_size.
 
@@ -6025,41 +6044,57 @@ def kernel_mean(input, pos_dims, kernel_size, padding_mode, is_channel_mean=True
         input: [B, C, ...]
         pos_dims: choose from 1, 2, and 3.
         padding_mode: choose from 'valid', 'zeros', 'reflect', 'replicate' or 'circular'
-        is_channel_mean: if True, will also take average along the channel C dimension.
+        channel_mean_mode:
+            "all-mean": consider all channels simultaneously, and obtain the mean
+            "all-zero": consider all channels simultaneously, and obtain the zero
+            "indi-mean": consider individual channels separately, and obtain the mean
+            "m-z-n-z": means that there are 4 channels, and their format are "mean", "zero", "none", "zero"
 
     Returns:
-        out: [B, C, ...] where it takes average on the kernel sized region
+        out: [B, C, ...] where it takes average ("mean"), zero ("zero") or keep original value ("none") on the kernel sized region.
     """
+    
     in_channels = input.shape[1]
     device = input.device
+    assert len(input.shape) - 2 == pos_dims
     if padding_mode == "zeros":
         padding_mode = "constant"
-    if pos_dims == 1:
-        if is_channel_mean:
-            weight = torch.ones(in_channels, in_channels, kernel_size, device=device) / (in_channels * kernel_size)
-        else:
-            weight = (torch.eye(in_channels, device=device)[...,None]/kernel_size).expand(in_channels, in_channels, kernel_size)
-        if padding_mode != "valid":
-            input = F.pad(input, pad=(kernel_size//2,kernel_size//2), mode=padding_mode)
-        out = F.conv1d(input, weight=weight, padding="valid")
-    elif pos_dims == 2:
-        if is_channel_mean:
-            weight = torch.ones(in_channels, in_channels, kernel_size, kernel_size, device=device) / (in_channels * kernel_size ** 2)
-        else:
-            weight = (torch.eye(in_channels, device=device)[...,None,None]/kernel_size**2).expand(in_channels, in_channels, kernel_size, kernel_size)
-        if padding_mode != "valid":
-            input = F.pad(input, pad=(kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2), mode=padding_mode)
-        out = F.conv2d(input, weight=weight, padding="valid")
-    elif pos_dims == 3:
-        if is_channel_mean:
-            weight = torch.ones(in_channels, in_channels, kernel_size, kernel_size, kernel_size, device=device) / (in_channels * kernel_size ** 3)
-        else:
-            weight = (torch.eye(in_channels, device=device)[...,None,None,None]/kernel_size**3).expand(in_channels, in_channels, kernel_size, kernel_size, kernel_size)
-        if padding_mode != "valid":
-            input = F.pad(input, pad=(kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2,kernel_size//2), mode=padding_mode)
-        out = F.conv3d(input, weight=weight, padding="valid")
+    kernel_size_tuple = (kernel_size,) * pos_dims
+    func_dict = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}
+
+    if channel_mean_mode == "all-mean":
+        weight = torch.ones(in_channels, in_channels, *kernel_size_tuple, device=device) / (in_channels * kernel_size ** pos_dims)
+    elif channel_mean_mode == "indi-mean":
+        weight = (unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)
+    elif channel_mean_mode == "all-zero":
+        weight = torch.zeros(in_channels, in_channels, *kernel_size_tuple, device=device)
     else:
-        raise
+        mode_str_list = channel_mean_mode.split("-")
+        assert len(mode_str_list) == input.shape[1]
+        weight_list = []
+        for kk, mode_str in enumerate(mode_str_list):
+            if mode_str == "m":  # "mean"
+                weight_ele = (unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)[kk]
+            elif mode_str == "z":  # "zero"
+                weight_ele = torch.zeros(in_channels, *kernel_size_tuple, device=device)
+            elif mode_str == "n":  # "none"
+                assert kernel_size % 2 == 1
+                kernel_ele = torch.zeros(*kernel_size_tuple, device=device)
+                loc = (kernel_size - 1)//2
+                if pos_dims == 1:
+                    kernel_ele[loc] = 1
+                elif pos_dims == 2:
+                    kernel_ele[loc, loc] = 1
+                elif pos_dims == 3:
+                    kernel_ele[loc, loc, loc] = 1
+                weight_ele = unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims)[kk] * kernel_ele[None]
+            else:
+                raise
+            weight_list.append(weight_ele)
+        weight = torch.stack(weight_list)
+    if padding_mode != "valid":
+        input = F.pad(input, pad=(kernel_size//2,kernel_size//2) * pos_dims, mode=padding_mode)
+    out = func_dict[pos_dims](input, weight=weight, padding="valid")
     return out
 
 
