@@ -5999,6 +5999,7 @@ class ZeroOutIfCondition(nn.Module):
         pos_dims,
         padding_mode,
         channel_mean_mode,
+        zero_level=0,
     ):
         super().__init__()
         if not isinstance(module_list, list):
@@ -6008,6 +6009,7 @@ class ZeroOutIfCondition(nn.Module):
         self.kernel_size = kernel_size
         self.padding_mode = padding_mode
         self.channel_mean_mode = channel_mean_mode
+        self.zero_level = zero_level
     
     def forward(self, input):
         out = input
@@ -6020,6 +6022,12 @@ class ZeroOutIfCondition(nn.Module):
             padding_mode=self.padding_mode,
             channel_mean_mode=self.channel_mean_mode,
         )
+        if self.zero_level != 0 and "z" in self.channel_mean_mode.split("-"):
+            input_zero = torch.zeros_like(input_mean).detach()  # [B, C, (...)]
+            for j, channel_mode_indi in enumerate(self.channel_mean_mode.split("-")):
+                if channel_mode_indi == "z":
+                    input_zero[:,j] = self.zero_level
+            input_mean = input_mean + input_zero
         return out - module(input_mean)
 
 
@@ -6056,6 +6064,7 @@ def kernel_condition(input, pos_dims, kernel_size, padding_mode, channel_mean_mo
     
     in_channels = input.shape[1]
     device = input.device
+    dtype = input.dtype
     assert len(input.shape) - 2 == pos_dims
     if padding_mode == "zeros":
         padding_mode = "constant"
@@ -6063,23 +6072,23 @@ def kernel_condition(input, pos_dims, kernel_size, padding_mode, channel_mean_mo
     func_dict = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}
 
     if channel_mean_mode == "all-mean":
-        weight = torch.ones(in_channels, in_channels, *kernel_size_tuple, device=device) / (in_channels * kernel_size ** pos_dims)
+        weight = torch.ones(in_channels, in_channels, *kernel_size_tuple, device=device, dtype=dtype) / (in_channels * kernel_size ** pos_dims)
     elif channel_mean_mode == "indi-mean":
-        weight = (unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)
+        weight = (unsqueeze_multi(torch.eye(in_channels, device=device, dtype=dtype), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)
     elif channel_mean_mode == "all-zero":
-        weight = torch.zeros(in_channels, in_channels, *kernel_size_tuple, device=device)
+        weight = torch.zeros(in_channels, in_channels, *kernel_size_tuple, device=device, dtype=dtype)
     else:
         mode_str_list = channel_mean_mode.split("-")
         assert len(mode_str_list) == input.shape[1]
         weight_list = []
         for kk, mode_str in enumerate(mode_str_list):
             if mode_str == "m":  # "mean"
-                weight_ele = (unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)[kk]
+                weight_ele = (unsqueeze_multi(torch.eye(in_channels, device=device, dtype=dtype), dim=-1, num_dims=pos_dims) / kernel_size ** pos_dims).expand(in_channels, in_channels, *kernel_size_tuple)[kk]
             elif mode_str == "z":  # "zero"
-                weight_ele = torch.zeros(in_channels, *kernel_size_tuple, device=device)
+                weight_ele = torch.zeros(in_channels, *kernel_size_tuple, device=device, dtype=dtype)
             elif mode_str == "n":  # "none"
                 assert kernel_size % 2 == 1
-                kernel_ele = torch.zeros(*kernel_size_tuple, device=device)
+                kernel_ele = torch.zeros(*kernel_size_tuple, device=device, dtype=dtype)
                 loc = (kernel_size - 1)//2
                 if pos_dims == 1:
                     kernel_ele[loc] = 1
@@ -6087,14 +6096,14 @@ def kernel_condition(input, pos_dims, kernel_size, padding_mode, channel_mean_mo
                     kernel_ele[loc, loc] = 1
                 elif pos_dims == 3:
                     kernel_ele[loc, loc, loc] = 1
-                weight_ele = unsqueeze_multi(torch.eye(in_channels, device=device), dim=-1, num_dims=pos_dims)[kk] * kernel_ele[None]
+                weight_ele = unsqueeze_multi(torch.eye(in_channels, device=device, dtype=dtype), dim=-1, num_dims=pos_dims)[kk] * kernel_ele[None]
             else:
                 raise
             weight_list.append(weight_ele)
         weight = torch.stack(weight_list)
     if padding_mode != "valid":
         input = F.pad(input, pad=(kernel_size//2,kernel_size//2) * pos_dims, mode=padding_mode)
-    out = func_dict[pos_dims](input, weight=weight, padding="valid")
+    out = func_dict[pos_dims](input, weight=weight, padding="valid")  # [B, C, (...)]
     return out
 
 
