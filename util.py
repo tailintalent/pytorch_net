@@ -5470,6 +5470,10 @@ def groupby_add_keys(df, by, add_keys, other_keys=None, mode="mean"):
     return df_group
 
 
+def get_df_colormap(df, colormap="PiYG_r"):
+    return df.style.background_gradient(cmap=plt.cm.get_cmap(colormap))
+
+
 def enumerate_binary_array(dim, filter_fn=None):
     """Enumerate all binary arrays that satisfies the condition of filter_fn.
 
